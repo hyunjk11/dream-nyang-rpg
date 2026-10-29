@@ -119,7 +119,48 @@ h1 { margin: 0; font-size: clamp(56px, 8vw, 104px); text-shadow: 0 4px 0 #7a5aa8
 }
 .touch-only { display: none; }
 body.touch .touch-only, body.force-touch .touch-only { display: flex; }
-@media (max-width: 980px) { .touch-only { display: flex; } .potion { bottom: 132px; } .skillbar { bottom: 128px; right: 12px; } .prompt { bottom: 210px; } }
+.touch-only.joystick, .touch-only.fight-cluster { display: none; }
+body.touch .touch-only.joystick, body.force-touch .touch-only.joystick { display: grid; }
+body.touch .touch-only.fight-cluster, body.force-touch .touch-only.fight-cluster { display: flex; }
+body.touch .potion,
+body.force-touch .potion {
+  left: 150px;
+  bottom: max(18px, env(safe-area-inset-bottom));
+}
+body.touch .skillbar,
+body.force-touch .skillbar {
+  right: 12px;
+  bottom: max(112px, calc(env(safe-area-inset-bottom) + 112px));
+  max-width: calc(100% - 180px);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+body.touch .prompt,
+body.force-touch .prompt { bottom: 176px; }
+body.touch .joystick,
+body.force-touch .joystick { width: 116px; height: 116px; }
+@media (max-width: 980px) {
+  .touch-only, .touch-only.joystick { display: grid; }
+  .touch-only.fight-cluster { display: flex; }
+  .potion { left: 146px; bottom: max(18px, env(safe-area-inset-bottom)); }
+  .skill { width: 52px; height: 52px; }
+  .skill span { font-size: 11px; }
+  .skillbar {
+    right: 12px;
+    bottom: max(108px, calc(env(safe-area-inset-bottom) + 108px));
+    max-width: calc(100% - 168px);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .prompt { bottom: 176px; }
+  .joystick { width: 116px; height: 116px; }
+}
+@media (max-height: 480px) {
+  .tracker { max-height: 64px; overflow: hidden; }
+  .top-left, .top-right, .top-center { top: 8px; }
+  .boss-wrap { top: 34px; }
+  .skill { width: 46px; height: 46px; }
+}
 .joystick {
   position: absolute; left: max(16px, env(safe-area-inset-left)); bottom: max(16px, env(safe-area-inset-bottom));
   width: 128px; height: 128px; border-radius: 50%;

@@ -9,6 +9,7 @@ import { bus } from '../bus'
 import { hud } from '../hud'
 import { controls } from '../input'
 import { RARITY_TINT } from '../assets'
+import { BYEOLHA_ORIGIN_Y, BYEOLHA_SCALE, HAND_LIFT, MOCHI_ORIGIN_Y, MOCHI_SCALE, cameraFocus, facingFromAim, gripPoint, gunInFront, gunSpec, muzzlePoint } from '../rig'
 import { runtime } from '../runtime'
 import { commit, live, settings } from '../session'
 import { calcDamage } from '../../sim/formulas'
@@ -82,8 +83,10 @@ export class WorldScene extends Phaser.Scene {
   private zoneId = 'meadow'
   private spawnId = 'default'
   private player!: Phaser.Physics.Arcade.Sprite
+  private avatar!: Phaser.GameObjects.Sprite
+  private focus!: Phaser.GameObjects.Zone
   private gun!: Phaser.GameObjects.Image
-  private mochi!: Phaser.GameObjects.Image
+  private mochi!: Phaser.GameObjects.Sprite
   private mochiShadow!: Phaser.GameObjects.Ellipse
   private playerShadow!: Phaser.GameObjects.Ellipse
   private foes!: Phaser.Physics.Arcade.Group
@@ -103,6 +106,10 @@ export class WorldScene extends Phaser.Scene {
   private dashY = 0
   private muzzle = 0
   private recoil = 0
+  private hurtT = 0
+  private avatarAnim = ''
+  private mochiAnim = ''
+  private mochiMoved = 0
   private hitStop = 0
   private dying = false
   private traveling = false
@@ -188,21 +195,33 @@ export class WorldScene extends Phaser.Scene {
     const spawn = zone.spawns[this.spawnId] ?? zone.spawns.default
     this.player = this.physics.add.sprite(spawn.x, spawn.y, 'byeolha')
     this.player.setOrigin(0.5, 0.98)
-    const pScale = 138 / this.player.height
-    this.player.setScale(pScale)
+    this.player.setScale(138 / this.player.height)
+    this.player.setVisible(false)
     const pBody = this.player.body as Phaser.Physics.Arcade.Body
+    const pScale = this.player.scaleX
     const pbw = 32 / pScale
     const pbh = 16 / pScale
     pBody.setSize(pbw, pbh)
     pBody.setOffset((this.player.width - pbw) / 2, this.player.height * 0.98 - pbh)
     pBody.setCollideWorldBounds(true)
+    this.avatar = this.add.sprite(spawn.x, spawn.y, 'byeolha_idle', 0)
+    this.avatar.setOrigin(0.5, BYEOLHA_ORIGIN_Y)
+    this.avatar.setScale(BYEOLHA_SCALE)
+    this.avatar.play('byeolha_idle')
+    this.avatarAnim = 'byeolha_idle'
     this.playerShadow = this.add.ellipse(spawn.x, spawn.y, 46, 16, 0x241433, 0.25)
     this.gun = this.add.image(spawn.x, spawn.y, this.gunKey())
-    this.gun.setOrigin(0.5, 0.5)
-    this.mochi = this.add.image(spawn.x + 36, spawn.y, 'mochi')
-    this.mochi.setOrigin(0.5, 0.98)
-    this.mochi.setScale(86 / this.mochi.height)
+    const spec = gunSpec(this.gunKey())
+    this.gun.setOrigin(spec.originX, spec.originY)
+    this.gun.setScale(spec.scale)
+    this.mochi = this.add.sprite(spawn.x + 48, spawn.y, 'mochi_idle', 0)
+    this.mochi.setOrigin(0.5, MOCHI_ORIGIN_Y)
+    this.mochi.setScale(MOCHI_SCALE)
+    this.mochi.play('mochi_idle')
+    this.mochiAnim = 'mochi_idle'
     this.mochiShadow = this.add.ellipse(spawn.x, spawn.y, 36, 12, 0x241433, 0.22)
+    const look = cameraFocus(spawn.x, spawn.y, 0, this.avatar.displayHeight)
+    this.focus = this.add.zone(look.x, look.y, 4, 4)
 
     for (const spawnDef of zone.enemies) this.addEnemy(spawnDef.id, spawnDef.x, spawnDef.y, spawnDef.tags, spawnDef.elite, spawnDef.fixed)
     for (const drop of zone.pickups) {
@@ -214,7 +233,9 @@ export class WorldScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.blocks)
     this.physics.add.collider(this.foes, this.blocks)
     this.physics.add.collider(this.foes, this.foes)
-    this.cameras.main.startFollow(this.player, true, 0.16, 0.16)
+    this.cameras.main.startFollow(this.focus, false, 0.14, 0.14)
+    this.cameras.main.setFollowOffset(0, 0)
+    this.cameras.main.setRoundPixels(false)
     this.hazardGfx = this.add.graphics().setDepth(3)
     this.trailGfx = this.add.graphics().setDepth(40)
     this.flash = this.add.rectangle(640, 360, 1280, 720, 0xffffff, 1).setScrollFactor(0).setDepth(40000).setAlpha(0)
@@ -263,9 +284,12 @@ export class WorldScene extends Phaser.Scene {
     if (held) {
       this.player.setVelocity(0, 0)
       for (const enemy of this.enemies) if (!enemy.dead) enemy.sprite.setVelocity(0, 0)
+      if (this.dying) this.avatar.anims.resume()
+      else this.avatar.anims.pause()
       this.syncHud(save)
       return
     }
+    if (this.avatar.anims.isPaused) this.avatar.anims.resume()
     this.elapsed += dt
     this.playAcc += dt
     if (this.playAcc >= 1) {
@@ -276,6 +300,7 @@ export class WorldScene extends Phaser.Scene {
     runtime.dashCd = Math.max(0, runtime.dashCd - dt)
     runtime.fireCd = Math.max(0, runtime.fireCd - dt)
     runtime.invuln = Math.max(0, runtime.invuln - dt)
+    this.hurtT = Math.max(0, this.hurtT - dt)
     runtime.shieldT = Math.max(0, runtime.shieldT - dt)
     runtime.taunt = Math.max(0, runtime.taunt - dt)
     if (runtime.shieldT <= 0) runtime.shield = 0
@@ -300,9 +325,12 @@ export class WorldScene extends Phaser.Scene {
     this.enemies = this.enemies.filter((enemy) => !enemy.gone)
     if (save.hp <= 0 && !this.dying) {
       this.dying = true
+      this.pose()
       live.paused = true
       if (settings.current.shake) this.cameras.main.shake(240, 0.012)
-      bus.emit('death', undefined)
+      this.time.delayedCall(820, () => {
+        if (this.dying) bus.emit('death', undefined)
+      })
     }
   }
 
@@ -326,10 +354,10 @@ export class WorldScene extends Phaser.Scene {
       this.afterAcc += dt
       if (this.afterAcc > 0.04) {
         this.afterAcc = 0
-        const ghost = this.add.image(this.player.x, this.player.y, 'byeolha')
-        ghost.setOrigin(this.player.originX, this.player.originY)
-        ghost.setScale(this.player.scaleX, this.player.scaleY)
-        ghost.setFlipX(this.player.flipX)
+        const ghost = this.add.image(this.avatar.x, this.avatar.y, this.avatar.texture.key, this.avatar.frame.name)
+        ghost.setOrigin(this.avatar.originX, this.avatar.originY)
+        ghost.setScale(this.avatar.scaleX, Math.abs(this.avatar.scaleY))
+        ghost.setFlipX(this.avatar.flipX)
         ghost.setAlpha(0.4)
         ghost.setTint(0xd8c6ff)
         ghost.setDepth(this.player.y - 1)
@@ -348,10 +376,6 @@ export class WorldScene extends Phaser.Scene {
       if (target) this.aim = Math.atan2(target.sprite.y - this.player.y, target.sprite.x - this.player.x)
       else if (this.moving) this.aim = Math.atan2(axis.y, axis.x)
     }
-    const axisLead = controls.axis()
-    const leadX = Math.abs(axisLead.x) > 0.2 ? axisLead.x : Math.cos(this.aim)
-    const leadY = Math.abs(axisLead.y) > 0.2 ? axisLead.y : Math.sin(this.aim)
-    this.cameras.main.setFollowOffset(-leadX * 110, -leadY * 80)
   }
 
   private tickFire(save: NonNullable<typeof live.save>): void {
@@ -476,13 +500,13 @@ export class WorldScene extends Phaser.Scene {
     damage = 0,
   ): void {
     const key = kind === 'dart' ? 'dart' : kind === 'bubble' ? 'bubble' : kind === 'spore' ? 'spore' : kind === 'petal' ? 'petal' : 'drop'
-    const sprite = this.add.image(this.player.x, this.player.y, key)
+    const from = fromPlayer ? muzzlePoint(this.player.x, this.player.y, this.aim, this.gunKey(), this.recoil) : { x: this.player.x, y: this.player.y }
+    const sprite = this.add.image(from.x, from.y, key)
     const size = kind === 'dart' ? 28 : kind === 'bubble' ? 26 : kind === 'petal' ? 18 : 14
     sprite.setDisplaySize(kind === 'dart' ? 36 : size, size)
-    sprite.setDepth(this.player.y)
-    sprite.setBlendMode(kind === 'water' || kind === 'bubble' ? Phaser.BlendModes.NORMAL : Phaser.BlendModes.NORMAL)
-    const x = fromPlayer ? this.player.x + Math.cos(angle) * 28 : this.player.x
-    const y = fromPlayer ? this.player.y - 16 + Math.sin(angle) * 12 : this.player.y
+    sprite.setDepth(fromPlayer && Math.sin(angle) >= -0.35 ? this.player.y + 5 : from.y)
+    const x = from.x
+    const y = from.y
     sprite.setPosition(x, y)
     this.bullets.push({
       x,
@@ -533,6 +557,7 @@ export class WorldScene extends Phaser.Scene {
   private tickBullets(dt: number, save: NonNullable<typeof live.save>): void {
     const stats = computeStats(save)
     this.trailGfx.clear()
+    this.trailGfx.setDepth(this.player.y + 4)
     for (const bullet of this.bullets) {
       bullet.life -= dt
       bullet.x += bullet.vx * dt
@@ -542,7 +567,7 @@ export class WorldScene extends Phaser.Scene {
       }
       bullet.sprite.setPosition(bullet.x, bullet.y)
       bullet.sprite.setRotation(Math.atan2(bullet.vy, bullet.vx))
-      bullet.sprite.setDepth(bullet.y)
+      bullet.sprite.setDepth(bullet.fromPlayer && bullet.vy >= -20 ? Math.max(bullet.y, this.player.y + 5) : bullet.y)
       if (bullet.kind === 'bubble') {
         const pulse = 1 + Math.sin(this.elapsed * 10) * 0.08
         bullet.sprite.setScale((26 / 64) * pulse)
@@ -628,10 +653,10 @@ export class WorldScene extends Phaser.Scene {
     const body = enemy.sprite.body as Phaser.Physics.Arcade.Body
     body.enable = false
     this.tweens.add({
-      targets: enemy.sprite,
+      targets: enemy.view,
       alpha: 0,
-      scaleX: enemy.sprite.scaleX * 1.3,
-      scaleY: enemy.sprite.scaleY * 1.3,
+      scaleX: enemy.view.scaleX * 1.25,
+      scaleY: enemy.view.scaleY * 1.25,
       duration: 260,
       onComplete: () => enemy.destroy(),
     })
@@ -839,8 +864,9 @@ export class WorldScene extends Phaser.Scene {
     }
     save.hp = Math.max(0, save.hp - left)
     runtime.invuln = 0.55
-    this.player.setTintFill(0xffffff)
-    this.time.delayedCall(70, () => this.player?.clearTint())
+    this.hurtT = 0.42
+    this.avatar.setTintFill(0xffffff)
+    this.time.delayedCall(90, () => this.avatar?.clearTint())
     this.flash.setFillStyle(0xff8fb0, 1)
     this.flash.setAlpha(0.28)
     audio.sfx('hurt')
@@ -892,61 +918,93 @@ export class WorldScene extends Phaser.Scene {
 
   private followMochi(dt: number): void {
     if (this.pounce.on) return
-    const dist = 54
-    const tx = this.player.x - Math.cos(this.aim) * dist
-    const ty = this.player.y - Math.sin(this.aim) * 28 + 8
+    const dist = 78
+    const tx = this.player.x - Math.cos(this.aim) * dist + Math.sin(this.aim) * 34
+    const ty = this.player.y - Math.sin(this.aim) * dist * 0.45 + 8
     const k = 1 - Math.pow(0.001, dt)
+    const beforeX = this.mochi.x
+    const beforeY = this.mochi.y
     this.mochi.x += (tx - this.mochi.x) * k
     this.mochi.y += (ty - this.mochi.y) * k
+    this.mochiMoved = Math.hypot(this.mochi.x - beforeX, this.mochi.y - beforeY)
+    if (this.mochi.x < beforeX - 0.2) this.mochi.setFlipX(true)
+    else if (this.mochi.x > beforeX + 0.2) this.mochi.setFlipX(false)
   }
 
   private pose(): void {
-    const bob = Math.sin(this.elapsed * (this.moving ? 14 : 3)) * (this.moving ? 0.035 : 0.015)
-    const base = 138 / this.player.height
-    if (this.dashT > 0) this.player.setScale(base * 1.12, base * 0.88)
-    else this.player.setScale(base * (1 - bob), base * (1 + bob))
-    const flip = Math.cos(this.aim) < 0
-    this.player.setFlipX(flip)
-    this.player.setAlpha(runtime.invuln > 0 ? 0.55 + Math.sin(this.elapsed * 40) * 0.15 : 1)
-    this.player.setDepth(this.player.y)
+    const aimLeft = Math.cos(this.aim) < 0
+    const flip = this.dashT > 0 ? this.dashX < 0 : aimLeft
+    this.avatar.setPosition(this.player.x, this.player.y)
+    this.avatar.setFlipX(flip)
+    this.avatar.setAlpha(runtime.invuln > 0 && !this.dying ? 0.55 + Math.sin(this.elapsed * 40) * 0.15 : 1)
+    this.avatar.setDepth(this.player.y)
+    this.playAvatar(this.avatarKey())
     this.playerShadow.setPosition(this.player.x, this.player.y - 2)
     this.playerShadow.setDepth(this.player.y - 3)
-    this.recoil = Math.max(0, this.recoil - 0.8)
-    const hand = flip ? -36 : 36
-    this.gun.setTexture(this.gunKey())
-    this.gun.setPosition(this.player.x + hand - Math.cos(this.aim) * this.recoil, this.player.y - 20 + Math.sin(this.elapsed * 3) * 1)
+    const look = cameraFocus(this.player.x, this.player.y, this.aim, this.avatar.displayHeight)
+    this.focus.setPosition(look.x, look.y)
+    this.recoil = Math.max(0, this.recoil - 0.9)
+    const spec = gunSpec(this.gunKey())
+    const grip = gripPoint(this.player.x, this.player.y, this.aim, this.recoil)
+    const bob = this.dying ? 0 : this.moving && this.dashT <= 0 ? Math.sin(this.elapsed * 14) * 2.2 : Math.sin(this.elapsed * 2.2) * 1.1
+    grip.y += bob
+    if (this.gun.texture.key !== this.gunKey()) this.gun.setTexture(this.gunKey())
+    this.gun.setOrigin(spec.originX, spec.originY)
+    this.gun.setScale(spec.scale)
+    this.gun.setPosition(grip.x, grip.y)
     this.gun.setRotation(this.aim)
-    this.gun.setFlipY(flip)
-    const gunScale = 52 / this.gun.height
-    this.gun.setScale(gunScale)
-    this.gun.setDepth(Math.sin(this.aim) < -0.25 ? this.player.y - 1 : this.player.y + 2)
+    this.gun.setFlipY(aimLeft)
+    this.gun.setVisible(!this.dying)
+    this.gun.setDepth(gunInFront(this.aim) ? this.player.y + 2 : this.player.y - 2)
     if (runtime.focus > 0) this.gun.setTint(0xffe08a)
     else this.gun.clearTint()
+    const mochiWalking = this.pounce.on || this.mochiMoved > 0.45
+    this.playMochi(mochiWalking ? 'mochi_walk' : 'mochi_idle')
+    if (!mochiWalking) this.mochi.setFlipX(this.mochi.x > this.player.x)
     this.mochi.setDepth(this.mochi.y)
-    this.mochi.setFlipX(this.mochi.x > this.player.x)
-    const mochiScale = 86 / this.mochi.height
-    this.mochi.setScale(mochiScale * (1 + Math.sin(this.elapsed * 8) * 0.03), mochiScale * (1 - Math.sin(this.elapsed * 8) * 0.03))
     if (runtime.taunt > 0) this.mochi.setTint(0xffd0ea)
     else this.mochi.clearTint()
     this.mochiShadow.setPosition(this.mochi.x, this.mochi.y - 2)
     this.mochiShadow.setDepth(this.mochi.y - 3)
     if (this.muzzle > 0) {
-      this.muzzle -= 0.016
-      const mx = this.gun.x + Math.cos(this.aim) * 30
-      const my = this.gun.y + Math.sin(this.aim) * 30
-      const flash = this.add.image(mx, my, 'star')
+      this.muzzle = 0
+      const tip = muzzlePoint(this.player.x, this.player.y, this.aim, this.gunKey(), this.recoil)
+      tip.y += bob
+      const flash = this.add.image(tip.x, tip.y, 'star')
       flash.setBlendMode(Phaser.BlendModes.ADD)
-      flash.setScale(0.35)
+      flash.setScale(0.42)
       flash.setDepth(this.gun.depth + 1)
       flash.setTint(0xd8f4ff)
       this.tweens.add({ targets: flash, alpha: 0, scale: 0.05, duration: 70, onComplete: () => flash.destroy() })
-      this.muzzle = 0
     }
     if (this.flash.alpha > 0) this.flash.alpha = Math.max(0, this.flash.alpha - 0.03)
     if (runtime.shield > 0) {
       this.hazardGfx.lineStyle(2, 0xbff5ff, 0.45)
-      this.hazardGfx.strokeCircle(this.player.x, this.player.y - 28, 32)
+      this.hazardGfx.strokeCircle(this.player.x, this.player.y - HAND_LIFT, 36)
     }
+  }
+
+  private avatarKey(): string {
+    if (this.dying) return 'byeolha_death'
+    if (this.dashT > 0) return 'byeolha_dash'
+    if (this.hurtT > 0) return 'byeolha_hit'
+    if (!this.moving) return 'byeolha_idle'
+    const face = facingFromAim(this.aim)
+    if (face === 'front') return 'byeolha_walk_front'
+    if (face === 'back') return 'byeolha_walk_back'
+    return 'byeolha_walk_side'
+  }
+
+  private playAvatar(key: string): void {
+    if (this.avatarAnim === key && (this.avatar.anims.isPlaying || key === 'byeolha_death' || key === 'byeolha_hit')) return
+    this.avatarAnim = key
+    if (this.anims.exists(key)) this.avatar.play(key, true)
+  }
+
+  private playMochi(key: string): void {
+    if (this.mochiAnim === key) return
+    this.mochiAnim = key
+    if (this.anims.exists(key)) this.mochi.play(key, true)
   }
 
   private exits(): void {
