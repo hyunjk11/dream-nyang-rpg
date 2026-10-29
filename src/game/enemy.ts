@@ -39,6 +39,7 @@ let seq = 1
 export class EnemyActor {
   readonly uid = seq++
   readonly sprite: Phaser.Physics.Arcade.Sprite
+  readonly view: Phaser.GameObjects.Image
   readonly def: EnemyDef
   readonly tags: string[]
   readonly boss: boolean
@@ -111,6 +112,10 @@ export class EnemyActor {
     body.setOffset((this.sprite.width - bw) / 2, this.sprite.height * 0.98 - bh)
     body.setCollideWorldBounds(true)
     this.sprite.setDepth(spawn.y)
+    this.sprite.setVisible(false)
+    this.view = scene.add.image(spawn.x, spawn.y, tex)
+    this.view.setOrigin(0.5, 0.98)
+    this.view.setScale(scale)
     if (elite) {
       this.aura = scene.add.image(spawn.x, spawn.y, tex)
       this.aura.setOrigin(0.5, 0.98)
@@ -137,7 +142,7 @@ export class EnemyActor {
     this.cool -= dt
     this.timer -= dt
     this.flash = Math.max(0, this.flash - dt)
-    if (this.flash <= 0 && this.sprite.isTinted) this.sprite.clearTint()
+    if (this.flash <= 0 && this.view.isTinted) this.view.clearTint()
     this.kx *= Math.max(0, 1 - dt * 5)
     this.ky *= Math.max(0, 1 - dt * 5)
     const tx = ctx.taunt && !this.boss ? ctx.mx : ctx.px
@@ -162,7 +167,7 @@ export class EnemyActor {
   hurt(amount: number, fromX: number, fromY: number, power = 1): void {
     this.hp -= amount
     this.flash = 0.07
-    this.sprite.setTintFill(0xffffff)
+    this.view.setTintFill(0xffffff)
     this.label.setVisible(true)
     const ang = Math.atan2(this.sprite.y - fromY, this.sprite.x - fromX)
     this.kx = Math.cos(ang) * 190 * power * this.knock
@@ -183,11 +188,11 @@ export class EnemyActor {
     const s = this.sprite
     if (this.state === 'windup') {
       s.setVelocity(this.kx, this.ky)
-      s.setScale(this.baseX * 1.14, this.baseY * 0.84)
+      this.view.setScale(this.baseX * 1.14, this.baseY * 0.84)
       if (this.timer <= 0) {
         const a = Math.atan2(ty - s.y, tx - s.x)
         s.setVelocity(Math.cos(a) * 310 + this.kx, Math.sin(a) * 310 + this.ky)
-        s.setScale(this.baseX, this.baseY)
+        this.view.setScale(this.baseX, this.baseY)
         this.state = 'act'
         this.timer = 0.26
       }
@@ -203,7 +208,7 @@ export class EnemyActor {
     }
     s.setVelocity(this.kx, this.ky)
     const wob = 1 + Math.sin(performance.now() / 160) * 0.04
-    s.setScale(this.baseX * (2 - wob), this.baseY * wob)
+    this.view.setScale(this.baseX * (2 - wob), this.baseY * wob)
     if (this.cool <= 0) {
       this.state = 'windup'
       this.timer = 0.16
@@ -218,7 +223,7 @@ export class EnemyActor {
         const shot = this.def.projectile
         if (shot) {
           const a = Math.atan2(ty - s.y, tx - s.x)
-          ctx.spawnBullet({ x: s.x, y: s.y - 16, angle: a, speed: shot.speed, life: shot.life, damage: shot.damage, kind: shot.kind })
+          ctx.spawnBullet({ x: s.x, y: s.y - s.displayHeight * 0.42, angle: a, speed: shot.speed, life: shot.life, damage: shot.damage, kind: shot.kind })
         }
         this.state = 'idle'
         this.cool = 1.2
@@ -249,8 +254,6 @@ export class EnemyActor {
     const s = this.sprite
     if (this.state === 'windup') {
       s.setVelocity(this.kx, this.ky)
-      const wob = Math.sin(performance.now() / 30) * 2
-      s.x += wob * 0.15
       if (this.timer <= 0) {
         const a = Math.atan2(this.lockY - s.y, this.lockX - s.x)
         s.setVelocity(Math.cos(a) * 460, Math.sin(a) * 460)
@@ -386,7 +389,7 @@ export class EnemyActor {
         const a = (Math.PI * 2 * i) / n + this.pattern * 0.18
         ctx.spawnBullet({
           x: s.x,
-          y: s.y - 20,
+          y: s.y - s.displayHeight * 0.45,
           angle: a,
           speed: this.phase2 ? 170 : 145,
           life: 2.4,
@@ -420,6 +423,9 @@ export class EnemyActor {
     const s = this.sprite
     const y = s.y
     s.setDepth(y)
+    this.view.setPosition(s.x, y)
+    this.view.setFlipX(s.flipX)
+    this.view.setDepth(y)
     this.aura?.setPosition(s.x, y)
     this.aura?.setDepth(y - 2)
     this.aura?.setFlipX(s.flipX)
@@ -458,6 +464,7 @@ export class EnemyActor {
   destroy(): void {
     this.gone = true
     this.sprite.destroy()
+    this.view.destroy()
     this.gfx.destroy()
     this.bar.destroy()
     this.label.destroy()

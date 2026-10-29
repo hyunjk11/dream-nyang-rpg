@@ -207,7 +207,7 @@ export const ZONES: Record<string, ZoneDef> = {
       { x: 1500, y: 980, w: 420, h: 120 },
     ],
     props: [
-      { key: 'prop_fountain', x: 1200, y: 760, h: 190, sort: true },
+      { key: 'prop_fountain', x: 1200, y: 760, h: 190, sort: true, block: { w: 70, h: 36 } },
       { key: 'prop_house', x: 560, y: 900, h: 270, sort: true, block: { w: 130, h: 80 } },
       { key: 'prop_workshop', x: 1840, y: 900, h: 270, sort: true, block: { w: 140, h: 80 } },
       { key: 'prop_house', x: 400, y: 520, h: 240, sort: true, flip: true, block: { w: 120, h: 70 } },

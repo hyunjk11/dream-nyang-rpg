@@ -134,9 +134,9 @@ export const STAT_KO: Record<StatKey, string> = {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  master: 1,
-  bgm: 0.55,
-  sfx: 0.85,
+  master: 0.35,
+  bgm: 0.34,
+  sfx: 0.5,
   vibration: true,
   shake: true,
   showTouch: false,

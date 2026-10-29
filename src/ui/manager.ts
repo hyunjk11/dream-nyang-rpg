@@ -614,10 +614,14 @@ function renderSettings(): void {
      <button class="btn ghost danger" id="wipe" type="button">꿈 기록 지우기</button>`,
   )
   const bindRange = (id: string, key: 'master' | 'bgm' | 'sfx') => {
-    document.getElementById(id)?.addEventListener('input', (event) => {
+    const node = document.getElementById(id)
+    node?.addEventListener('input', (event) => {
       const value = Number((event.target as HTMLInputElement).value) / 100
       applySettings({ [key]: value })
       audio.apply()
+    })
+    node?.addEventListener('change', () => {
+      if (key !== 'bgm') audio.sfx('ui')
     })
   }
   bindRange('vol-master', 'master')
@@ -730,6 +734,10 @@ function openDialogue(id: string): void {
     char = 0
     paint('')
     timer = window.setInterval(() => {
+      if (!line) {
+        window.clearInterval(timer)
+        return
+      }
       char += 1
       const node = document.getElementById('dlg-text')
       if (node) node.textContent = line.text.slice(0, char)
@@ -770,6 +778,10 @@ function openDialogue(id: string): void {
   const advance = () => {
     if (phase === 'choices') return
     const line = dialogue.lines[index]
+    if (!line) {
+      finishLines()
+      return
+    }
     if (char < line.text.length) {
       char = line.text.length
       const node = document.getElementById('dlg-text')

@@ -3,7 +3,8 @@ import { calcDamage, xpToNext } from '../src/sim/formulas'
 import { makeItem, rarityWeights, rollAffixes, rollDrops, rollRarity, sellValue } from '../src/sim/loot'
 import { freshSave, learnSkill, onDeath, rerollWeapon, sellOwned, usePotion } from '../src/sim/mutate'
 import { buyEntry } from '../src/sim/mutate'
-import { clearGame, loadGame, saveGame } from '../src/sim/persist'
+import { clearGame, loadGame, loadSettings, saveGame, saveSettings } from '../src/sim/persist'
+import { DEFAULT_SETTINGS } from '../src/sim/types'
 import { addMaterial, onEnter, onKill, onTalk, startQuest, turnIn } from '../src/sim/quests'
 import { mulberry32 } from '../src/sim/rng'
 import { computeStats, gainXp } from '../src/sim/stats'
@@ -201,5 +202,29 @@ describe('상점과 세이브', () => {
     expect(loaded?.items.length).toBe(save.items.length)
     clearGame()
     expect(loadGame()).toBeNull()
+  })
+
+  it('기본 음량은 낮고, 예전 큰 기본값은 조용한 값으로 바뀐다', () => {
+    expect(DEFAULT_SETTINGS.master).toBeLessThanOrEqual(0.4)
+    expect(DEFAULT_SETTINGS.sfx).toBeLessThanOrEqual(0.55)
+    expect(DEFAULT_SETTINGS.bgm).toBeLessThan(DEFAULT_SETTINGS.sfx)
+    const fresh = freshSave()
+    expect(fresh.settings.master).toBe(DEFAULT_SETTINGS.master)
+    saveSettings({ master: 1, bgm: 0.55, sfx: 0.85, vibration: true, shake: true, showTouch: false })
+    expect(loadSettings().master).toBe(DEFAULT_SETTINGS.master)
+    expect(loadSettings().sfx).toBe(DEFAULT_SETTINGS.sfx)
+    const loud = freshSave()
+    loud.settings = { master: 1, bgm: 0.55, sfx: 0.85, vibration: false, shake: true, showTouch: true }
+    saveGame(loud)
+    const loaded = loadGame()
+    expect(loaded?.settings.master).toBe(DEFAULT_SETTINGS.master)
+    expect(loaded?.settings.bgm).toBe(DEFAULT_SETTINGS.bgm)
+    expect(loaded?.settings.sfx).toBe(DEFAULT_SETTINGS.sfx)
+    expect(loaded?.settings.vibration).toBe(false)
+    expect(loaded?.settings.showTouch).toBe(true)
+    loud.settings = { ...DEFAULT_SETTINGS, master: 0.8, sfx: 0.2, bgm: 0.1 }
+    saveGame(loud)
+    expect(loadGame()?.settings.master).toBe(0.8)
+    expect(loadGame()?.settings.sfx).toBe(0.2)
   })
 })
