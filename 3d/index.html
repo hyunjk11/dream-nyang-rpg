@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="description" content="꿈냥 RPG 3D 시험판 — 별하와 모찌의 쿼터뷰 테스트" />
+    <title>꿈냥 RPG 3D 시험판</title>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="ui">
+      <div class="top">
+        <a class="back" id="back" href="../">2D로</a>
+        <div class="hp" aria-label="체력"><span id="hp-fill"></span></div>
+        <span class="tag" id="dust">꿈가루 0</span>
+        <span id="fps">FPS</span>
+      </div>
+      <p id="note" class="hidden"></p>
+      <p id="hint">WASD 이동 · 마우스 조준 · 클릭 공격 · Space 대시</p>
+      <div class="stick" id="stick"><div id="knob"></div></div>
+      <div class="actions">
+        <button id="dash" type="button">대시</button>
+        <button id="fire" type="button">공격</button>
+      </div>
+      <div class="bottom">
+        <button id="fps-toggle" type="button">FPS</button>
+        <button id="mute" type="button">소리</button>
+        <label>음량 <input id="vol" type="range" min="0" max="100" value="35" /></label>
+      </div>
+      <div id="floats"></div>
+    </div>
+    <div id="boot">꿈을 입체로 모으는 중…</div>
+    <div id="down" class="hidden">
+      <div class="card">
+        <h2>꿈이 흐려진다…</h2>
+        <p>별하가 잠시 눈을 감았다. 다시 일어나 볼까?</p>
+        <button id="retry" type="button">다시 일어나기</button>
+      </div>
+    </div>
+    <script type="module" src="/src/3d/main.ts"></script>
+  </body>
+</html>

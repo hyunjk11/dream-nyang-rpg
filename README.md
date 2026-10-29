@@ -5,6 +5,11 @@
 
 플레이 주소(main에 병합된 뒤): <https://hyunjk11.github.io/dream-nyang-rpg/>
 
+3D 시험판(쿼터뷰): <https://hyunjk11.github.io/dream-nyang-rpg/3d/>  
+로컬에서는 <http://localhost:5173/dream-nyang-rpg/3d/> . 2D 타이틀의 `3D 시험판` 버튼으로도 갑니다.
+
+메쉬 모델은 `public/3d/models/byeolha_animated_mobile.glb`, `public/3d/models/mochi_mobile.glb` 에 두면 웹 빌드가 그 파일을 읽습니다. 용량이 큰 원본(`byeolha_animated.glb`, `mochi.glb`)은 선택입니다. 파일이 없으면 같은 조작의 임시 모습으로 시험할 수 있습니다.
+
 ## 실행
 
 ```bash
