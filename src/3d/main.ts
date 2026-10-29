@@ -7,7 +7,7 @@ import { audio } from './audio'
 import { Combat } from './combat'
 import { cameraRelativeWish } from './feel'
 import { Hero } from './hero'
-import { axis, consumeDash, installInput, pad } from './input'
+import { axis, consumeDash, installInput, pad, runningHeld } from './input'
 import { Mochi } from './mochi'
 
 const base = import.meta.env.BASE_URL
@@ -61,8 +61,8 @@ void bootGame()
 
 async function bootGame(): Promise<void> {
   const [byeolha, cat] = await Promise.all([
-    hero.load(`${base}3d/models/byeolha_animated_mobile.glb`),
-    mochi.load(`${base}3d/models/mochi_mobile.glb`),
+    hero.load(`${base}models/3d/byeolha_animated_mobile.glb`),
+    mochi.load(`${base}models/3d/mochi_mobile.glb`),
   ])
   if (boot) boot.classList.add('hidden')
   if (note && (!byeolha || !cat)) {
@@ -97,7 +97,7 @@ function frame(): void {
   fireCd = Math.max(0, fireCd - dt)
   const dash = consumeDash()
   if (dash && hero.alive) audio.sfx('dash')
-  hero.update(dt, { wishX: wish.x, wishZ: wish.z, aim, firing: pad.fire, dash })
+  hero.update(dt, { wishX: wish.x, wishZ: wish.z, aim, firing: pad.fire, dash, run: runningHeld() })
   if (hero.dashing) ghost()
   if (pad.fire && fireCd <= 0 && hero.alive) {
     fireCd = 0.16

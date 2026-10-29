@@ -30,7 +30,10 @@ jobs:
       - name: Lint, test, and build
         run: npm run lint && npm test && npm run build
       - name: Check 2D and 3D pages
-        run: test -f dist/index.html && test -f dist/3d/index.html
+        run: |
+          test -f dist/index.html && test -f dist/3d/index.html
+          test -f dist/models/3d/byeolha_animated_mobile.glb
+          test ! -f dist/models/3d/byeolha_animated.glb
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

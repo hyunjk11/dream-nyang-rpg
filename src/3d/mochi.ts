@@ -37,6 +37,8 @@ export class Mochi {
       model.rotation.y = (30 * Math.PI) / 180
       const box = new Box3().setFromObject(model)
       const height = box.max.y - box.min.y
+      const width = Math.max(box.max.x - box.min.x, box.max.z - box.min.z)
+      if (height < width * 0.65) model.rotation.x = -Math.PI / 2
       const scale = height > 0.05 ? 0.62 / height : 1
       model.scale.setScalar(scale)
       model.position.y = -box.min.y * scale

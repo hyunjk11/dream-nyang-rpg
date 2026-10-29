@@ -13,6 +13,7 @@ import {
   MeshBasicMaterial,
   MeshToonMaterial,
   Object3D,
+  Quaternion,
   SphereGeometry,
   Vector3,
   type AnimationAction,
@@ -31,6 +32,7 @@ export interface HeroInput {
   aim: Vector3
   firing: boolean
   dash: boolean
+  run: boolean
 }
 
 export class Hero {
@@ -57,6 +59,7 @@ export class Hero {
   private usingClips = false
   private puppet: Puppet | null = null
   private flashMeshes: Mesh[] = []
+  private gun: Group | null = null
   private rightHand: Object3D | null = null
   private spine: Object3D | null = null
   private head: Object3D | null = null
@@ -93,8 +96,11 @@ export class Hero {
       this.bindClip('runShoot', gltf.animations, 'Run_and_Shoot')
       const cowboy = findClip(gltf.animations, 'Cowboy_Quick_Draw_Shooting')
       if (cowboy) {
-        const short = sliceClip(cowboy, 'shoot', 1.05, 2.15)
-        this.actions.set('shoot', this.mixer.clipAction(short))
+        const short = sliceClip(cowboy, 'shoot', 0.85, 1.7)
+        const action = this.mixer.clipAction(maskUpper(short))
+        action.play()
+        action.setEffectiveWeight(0.15)
+        this.actions.set('aim', action)
       }
       const hit = findClip(gltf.animations, 'Hit_Reaction')
       if (hit) {
@@ -133,10 +139,9 @@ export class Hero {
   }
 
   private attachGun(hand: Object3D): void {
-    const gun = createWaterGun(this.muzzle)
-    hand.add(gun)
-    gun.position.set(0.02, 0.04, 0.02)
-    gun.scale.setScalar(1.65)
+    this.rightHand = hand
+    this.gun = createWaterGun(this.muzzle)
+    this.object.add(this.gun)
   }
 
   update(dt: number, input: HeroInput): void {
@@ -147,6 +152,7 @@ export class Hero {
     this.shootT = Math.max(0, this.shootT - dt)
     if (!this.alive) {
       this.deadT += dt
+      this.actions.get('aim')?.fadeOut(0.12)
       this.play('death', 0.12)
       if (!this.usingClips && this.puppet) this.puppet.fall(Math.min(1, this.deadT / 0.7))
       this.mixer?.update(dt)
@@ -155,7 +161,7 @@ export class Hero {
     }
     const wish = Math.hypot(input.wishX, input.wishZ)
     this.moving = wish > 0.12
-    this.running = wish > 0.82
+    this.running = wish > 0.2 && input.run
     if (input.dash && this.dashCd <= 0 && this.dashT <= 0) {
       this.dashT = 0.18
       this.dashCd = 0.85
@@ -190,12 +196,14 @@ export class Hero {
     this.walkPhase += dt * (this.dashing ? 14 : this.running ? 11 : 8)
     const aimYaw = Math.atan2(input.aim.x - this.object.position.x, input.aim.z - this.object.position.z)
     const upper = wrapAngle(aimYaw - this.yaw)
-    if (this.spine) this.spine.rotation.y = upper * 0.55
-    if (this.head) this.head.rotation.y = upper * 0.35
-    if (input.firing) this.shootT = 0.18
+    if (!this.usingClips) {
+      if (this.spine) this.spine.rotation.y = upper * 0.55
+      if (this.head) this.head.rotation.y = upper * 0.35
+    }
+    if (input.firing) this.shootT = 0.22
     let next = 'idle'
-    if (this.hitT > 0.45) next = 'hit'
-    else if (this.dashing) next = this.shootT > 0 ? 'runShoot' : 'run'
+    if (this.hitT > 0.45 && this.actions.has('hit')) next = 'hit'
+    else if (this.dashing) next = 'run'
     else if (this.running && this.shootT > 0) next = 'runShoot'
     else if (this.moving && this.shootT > 0) next = 'shootMove'
     else if (this.running) next = 'run'
@@ -206,6 +214,12 @@ export class Hero {
       this.puppet.pose(this.walkPhase, this.moving || this.dashing, this.running || this.dashing, this.hitT, upper)
     }
     this.mixer?.update(dt)
+    const aim = this.actions.get('aim')
+    if (aim && this.alive) {
+      if (!aim.isRunning()) aim.play()
+      const weight = this.shootT > 0 ? 0.92 : this.moving ? 0.55 : 0.72
+      aim.setEffectiveWeight(weight)
+    }
     this.pointGun()
     const blink = this.iframes > 0 && Math.sin(this.iframes * 46) > 0
     for (const mesh of this.flashMeshes) {
@@ -241,12 +255,22 @@ export class Hero {
   }
 
   private pointGun(): void {
-    const gun = this.muzzle.parent
-    if (!gun) return
-    const tip = this.muzzle.getWorldPosition(new Vector3())
+    const gun = this.gun
+    const hand = this.rightHand
+    if (!gun || !hand) return
+    const handPos = new Vector3()
+    const handQuat = new Quaternion()
+    hand.updateWorldMatrix(true, false)
+    hand.getWorldPosition(handPos)
+    hand.getWorldQuaternion(handQuat)
+    // Meshy hand bones point along local +Y toward the fingers.
+    const hold = new Vector3(0.02, 0.08, 0.035).applyQuaternion(handQuat)
+    handPos.add(hold)
+    this.object.worldToLocal(handPos)
+    gun.position.copy(handPos)
+    gun.scale.setScalar(1)
     const target = this.aimPoint.clone()
-    target.y = Math.max(0.7, target.y)
-    if (tip.distanceTo(target) < 0.2) target.add(new Vector3(0, 0.2, 1))
+    target.y = Math.max(0.75, target.y)
     gun.lookAt(target)
   }
 
@@ -291,9 +315,11 @@ function plantFeet(clip: AnimationClip): void {
     if (!name.includes('hips') && !name.includes('root')) continue
     const size = track.getValueSize()
     if (size < 3) continue
+    const lockX = track.values[0]
+    const lockZ = track.values[2]
     for (let i = 0; i < track.times.length; i += 1) {
-      track.values[i * size] = 0
-      track.values[i * size + 2] = 0
+      track.values[i * size] = lockX
+      track.values[i * size + 2] = lockZ
     }
   }
 }

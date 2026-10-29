@@ -62,6 +62,10 @@ export function consumeDash(): boolean {
   return had
 }
 
+export function runningHeld(): boolean {
+  return keys.has('ShiftLeft') || keys.has('ShiftRight') || Math.hypot(pad.x, pad.y) > 0.9
+}
+
 export function axis(): { x: number; y: number } {
   if (Math.hypot(pad.x, pad.y) > 0.12) {
     const len = Math.hypot(pad.x, pad.y)
