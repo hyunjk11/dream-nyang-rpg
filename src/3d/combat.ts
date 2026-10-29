@@ -64,11 +64,11 @@ export class Combat {
     this.sparkMesh.frustumCulled = false
     root.add(this.sparkMesh)
     const homes = [
-      [9.2, 2.4, 'slime'],
-      [-8.4, 6.2, 'slime'],
-      [4.2, -9.4, 'ghost'],
-      [-9.6, -3.2, 'bug'],
-      [8.8, -5.5, 'bug'],
+      [5.2, 1.5, 'slime'],
+      [-4.6, 3.1, 'slime'],
+      [2.1, -5.4, 'ghost'],
+      [-5.1, -2.2, 'bug'],
+      [4.4, -3.6, 'bug'],
     ] as const
     for (const [x, z, kind] of homes) this.spawn(kind, x, z)
   }

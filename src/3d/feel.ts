@@ -3,8 +3,10 @@
 export const MASTER_DEFAULT = 0.35
 export const CAMERA_YAW = 0.62
 export const CAMERA_PITCH_DEG = 50
-export const CAMERA_DISTANCE = 12.6
-export const AIM_LEAD = 1.15
+export const CAMERA_DISTANCE = 5.5
+export const CAMERA_DISTANCE_MIN = 4.85
+export const CAMERA_DISTANCE_MAX = 6.55
+export const AIM_LEAD = 0.55
 
 export function wrapAngle(angle: number): number {
   let value = angle
@@ -15,6 +17,18 @@ export function wrapAngle(angle: number): number {
 
 export function damp(current: number, target: number, dt: number, lambda = 12): number {
   return current + (target - current) * (1 - Math.exp(-lambda * dt))
+}
+
+export function clampCameraDistance(distance: number): number {
+  return Math.max(CAMERA_DISTANCE_MIN, Math.min(CAMERA_DISTANCE_MAX, distance))
+}
+
+/** Rough share of the vertical screen a 1.62 m figure occupies at this distance. */
+export function characterScreenFraction(distance: number, pitchDeg = CAMERA_PITCH_DEG, fovDeg = 42): number {
+  const pitch = (pitchDeg * Math.PI) / 180
+  const fov = (fovDeg * Math.PI) / 180
+  const foreshortened = Math.sin(Math.PI / 2 - pitch) * 1.62
+  return foreshortened / distance / fov
 }
 
 export function cameraOffset(yaw = CAMERA_YAW, pitchDeg = CAMERA_PITCH_DEG, distance = CAMERA_DISTANCE): { x: number; y: number; z: number } {

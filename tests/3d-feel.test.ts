@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AIM_LEAD, CAMERA_PITCH_DEG, MASTER_DEFAULT, cameraOffset, cameraRelativeWish, focusPoint, sliceTimes } from '../src/3d/feel'
+import { AIM_LEAD, CAMERA_DISTANCE, CAMERA_PITCH_DEG, MASTER_DEFAULT, cameraOffset, cameraRelativeWish, characterScreenFraction, clampCameraDistance, focusPoint, sliceTimes } from '../src/3d/feel'
 
 describe('3D 카메라와 음량', () => {
   it('쿼터뷰는 위에서 내려다보고 별하 앞을 조금 본다', () => {
@@ -13,6 +13,11 @@ describe('3D 카메라와 음량', () => {
     const focusToCat = Math.hypot(focus.x - cat.x, focus.z - cat.z)
     expect(focus.x).toBeGreaterThan(0.4)
     expect(toFocus).toBeLessThan(focusToCat)
+    const fraction = characterScreenFraction(CAMERA_DISTANCE)
+    expect(fraction).toBeGreaterThan(0.2)
+    expect(fraction).toBeLessThan(0.27)
+    expect(clampCameraDistance(1)).toBeGreaterThan(4.5)
+    expect(clampCameraDistance(20)).toBeLessThan(7)
   })
 
   it('W는 카메라가 보는 쪽으로 걷는다', () => {

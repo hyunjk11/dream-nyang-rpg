@@ -61,6 +61,7 @@ export class Hero {
   private flashMeshes: Mesh[] = []
   private gun: Group | null = null
   private rightHand: Object3D | null = null
+  private arms: { bone: Object3D; ready: Quaternion }[] = []
   private spine: Object3D | null = null
   private head: Object3D | null = null
   modelLabel = '임시 모습'
@@ -94,14 +95,7 @@ export class Hero {
       this.bindClip('run', gltf.animations, 'Run_02')
       this.bindClip('shootMove', gltf.animations, 'Walk_Forward_While_Shooting')
       this.bindClip('runShoot', gltf.animations, 'Run_and_Shoot')
-      const cowboy = findClip(gltf.animations, 'Cowboy_Quick_Draw_Shooting')
-      if (cowboy) {
-        const short = sliceClip(cowboy, 'shoot', 0.85, 1.7)
-        const action = this.mixer.clipAction(maskUpper(short))
-        action.play()
-        action.setEffectiveWeight(0.15)
-        this.actions.set('aim', action)
-      }
+      this.captureReadyArm(model, gltf.animations)
       const hit = findClip(gltf.animations, 'Hit_Reaction')
       if (hit) {
         const action = this.mixer.clipAction(maskUpper(hit))
@@ -152,7 +146,6 @@ export class Hero {
     this.shootT = Math.max(0, this.shootT - dt)
     if (!this.alive) {
       this.deadT += dt
-      this.actions.get('aim')?.fadeOut(0.12)
       this.play('death', 0.12)
       if (!this.usingClips && this.puppet) this.puppet.fall(Math.min(1, this.deadT / 0.7))
       this.mixer?.update(dt)
@@ -208,18 +201,12 @@ export class Hero {
     else if (this.moving && this.shootT > 0) next = 'shootMove'
     else if (this.running) next = 'run'
     else if (this.moving) next = 'walk'
-    else if (this.shootT > 0) next = 'shoot'
     this.play(next, 0.16)
     if (!this.usingClips && this.puppet) {
       this.puppet.pose(this.walkPhase, this.moving || this.dashing, this.running || this.dashing, this.hitT, upper)
     }
     this.mixer?.update(dt)
-    const aim = this.actions.get('aim')
-    if (aim && this.alive) {
-      if (!aim.isRunning()) aim.play()
-      const weight = this.shootT > 0 ? 0.92 : this.moving ? 0.55 : 0.72
-      aim.setEffectiveWeight(weight)
-    }
+    this.poseReadyArm(next)
     this.pointGun()
     const blink = this.iframes > 0 && Math.sin(this.iframes * 46) > 0
     for (const mesh of this.flashMeshes) {
@@ -254,6 +241,30 @@ export class Hero {
     return true
   }
 
+  private captureReadyArm(model: Object3D, clips: AnimationClip[]): void {
+    const clip = findClip(clips, 'Walk_Forward_While_Shooting')
+    if (!clip || !this.mixer) return
+    for (const action of this.actions.values()) action.stop()
+    const probe = this.mixer.clipAction(clip)
+    probe.reset().setEffectiveWeight(1).play()
+    probe.time = 1
+    this.mixer.update(1 / 60)
+    for (const name of ['RightShoulder', 'RightArm', 'RightForeArm', 'RightHand']) {
+      const bone = findNamed(model, name)
+      if (!bone) continue
+      this.arms.push({ bone, ready: bone.quaternion.clone() })
+    }
+    probe.stop()
+    this.mixer.stopAllAction()
+  }
+
+  private poseReadyArm(state: string): void {
+    if (!this.alive || this.arms.length === 0) return
+    const shootingMove = state === 'shootMove' || state === 'runShoot'
+    const weight = this.hitT > 0.15 ? 0.62 : this.dashing ? 0.58 : shootingMove ? 0.35 : this.moving ? 0.84 : 0.96
+    for (const arm of this.arms) arm.bone.quaternion.slerp(arm.ready, weight)
+  }
+
   private pointGun(): void {
     const gun = this.gun
     const hand = this.rightHand
@@ -263,15 +274,18 @@ export class Hero {
     hand.updateWorldMatrix(true, false)
     hand.getWorldPosition(handPos)
     hand.getWorldQuaternion(handQuat)
-    // Meshy hand bones point along local +Y toward the fingers.
-    const hold = new Vector3(0.02, 0.08, 0.035).applyQuaternion(handQuat)
-    handPos.add(hold)
-    this.object.worldToLocal(handPos)
-    gun.position.copy(handPos)
-    gun.scale.setScalar(1)
-    const target = this.aimPoint.clone()
-    target.y = Math.max(0.75, target.y)
-    gun.lookAt(target)
+    const hold = new Vector3(0.0, 0.055, 0.02).applyQuaternion(handQuat)
+    const place = handPos.clone().add(hold)
+    const local = this.object.worldToLocal(place.clone())
+    gun.position.copy(local)
+    gun.scale.setScalar(0.82)
+    const aimDir = this.aimPoint.clone().sub(place)
+    if (aimDir.lengthSq() < 0.04) aimDir.set(0, 0.2, 1)
+    const forward = new Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw))
+    if (aimDir.dot(forward) < 0.2 * aimDir.length()) aimDir.addScaledVector(forward, aimDir.length())
+    aimDir.y = Math.max(aimDir.y, -0.12 * aimDir.length())
+    aimDir.normalize()
+    gun.lookAt(place.clone().add(aimDir))
   }
 
   private play(name: string, fade: number): void {
@@ -322,28 +336,6 @@ function plantFeet(clip: AnimationClip): void {
       track.values[i * size + 2] = lockZ
     }
   }
-}
-
-function sliceClip(clip: AnimationClip, name: string, t0: number, t1: number): AnimationClip {
-  const tracks = clip.tracks
-    .map((track) => {
-      const size = track.getValueSize()
-      const times: number[] = []
-      const values: number[] = []
-      for (let i = 0; i < track.times.length; i += 1) {
-        const time = track.times[i]
-        if (time < t0 || time > t1) continue
-        times.push(time - t0)
-        for (let k = 0; k < size; k += 1) values.push(track.values[i * size + k])
-      }
-      if (times.length < 2) return null
-      const next = track.clone()
-      next.times = new Float32Array(times)
-      next.values = new Float32Array(values)
-      return next
-    })
-    .filter((track) => track !== null)
-  return new AnimationClip(name, Math.max(0.2, t1 - t0), tracks)
 }
 
 function maskUpper(clip: AnimationClip): AnimationClip {
