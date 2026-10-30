@@ -20,7 +20,7 @@ import {
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
-import { wrapAngle } from './feel'
+import { HOLD_POSES, aimPitchDeg, damp, upperTwist, wrapAngle, type HoldPose, type HoldState } from './feel'
 import { addOutline, applyToon, toon } from './materials'
 
 const loader = new GLTFLoader()
@@ -54,6 +54,7 @@ export class Hero {
   private shootT = 0
   private walkPhase = 0
   private mixer: AnimationMixer | null = null
+  private hitAction: AnimationAction | null = null
   private actions = new Map<string, AnimationAction>()
   private current = ''
   private usingClips = false
@@ -61,7 +62,12 @@ export class Hero {
   private flashMeshes: Mesh[] = []
   private gun: Group | null = null
   private rightHand: Object3D | null = null
-  private arms: { bone: Object3D; ready: Quaternion }[] = []
+  private arm: ArmRig | null = null
+  private readonly hold: HoldPose = clonePose(HOLD_POSES.idle)
+  private holdState: HoldState = 'idle'
+  private twist = 0
+  private recoilT = 0
+  private spines: Object3D[] = []
   private spine: Object3D | null = null
   private head: Object3D | null = null
   modelLabel = '임시 모습'
@@ -95,13 +101,13 @@ export class Hero {
       this.bindClip('run', gltf.animations, 'Run_02')
       this.bindClip('shootMove', gltf.animations, 'Walk_Forward_While_Shooting')
       this.bindClip('runShoot', gltf.animations, 'Run_and_Shoot')
-      this.captureReadyArm(model, gltf.animations)
       const hit = findClip(gltf.animations, 'Hit_Reaction')
       if (hit) {
+        // Layered on top of locomotion (normalized blend), so the legs keep moving.
         const action = this.mixer.clipAction(maskUpper(hit))
         action.setLoop(LoopOnce, 1)
-        action.clampWhenFinished = true
-        this.actions.set('hit', action)
+        action.clampWhenFinished = false
+        this.hitAction = action
       }
       const death = findClip(gltf.animations, 'dying_backwards')
       if (death) {
@@ -114,6 +120,8 @@ export class Hero {
       this.rightHand = findNamed(model, 'RightHand')
       this.spine = findNamed(model, 'Spine')
       this.head = findNamed(model, 'Head')
+      this.spines = ['Spine02', 'Spine01', 'Spine'].map((name) => findNamed(model, name)).filter((bone): bone is Object3D => !!bone)
+      this.arm = ArmRig.from(model, gltf.animations, this.mixer)
       this.attachGun(this.rightHand ?? model)
       this.modelLabel = '메쉬 모델'
       this.play('idle', 0)
@@ -125,6 +133,7 @@ export class Hero {
       this.flashMeshes = this.puppet.meshes
       this.rightHand = this.puppet.hand
       this.spine = this.puppet.spine
+      this.spines = []
       this.head = this.puppet.head
       this.attachGun(this.puppet.hand)
       this.modelLabel = '임시 모습'
@@ -173,8 +182,10 @@ export class Hero {
       this.object.position.z += nz * speed * dt
       const moveYaw = Math.atan2(nx, nz)
       const aimYaw = Math.atan2(input.aim.x - this.object.position.x, input.aim.z - this.object.position.z)
-      const face = this.moving ? moveYaw : aimYaw
-      this.yaw = dampAngle(this.yaw, face, dt, 14)
+      // While firing she squares up to the aim (twin-stick feel); otherwise she faces where she walks.
+      const firing = input.firing || this.shootT > 0
+      const face = this.moving && !firing ? moveYaw : aimYaw
+      this.yaw = dampAngle(this.yaw, face, dt, firing ? 20 : 14)
     } else {
       const aimYaw = Math.atan2(input.aim.x - this.object.position.x, input.aim.z - this.object.position.z)
       this.yaw = dampAngle(this.yaw, aimYaw, dt, 10)
@@ -195,18 +206,22 @@ export class Hero {
     }
     if (input.firing) this.shootT = 0.22
     let next = 'idle'
-    if (this.hitT > 0.45 && this.actions.has('hit')) next = 'hit'
-    else if (this.dashing) next = 'run'
+    if (this.dashing) next = 'run'
     else if (this.running && this.shootT > 0) next = 'runShoot'
     else if (this.moving && this.shootT > 0) next = 'shootMove'
     else if (this.running) next = 'run'
     else if (this.moving) next = 'walk'
     this.play(next, 0.16)
+    const hold: HoldState = this.dashing ? 'dash' : this.hitT > 0.2 ? 'hit' : next === 'idle' && this.shootT > 0 ? 'shoot' : (next as HoldState)
+    this.holdState = hold
+    this.blendHold(HOLD_POSES[hold], dt)
+    this.recoilT = Math.max(0, this.recoilT - dt * 9)
     if (!this.usingClips && this.puppet) {
       this.puppet.pose(this.walkPhase, this.moving || this.dashing, this.running || this.dashing, this.hitT, upper)
     }
     this.mixer?.update(dt)
-    this.poseReadyArm(next)
+    this.twist = damp(this.twist, upperTwist(aimYaw, this.yaw, this.hold.twist), dt, 12)
+    this.poseUpperBody(aimYaw)
     this.pointGun()
     const blink = this.iframes > 0 && Math.sin(this.iframes * 46) > 0
     for (const mesh of this.flashMeshes) {
@@ -227,6 +242,10 @@ export class Hero {
     this.hp = Math.max(0, this.hp - amount)
     this.iframes = 0.45
     this.hitT = 0.55
+    if (this.hitAction && this.hp - amount > 0) {
+      this.hitAction.reset().setEffectiveWeight(0.85).fadeIn(0.05).play()
+      this.hitAction.fadeOut(0.5)
+    }
     const away = this.object.position.clone().sub(from)
     away.y = 0
     if (away.lengthSq() > 0.01) {
@@ -241,28 +260,52 @@ export class Hero {
     return true
   }
 
-  private captureReadyArm(model: Object3D, clips: AnimationClip[]): void {
-    const clip = findClip(clips, 'Walk_Forward_While_Shooting')
-    if (!clip || !this.mixer) return
-    for (const action of this.actions.values()) action.stop()
-    const probe = this.mixer.clipAction(clip)
-    probe.reset().setEffectiveWeight(1).play()
-    probe.time = 1
-    this.mixer.update(1 / 60)
-    for (const name of ['RightShoulder', 'RightArm', 'RightForeArm', 'RightHand']) {
-      const bone = findNamed(model, name)
-      if (!bone) continue
-      this.arms.push({ bone, ready: bone.quaternion.clone() })
-    }
-    probe.stop()
-    this.mixer.stopAllAction()
+  /** Kick the gun back a touch on every shot. */
+  recoil(): void {
+    this.recoilT = 1
   }
 
-  private poseReadyArm(state: string): void {
-    if (!this.alive || this.arms.length === 0) return
-    const shootingMove = state === 'shootMove' || state === 'runShoot'
-    const weight = this.hitT > 0.15 ? 0.62 : this.dashing ? 0.58 : shootingMove ? 0.35 : this.moving ? 0.84 : 0.96
-    for (const arm of this.arms) arm.bone.quaternion.slerp(arm.ready, weight)
+  /** Current hold state, for QA hooks and tests. */
+  get hold_state(): HoldState {
+    return this.holdState
+  }
+
+  private blendHold(target: HoldPose, dt: number): void {
+    const k = 1 - Math.exp(-16 * dt)
+    const h = this.hold
+    h.reach.fwd += (target.reach.fwd - h.reach.fwd) * k
+    h.reach.right += (target.reach.right - h.reach.right) * k
+    h.reach.up += (target.reach.up - h.reach.up) * k
+    h.palm.x += (target.palm.x - h.palm.x) * k
+    h.palm.y += (target.palm.y - h.palm.y) * k
+    h.palm.z += (target.palm.z - h.palm.z) * k
+    h.pitch += (target.pitch - h.pitch) * k
+    h.twist += (target.twist - h.twist) * k
+  }
+
+  /** Spine twist toward the aim, then two-bone IK so the right hand holds the gun in front of her chest. */
+  private poseUpperBody(aimYaw: number): void {
+    if (!this.alive) return
+    if (this.spines.length) {
+      const share = this.twist / this.spines.length
+      for (const bone of this.spines) rotateWorldY(bone, share)
+    }
+    const arm = this.arm
+    const chest = this.spine
+    if (!arm || !chest) return
+    this.object.updateMatrixWorld(true)
+    const chestPos = chest.getWorldPosition(_v1)
+    const frameYaw = this.yaw + this.twist + wrapAngle(aimYaw - this.yaw - this.twist) * 0.35
+    const fwd = _v2.set(Math.sin(frameYaw), 0, Math.cos(frameYaw))
+    const right = _v3.set(-fwd.z, 0, fwd.x)
+    const kick = this.recoilT * this.recoilT
+    const r = this.hold.reach
+    const target = _v4
+      .copy(chestPos)
+      .addScaledVector(fwd, r.fwd - kick * 0.06)
+      .addScaledVector(right, r.right)
+    target.y += r.up + kick * 0.02
+    arm.solve(target, fwd, right)
   }
 
   private pointGun(): void {
@@ -274,18 +317,33 @@ export class Hero {
     hand.updateWorldMatrix(true, false)
     hand.getWorldPosition(handPos)
     hand.getWorldQuaternion(handQuat)
-    const hold = new Vector3(0.0, 0.055, 0.02).applyQuaternion(handQuat)
-    const place = handPos.clone().add(hold)
+    const place = handPos.clone()
+    if (this.arm) {
+      // Per-clip palm offset in RightHand space: along the fingers and out of the palm.
+      const p = this.hold.palm
+      place.addScaledVector(this.arm.handAxis(handQuat, 'thumb'), p.x)
+      place.addScaledVector(this.arm.handAxis(handQuat, 'fingers'), p.y)
+      place.addScaledVector(this.arm.handAxis(handQuat, 'palm'), p.z)
+    } else {
+      place.add(new Vector3(0, -0.02, 0.04).applyQuaternion(handQuat))
+    }
     const local = this.object.worldToLocal(place.clone())
     gun.position.copy(local)
-    gun.scale.setScalar(0.82)
+    gun.scale.setScalar(1.12)
     const aimDir = this.aimPoint.clone().sub(place)
-    if (aimDir.lengthSq() < 0.04) aimDir.set(0, 0.2, 1)
-    const forward = new Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw))
-    if (aimDir.dot(forward) < 0.2 * aimDir.length()) aimDir.addScaledVector(forward, aimDir.length())
-    aimDir.y = Math.max(aimDir.y, -0.12 * aimDir.length())
-    aimDir.normalize()
-    gun.lookAt(place.clone().add(aimDir))
+    const flat = Math.hypot(aimDir.x, aimDir.z)
+    let yaw = flat > 0.25 ? Math.atan2(aimDir.x, aimDir.z) : this.yaw
+    // Never point across her back: keep the barrel inside a cone in front of her chest.
+    const facing = this.yaw + this.twist
+    const off = wrapAngle(yaw - facing)
+    const cone = (70 * Math.PI) / 180
+    if (Math.abs(off) > cone) yaw = facing + Math.sign(off) * cone
+    if (!this.alive) yaw = this.yaw
+    const kick = this.recoilT * this.recoilT
+    const pitchDeg = this.alive ? aimPitchDeg(aimDir.y, flat, this.hold.pitch) + kick * 9 : 0
+    const pitch = (pitchDeg * Math.PI) / 180
+    const dir = new Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch))
+    gun.lookAt(place.add(dir))
   }
 
   private play(name: string, fade: number): void {
@@ -347,24 +405,35 @@ function maskUpper(clip: AnimationClip): AnimationClip {
   return new AnimationClip(`${clip.name}_upper`, clip.duration, tracks.length ? tracks : clip.tracks)
 }
 
+/** Cute water pistol. Origin is the grip (sits in the palm); the barrel points along +Z so lookAt aims it. */
 function createWaterGun(muzzle: Object3D): Group {
   const gun = new Group()
   gun.name = 'water-gun'
-  const body = new Mesh(new BoxGeometry(0.07, 0.09, 0.18), toon(0xffb7d5))
-  const tank = new Mesh(new SphereGeometry(0.048, 14, 10), toon(0x8fd0ff, 0x8fd0ff, 0.35))
-  tank.scale.y = 0.72
-  tank.position.set(0, 0.06, 0.01)
-  const grip = new Mesh(new BoxGeometry(0.035, 0.08, 0.04), toon(0xff9ec4))
-  grip.position.set(0, -0.06, 0.03)
-  const barrel = new Mesh(new CylinderGeometry(0.018, 0.022, 0.16, 10), toon(0x7ec8ff))
+  const pink = toon(0xffa9cd)
+  const body = new Mesh(new BoxGeometry(0.06, 0.075, 0.17), pink)
+  body.position.set(0, 0.055, 0.045)
+  const grip = new Mesh(new BoxGeometry(0.036, 0.085, 0.045), toon(0xff8fbf))
+  grip.position.set(0, 0.0, 0.0)
+  grip.rotation.x = -0.25
+  const tank = new Mesh(new SphereGeometry(0.042, 12, 8), toon(0x8fd0ff, 0x8fd0ff, 0.45))
+  tank.scale.set(0.9, 0.8, 1.1)
+  tank.position.set(0, 0.112, 0.02)
+  const barrel = new Mesh(new CylinderGeometry(0.016, 0.02, 0.12, 10), toon(0x7ec8ff, 0x7ec8ff, 0.15))
   barrel.rotation.x = Math.PI / 2
-  barrel.position.set(0, 0.015, -0.16)
-  const nose = new Mesh(new SphereGeometry(0.02, 10, 8), toon(0xd7f4ff, 0xffffff, 0.4))
-  nose.position.set(0, 0.015, -0.25)
-  const star = new Mesh(new ConeGeometry(0.02, 0.035, 5), toon(0xffe08a, 0xffe08a, 0.2))
-  star.position.set(0, 0.02, 0.02)
-  muzzle.position.set(0, 0.015, -0.28)
-  gun.add(body, tank, grip, barrel, nose, star, muzzle)
+  barrel.position.set(0, 0.06, 0.18)
+  const nose = new Mesh(new SphereGeometry(0.022, 10, 8), toon(0xe8f8ff, 0xffffff, 0.5))
+  nose.position.set(0, 0.06, 0.245)
+  const star = new Mesh(new ConeGeometry(0.018, 0.03, 5), toon(0xffe08a, 0xffe08a, 0.35))
+  star.position.set(0, 0.097, 0.09)
+  const guard = new Mesh(new BoxGeometry(0.012, 0.03, 0.05), toon(0xff8fbf))
+  guard.position.set(0, 0.006, 0.045)
+  muzzle.position.set(0, 0.06, 0.27)
+  gun.add(body, grip, tank, barrel, nose, star, guard, muzzle)
+  for (const child of gun.children) {
+    const mesh = child as Mesh
+    if (mesh.isMesh) mesh.castShadow = true
+  }
+  addOutline(gun)
   return gun
 }
 
@@ -474,8 +543,134 @@ function limb(length: number, color: number): Group {
 }
 
 function shadow(): Mesh {
-  const mesh = new Mesh(new CircleGeometry(0.38, 20), new MeshBasicMaterial({ color: 0x241433, transparent: true, opacity: 0.28 }))
+  const mesh = new Mesh(new CircleGeometry(0.36, 24), new MeshBasicMaterial({ color: 0x3a2350, transparent: true, opacity: 0.26, depthWrite: false }))
   mesh.rotation.x = -Math.PI / 2
-  mesh.position.y = 0.02
+  // Above the painted ground (y 0.02) so it never z-fights.
+  mesh.position.y = 0.05
+  mesh.renderOrder = 1
   return mesh
+}
+
+const _v1 = new Vector3()
+const _v2 = new Vector3()
+const _v3 = new Vector3()
+const _v4 = new Vector3()
+const _q1 = new Quaternion()
+const _q2 = new Quaternion()
+const UP = new Vector3(0, 1, 0)
+
+function clonePose(pose: HoldPose): HoldPose {
+  return { reach: { ...pose.reach }, palm: { ...pose.palm }, pitch: pose.pitch, twist: pose.twist }
+}
+
+/** Rotate a bone about world up while keeping its parent untouched. */
+function rotateWorldY(bone: Object3D, angle: number): void {
+  if (Math.abs(angle) < 1e-4 || !bone.parent) return
+  bone.parent.updateWorldMatrix(true, false)
+  const parentQ = bone.parent.getWorldQuaternion(_q1)
+  const spin = _q2.setFromAxisAngle(UP, angle)
+  // local' = parent^-1 * spin * parent * local
+  const inv = parentQ.clone().invert()
+  bone.quaternion.premultiply(inv.multiply(spin).multiply(parentQ))
+  bone.updateWorldMatrix(false, true)
+}
+
+/** Aim a bone so the direction to its child points at a world position. */
+function aimBone(bone: Object3D, childPos: Vector3, goal: Vector3): void {
+  if (!bone.parent) return
+  const origin = bone.getWorldPosition(new Vector3())
+  const from = childPos.clone().sub(origin).normalize()
+  const to = goal.clone().sub(origin).normalize()
+  if (from.lengthSq() < 1e-6 || to.lengthSq() < 1e-6) return
+  const delta = new Quaternion().setFromUnitVectors(from, to)
+  const world = bone.getWorldQuaternion(new Quaternion())
+  const parentQ = bone.parent.getWorldQuaternion(new Quaternion())
+  world.premultiply(delta)
+  bone.quaternion.copy(parentQ.invert().multiply(world))
+  bone.updateWorldMatrix(false, true)
+}
+
+/**
+ * Right arm chain with a ready pose taken from the shooting clip and a two-bone IK solve.
+ * The elbow hangs down and a little out, so the forearm never cuts through her ribs.
+ */
+class ArmRig {
+  private ready: { bone: Object3D; q: Quaternion }[] = []
+  private fingers = new Vector3(0, 1, 0)
+  private thumb = new Vector3(1, 0, 0)
+  private palm = new Vector3(0, 0, 1)
+
+  constructor(
+    private shoulder: Object3D,
+    private upper: Object3D,
+    private fore: Object3D,
+    private hand: Object3D,
+  ) {}
+
+  static from(model: Object3D, clips: AnimationClip[], mixer: AnimationMixer): ArmRig | null {
+    const shoulder = findNamed(model, 'RightShoulder')
+    const upper = findNamed(model, 'RightArm')
+    const fore = findNamed(model, 'RightForeArm')
+    const hand = findNamed(model, 'RightHand')
+    if (!shoulder || !upper || !fore || !hand) return null
+    const rig = new ArmRig(shoulder, upper, fore, hand)
+    const clip = findClip(clips, 'Walk_Forward_While_Shooting') ?? findClip(clips, 'Cowboy_Quick_Draw')
+    if (clip) {
+      const probe = mixer.clipAction(clip)
+      probe.reset().setEffectiveWeight(1).play()
+      probe.time = Math.min(1, clip.duration * 0.3)
+      mixer.update(0)
+      for (const bone of [shoulder, hand]) rig.ready.push({ bone, q: bone.quaternion.clone() })
+      probe.stop()
+      mixer.stopAllAction()
+    }
+    // Hand axes in its own space: the forearm->hand direction continues as "fingers".
+    model.updateMatrixWorld(true)
+    const handPos = hand.getWorldPosition(new Vector3())
+    const forePos = fore.getWorldPosition(new Vector3())
+    const handQ = hand.getWorldQuaternion(new Quaternion()).invert()
+    rig.fingers.copy(handPos.sub(forePos).normalize().applyQuaternion(handQ)).normalize()
+    // Pick the hand-space axis least aligned with the fingers as the palm normal seed.
+    const seed = Math.abs(rig.fingers.z) < 0.8 ? new Vector3(0, 0, 1) : new Vector3(1, 0, 0)
+    rig.thumb.crossVectors(rig.fingers, seed).normalize()
+    rig.palm.crossVectors(rig.thumb, rig.fingers).normalize()
+    return rig
+  }
+
+  handAxis(handWorld: Quaternion, which: 'fingers' | 'thumb' | 'palm'): Vector3 {
+    const axis = which === 'fingers' ? this.fingers : which === 'thumb' ? this.thumb : this.palm
+    return axis.clone().applyQuaternion(handWorld)
+  }
+
+  solve(target: Vector3, fwd: Vector3, right: Vector3): void {
+    for (const entry of this.ready) entry.bone.quaternion.copy(entry.q)
+    this.shoulder.updateWorldMatrix(true, true)
+    const a = this.upper.getWorldPosition(new Vector3())
+    const b = this.fore.getWorldPosition(new Vector3())
+    const c = this.hand.getWorldPosition(new Vector3())
+    const l1 = a.distanceTo(b)
+    const l2 = b.distanceTo(c)
+    const toT = target.clone().sub(a)
+    const d = Math.min(Math.max(toT.length(), Math.abs(l1 - l2) + 0.01), (l1 + l2) * 0.985)
+    const dir = toT.normalize()
+    const goal = a.clone().addScaledVector(dir, d)
+    // Elbow hint: down, out to her right, slightly back.
+    const pole = new Vector3(0, -1, 0).addScaledVector(right, 0.7).addScaledVector(fwd, -0.25)
+    pole.addScaledVector(dir, -pole.dot(dir)).normalize()
+    const along = (l1 * l1 - l2 * l2 + d * d) / (2 * d)
+    const h = Math.sqrt(Math.max(0, l1 * l1 - along * along))
+    const elbow = a.clone().addScaledVector(dir, along).addScaledVector(pole, h)
+    aimBone(this.upper, b, elbow)
+    const c2 = this.hand.getWorldPosition(new Vector3())
+    aimBone(this.fore, c2, goal)
+    // Straight wrist toward the aim so the grip reads as a pistol hold.
+    const handQ = this.hand.getWorldQuaternion(new Quaternion())
+    const fingers = this.fingers.clone().applyQuaternion(handQ)
+    const want = fwd.clone().multiplyScalar(0.75).add(goal.clone().sub(this.fore.getWorldPosition(new Vector3())).normalize().multiplyScalar(0.25)).normalize()
+    const twist = new Quaternion().setFromUnitVectors(fingers, want)
+    const world = handQ.premultiply(twist)
+    const parentQ = this.fore.getWorldQuaternion(new Quaternion()).invert()
+    this.hand.quaternion.copy(parentQ.multiply(world))
+    this.hand.updateWorldMatrix(false, true)
+  }
 }

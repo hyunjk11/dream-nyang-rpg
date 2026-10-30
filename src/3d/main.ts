@@ -55,7 +55,9 @@ document.getElementById('fps-toggle')?.addEventListener('click', () => {
 })
 document.getElementById('retry')?.addEventListener('click', () => restart())
 
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage } })
+/** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
+const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view } })
 
 void bootGame()
 
@@ -78,6 +80,7 @@ function frame(): void {
   requestAnimationFrame(frame)
   const raw = Math.min(0.05, clock.getDelta())
   let dt = raw
+  if (import.meta.env.DEV) dt *= view.timeScale
   if (combat.hitStop > 0) {
     combat.hitStop -= raw
     dt *= 0.08
@@ -106,6 +109,7 @@ function frame(): void {
     if (dir.lengthSq() < 0.01) dir.set(0, 0, 1)
     combat.fire(tip, dir, 12, true, 0x9ad7ff, 16)
     combat.flashBurst(tip, 0xd7f4ff)
+    hero.recoil()
     audio.sfx('shoot_water')
   }
   const heroPos = hero.object.position
@@ -131,11 +135,26 @@ function frame(): void {
   const aimFlatX = aim.x - heroPos.x
   const aimFlatZ = aim.z - heroPos.z
   stage.follow(heroPos.x, heroPos.y, heroPos.z, aimFlatX, aimFlatZ, combat.shake)
+  if (import.meta.env.DEV && view.on) inspectCamera(heroPos)
   tickFloats(dt)
   stage.render()
 }
 
+function inspectCamera(at: Vector3): void {
+  const yaw = hero.yaw + (view.yaw * Math.PI) / 180
+  const pitch = (view.pitch * Math.PI) / 180
+  const cam = stage.camera
+  cam.position.set(at.x + Math.sin(yaw) * Math.cos(pitch) * view.dist, at.y + view.height + Math.sin(pitch) * view.dist, at.z + Math.cos(yaw) * Math.cos(pitch) * view.dist)
+  cam.lookAt(at.x, at.y + view.height, at.z)
+}
+
 function aimAt(): void {
+  if (import.meta.env.DEV && view.on) {
+    const p = hero.object.position
+    const yaw = view.aimYaw ?? hero.yaw
+    aim.set(p.x + Math.sin(yaw) * 5, 1.05, p.z + Math.cos(yaw) * 5)
+    return
+  }
   if (!pad.pointer || pad.fire && stage.mobile) {
     const nearest = nearestFoe()
     if (nearest) {
