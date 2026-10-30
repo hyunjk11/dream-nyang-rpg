@@ -10,15 +10,37 @@ export interface Wave {
   total: number
   elites: number
   kinds: HordeKind[]
+  /** Elite-only champions (lucky-defense lord, the hero-defense lich) that lead this wave. */
+  champions: HordeKind[]
 }
+
+/** Which kinds join at which wave: the old dream pests first, then the reused rosters. */
+export const UNLOCKS: [number, HordeKind][] = [
+  [1, 'slime'],
+  [2, 'bug'],
+  [2, 'jelly'],
+  [3, 'rabbit'],
+  [3, 'skeleton'],
+  [3, 'goblin'],
+  [4, 'bat'],
+  [4, 'wolf'],
+  [4, 'skel_rogue'],
+  [5, 'knight'],
+  [5, 'skel_warrior'],
+  [5, 'wraith'],
+  [6, 'golem'],
+  [6, 'skel_mage'],
+  [6, 'drake'],
+]
 
 /** Wave n (1-based): bigger, faster to pour, more kinds and more elites. */
 export function waveFor(n: number): Wave {
-  const kinds: HordeKind[] = ['slime']
-  if (n >= 2) kinds.push('bug')
-  if (n >= 3) kinds.push('rabbit')
-  if (n >= 4) kinds.push('bat')
-  return { n, total: Math.min(150, 14 + 10 * (n - 1) + 2 * (n - 1) * (n - 1)), elites: n < 2 ? 0 : Math.min(8, Math.floor(n / 2) + 1), kinds }
+  const kinds = UNLOCKS.filter(([w]) => n >= w).map(([, k]) => k)
+  const champions: HordeKind[] = []
+  if (n >= 3) champions.push('lord')
+  if (n >= 5) champions.push('lich')
+  const elites = n < 2 ? 0 : Math.max(champions.length, Math.min(8, Math.floor(n / 2) + 1))
+  return { n, total: Math.min(150, 14 + 10 * (n - 1) + 2 * (n - 1) * (n - 1)), elites, kinds, champions }
 }
 
 export interface SpawnOrder {
@@ -85,8 +107,14 @@ export class Director {
         const spacing = Math.max(2, Math.floor(w.total / (w.elites + 1)))
         const spawned = w.total - this.left + 1
         const elite = this.elitesLeft > 0 && spawned % spacing === 0
-        if (elite) this.elitesLeft -= 1
-        out.push({ kind: w.kinds[this.serial % w.kinds.length], elite, nest: nests[this.serial % nests.length] })
+        let kind = w.kinds[this.serial % w.kinds.length]
+        if (elite) {
+          // Champions lead the elite line-up: the first elites of the wave are them.
+          const c = w.elites - this.elitesLeft
+          if (c < w.champions.length) kind = w.champions[c]
+          this.elitesLeft -= 1
+        }
+        out.push({ kind, elite, nest: nests[this.serial % nests.length] })
         this.left -= 1
       }
       if (v.alive + out.length >= LIVE_CAP) this.pour = Math.min(this.pour, 1)
