@@ -8,7 +8,22 @@
 ## 음악과 효과음
 
 `public/assets/audio`의 BGM 두 곡과 효과음은 `tools/make_audio.py`로 이 프로젝트를 위해 합성했다.  
-마을 곡은 78 BPM의 꿈결 루프, 전투 곡은 96 BPM이다. 외부 음원 팩을 쓰지 않았다.
+마을 곡은 78 BPM의 꿈결 루프, 전투 곡은 96 BPM이다. 3D 시험판은 같은 두 곡을 mp3로 옮긴 `public/assets/audio3d/bgm_*.mp3`를 쓴다.
+
+### 3D 시험판 효과음 (Kenney, CC0)
+
+`public/assets/audio3d`의 타격·발소리·대화·UI 효과음과 짧은 징글은 Kenney의 CC0 팩에서 골라 mp3로 바꿨다.
+CC0(퍼블릭 도메인)라 출처 표기 의무는 없지만 감사의 뜻으로 적어 둔다.
+
+- [Impact Sounds](https://kenney.nl/assets/impact-sounds) — `hit_*`, `pop_*`, `hurt_*`, `step_*`, `boss_hit`
+- [Interface Sounds](https://kenney.nl/assets/interface-sounds) — `ui`, `talk_open`, `talk_next`, `splash`, `windup`, `heal_ui`
+- [Music Jingles](https://kenney.nl/assets/music-jingles) — `victory`, `down` (Pizzicato jingles 04, 09)
+
+라이선스 원문은 `docs/licenses/Kenney-*-CC0.txt`.
+
+## 3D 모델
+
+`public/models/3d`의 적·랜드마크·NPC 키키 모델은 이 프로젝트의 오리지널 2D 원화(`public/assets`)를 Meshy(image-to-3D, 리깅, 애니메이션)로 입체화한 것이다.
 
 ## 글꼴
 
