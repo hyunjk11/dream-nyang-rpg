@@ -65,6 +65,7 @@ h1 { margin: 0; font-size: clamp(56px, 8vw, 104px); text-shadow: 0 4px 0 #7a5aa8
   box-shadow: 0 6px 0 #e3c6ea, 0 10px 18px rgba(70, 30, 90, 0.12);
 }
 .btn { padding: 12px 18px; font-size: 16px; }
+a.btn { display: block; text-align: center; text-decoration: none; }
 .btn.primary { background: linear-gradient(180deg, #ffe1f1, #ffb7d5); }
 .btn.ghost { background: rgba(255,255,255,0.7); }
 .btn:disabled { opacity: 0.45; cursor: default; }

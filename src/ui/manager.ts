@@ -123,6 +123,7 @@ function showTitle(): void {
     <div class="title-actions">
       <button class="btn primary" id="btn-new" type="button">새 게임</button>
       <button class="btn" id="btn-continue" type="button" ${cont ? '' : 'disabled'}>이어하기</button>
+      <a class="btn ghost" href="${import.meta.env.BASE_URL}3d/">3D 시험판</a>
       <div class="row-btns">
         <button class="btn ghost" id="btn-help" type="button">조작법</button>
         <button class="btn ghost" id="btn-settings" type="button">설정</button>

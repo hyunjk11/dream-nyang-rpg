@@ -1,0 +1,189 @@
+{
+ "models/byeolha.glb": {
+  "fileMB": 3.63,
+  "triangles": 25741,
+  "vertices": 37768,
+  "meshes": 1,
+  "materials": 1,
+  "textures": [
+   "image/jpeg 2048x2048 2231KB"
+  ],
+  "skins": [],
+  "animations": [],
+  "meshLocalBBox": [
+   0.775,
+   1.902,
+   0.484
+  ]
+ },
+ "models/byeolha_animated.glb": {
+  "fileMB": 4.58,
+  "triangles": 25741,
+  "vertices": 38471,
+  "meshes": 1,
+  "materials": 1,
+  "textures": [
+   "image/jpeg 2048x2048 2231KB"
+  ],
+  "skins": [
+   24
+  ],
+  "animations": [
+   "Idle (4.00s)",
+   "Walking_Woman (0.97s)",
+   "Run_02 (0.70s)",
+   "Cowboy_Quick_Draw_Shooting (7.30s)",
+   "Walk_Forward_While_Shooting (3.27s)",
+   "Run_and_Shoot (0.67s)",
+   "Hit_Reaction (1.63s)",
+   "dying_backwards (2.20s)"
+  ],
+  "meshLocalBBox": [
+   0.66,
+   1.62,
+   0.412
+  ]
+ },
+ "models/byeolha_animated_mobile.glb": {
+  "fileMB": 0.85,
+  "triangles": 25741,
+  "vertices": 37899,
+  "meshes": 1,
+  "materials": 1,
+  "textures": [
+   "image/webp 1024x1024 82KB"
+  ],
+  "skins": [
+   24
+  ],
+  "animations": [
+   "Idle (4.00s)",
+   "Walking_Woman (0.97s)",
+   "Run_02 (0.70s)",
+   "Cowboy_Quick_Draw_Shooting (7.30s)",
+   "Walk_Forward_While_Shooting (3.27s)",
+   "Run_and_Shoot (0.67s)",
+   "Hit_Reaction (1.63s)",
+   "dying_backwards (2.20s)"
+  ],
+  "meshLocalBBox": [
+   26690,
+   65534,
+   16682
+  ]
+ },
+ "models/byeolha_mobile.glb": {
+  "fileMB": 0.46,
+  "triangles": 25741,
+  "vertices": 37768,
+  "meshes": 1,
+  "materials": 1,
+  "textures": [
+   "image/webp 1024x1024 82KB"
+  ],
+  "skins": [],
+  "animations": [],
+  "meshLocalBBox": [
+   26690,
+   65534,
+   16682
+  ]
+ },
+ "models/byeolha_rig_basic_run.glb": {
+  "fileMB": 4.87,
+  "triangles": 25741,
+  "vertices": 38471,
+  "meshes": 1,
+  "materials": 1,
+  "textures": [
+   "image/jpeg 2048x2048 2231KB"
+  ],
+  "skins": [
+   24
+  ],
+  "animations": [
+   "Armature|running|baselayer (0.67s)"
+  ],
+  "meshLocalBBox": [
+   0.66,
+   1.62,
+   0.412
+  ]
+ },
+ "models/byeolha_rig_basic_walk.glb": {
+  "fileMB": 4.88,
+  "triangles": 25741,
+  "vertices": 38471,
+  "meshes": 1,
+  "materials": 1,
+  "textures": [
+   "image/jpeg 2048x2048 2231KB"
+  ],
+  "skins": [
+   24
+  ],
+  "animations": [
+   "Armature|walking_man|baselayer (1.07s)"
+  ],
+  "meshLocalBBox": [
+   0.66,
+   1.62,
+   0.412
+  ]
+ },
+ "models/byeolha_rigged.glb": {
+  "fileMB": 4.9,
+  "triangles": 25741,
+  "vertices": 38471,
+  "meshes": 1,
+  "materials": 1,
+  "textures": [
+   "image/jpeg 2048x2048 2231KB"
+  ],
+  "skins": [
+   24
+  ],
+  "animations": [
+   "Armature|clip0|baselayer (0.03s)"
+  ],
+  "meshLocalBBox": [
+   0.66,
+   1.62,
+   0.412
+  ]
+ },
+ "models/mochi.glb": {
+  "fileMB": 4.81,
+  "triangles": 20693,
+  "vertices": 37356,
+  "meshes": 1,
+  "materials": 1,
+  "textures": [
+   "image/jpeg 2048x2048 3513KB"
+  ],
+  "skins": [],
+  "animations": [],
+  "meshLocalBBox": [
+   1.455,
+   1.588,
+   1.893
+  ]
+ },
+ "models/mochi_mobile.glb": {
+  "fileMB": 0.52,
+  "triangles": 20693,
+  "vertices": 37356,
+  "meshes": 1,
+  "materials": 1,
+  "textures": [
+   "image/webp 1024x1024 135KB"
+  ],
+  "skins": [],
+  "animations": [],
+  "meshLocalBBox": [
+   50382,
+   54958,
+   65534
+  ]
+ }
+}
