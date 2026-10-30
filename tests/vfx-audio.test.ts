@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CUES, MUSIC, musicGains, pickVariant, stepMusic } from '../src/3d/soundplan'
+import { CUES, MUSIC, type MusicState, musicGains, pickVariant, stepMusic } from '../src/3d/soundplan'
 import { particleAlpha, stepParticle } from '../src/3d/vfx'
 
 const assets = Object.keys(import.meta.glob('../public/assets/**/*.{mp3,wav}', { query: '?url' })).map((p) => p.replace('../public/assets/', ''))
@@ -24,7 +24,7 @@ describe('효과음과 음악', () => {
   })
 
   it('적이 다가오면 전투 곡으로, 조용해지면 마을 곡으로 천천히 넘어간다', () => {
-    let state = { mix: 0, calm: MUSIC.calm }
+    let state: MusicState = { mix: 0, calm: MUSIC.calm }
     state = stepMusic(state, 0.1, true)
     expect(state.mix).toBeGreaterThan(0)
     expect(state.mix).toBeLessThan(0.2)
