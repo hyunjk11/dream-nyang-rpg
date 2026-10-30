@@ -22,6 +22,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { HOLD_POSES, aimPitchDeg, damp, upperTwist, wrapAngle, type HoldPose, type HoldState } from './feel'
 import { addOutline, applyToon, toon } from './materials'
+import { KNOCK, MOVE, gaitBlend, gaitRate, knockDecay, legYaw, turnToward } from './motion'
 
 const loader = new GLTFLoader()
 loader.setMeshoptDecoder(MeshoptDecoder)
@@ -68,6 +69,16 @@ export class Hero {
   private twist = 0
   private recoilT = 0
   private moveYaw = 0
+  /** Her own steering velocity (m/s), eased in and out, and a separate decaying knockback push. */
+  readonly vel = new Vector3()
+  readonly knock = new Vector3()
+  /** Synced gait cycle [0,1) shared by the walk and run clips; per-clip phase offsets line feet up. */
+  private gait = 0
+  private gaitOffset: Record<string, number> = { walk: 0, run: 0 }
+  private idleTurning = false
+  private squash = 0
+  private model: Object3D | null = null
+  private baseScale = 1
   private spines: Object3D[] = []
   private spine: Object3D | null = null
   private head: Object3D | null = null
@@ -87,6 +98,8 @@ export class Hero {
       const scale = height > 0.2 ? 1.62 / height : 1
       model.scale.setScalar(scale)
       model.position.y = -box.min.y * scale
+      this.model = model
+      this.baseScale = scale
       model.traverse((obj) => {
         const mesh = obj as Mesh
         if (!mesh.isMesh) return
@@ -125,7 +138,8 @@ export class Hero {
       this.arm = ArmRig.from(model, gltf.animations, this.mixer)
       this.attachGun(this.rightHand ?? model)
       this.modelLabel = '메쉬 모델'
-      this.play('idle', 0)
+      this.measureGaitOffsets(model)
+      this.startLocomotion()
       return true
     } catch (error) {
       console.warn('별하 모델을 열지 못했습니다. 임시 모습으로 이어갑니다.', error)
@@ -163,34 +177,68 @@ export class Hero {
       return
     }
     const wish = Math.hypot(input.wishX, input.wishZ)
-    this.moving = wish > 0.12
-    this.running = wish > 0.2 && input.run
+    const wants = wish > 0.12
+    this.running = wants && wish > 0.2 && input.run
     if (input.dash && this.dashCd <= 0 && this.dashT <= 0) {
       this.dashT = 0.18
       this.dashCd = 0.85
       this.iframes = Math.max(this.iframes, 0.26)
       this.dashing = true
+      // Dash goes where she steers, else where she faces.
+      const dx = wish > 0.05 ? input.wishX / wish : Math.sin(this.yaw)
+      const dz = wish > 0.05 ? input.wishZ / wish : Math.cos(this.yaw)
+      this.vel.set(dx * MOVE.dash, 0, dz * MOVE.dash)
     }
     if (this.dashT > 0) {
       this.dashT -= dt
       this.dashing = this.dashT > 0
     }
-    const speed = this.dashing ? 9.2 : this.running ? 5.1 : this.moving ? 3.15 : 0
-    if (wish > 0.05) {
-      const nx = input.wishX / wish
-      const nz = input.wishZ / wish
-      this.object.position.x += nx * speed * dt
-      this.object.position.z += nz * speed * dt
-      const moveYaw = Math.atan2(nx, nz)
-      this.moveYaw = moveYaw
-      const aimYaw = Math.atan2(input.aim.x - this.object.position.x, input.aim.z - this.object.position.z)
-      // While firing she squares up to the aim (twin-stick feel); otherwise she faces where she walks.
-      const firing = input.firing || this.shootT > 0
-      const face = this.moving && !firing ? moveYaw : aimYaw
-      this.yaw = dampAngle(this.yaw, face, dt, firing ? 20 : 14)
+    // Steering velocity eases toward the wish, so starts and stops have a little weight instead of
+    // popping between 0 and full speed (which also made the feet slide on every stop).
+    const top = this.dashing ? MOVE.dash : this.running ? MOVE.run : wants ? MOVE.walk : 0
+    // A strong push takes some steering away, so holding a key into the enemy can't fight it.
+    const pushed = Math.min(1, this.knock.length() / KNOCK.speed)
+    const control = 1 - pushed * KNOCK.controlLoss
+    let tx = 0
+    let tz = 0
+    if (wish > 0.05 && !this.dashing) {
+      tx = (input.wishX / wish) * top * control
+      tz = (input.wishZ / wish) * top * control
+    } else if (this.dashing) {
+      const len = Math.hypot(this.vel.x, this.vel.z) || 1
+      tx = (this.vel.x / len) * MOVE.dash
+      tz = (this.vel.z / len) * MOVE.dash
+    }
+    const speedNow = Math.hypot(this.vel.x, this.vel.z)
+    const lambda = Math.hypot(tx, tz) >= speedNow ? MOVE.accel : MOVE.brake
+    const k = 1 - Math.exp(-lambda * dt)
+    this.vel.x += (tx - this.vel.x) * k
+    this.vel.z += (tz - this.vel.z) * k
+    const decay = knockDecay(dt)
+    this.knock.multiplyScalar(decay)
+    if (this.knock.lengthSq() < 1e-4) this.knock.set(0, 0, 0)
+    this.object.position.x += (this.vel.x + this.knock.x) * dt
+    this.object.position.z += (this.vel.z + this.knock.z) * dt
+    const speed = Math.hypot(this.vel.x, this.vel.z)
+    this.moving = speed > 0.35
+    if (speed > 0.05) this.moveYaw = Math.atan2(this.vel.x, this.vel.z)
+    const aimYaw = Math.atan2(input.aim.x - this.object.position.x, input.aim.z - this.object.position.z)
+    const firing = input.firing || this.shootT > 0
+    if (firing) {
+      // Torso squares up to the aim; legs lean toward travel so strafing isn't a sideways moonwalk.
+      this.idleTurning = false
+      const face = this.moving ? legYaw(this.moveYaw, aimYaw) : aimYaw
+      this.yaw = turnToward(this.yaw, face, dt, MOVE.turnAim, MOVE.turnAimMax)
+    } else if (this.moving) {
+      this.idleTurning = false
+      this.yaw = turnToward(this.yaw, this.moveYaw, dt, MOVE.turnMove, MOVE.turnMoveMax)
     } else {
-      const aimYaw = Math.atan2(input.aim.x - this.object.position.x, input.aim.z - this.object.position.z)
-      this.yaw = dampAngle(this.yaw, aimYaw, dt, 10)
+      // Standing: head and chest follow the cursor; the feet only shuffle round once it is well
+      // behind her shoulder. She used to whip 180° to the cursor every time she stopped.
+      const off = Math.abs(wrapAngle(aimYaw - this.yaw))
+      if (off > MOVE.idleTurnStart) this.idleTurning = true
+      if (off < MOVE.idleTurnStop) this.idleTurning = false
+      if (this.idleTurning) this.yaw = turnToward(this.yaw, aimYaw, dt, MOVE.turnIdle, MOVE.turnIdleMax)
     }
     const limit = 13.2
     const radial = Math.hypot(this.object.position.x, this.object.position.z)
@@ -200,21 +248,22 @@ export class Hero {
     }
     this.object.rotation.y = this.yaw
     this.walkPhase += dt * (this.dashing ? 14 : this.running ? 11 : 8)
-    const aimYaw = Math.atan2(input.aim.x - this.object.position.x, input.aim.z - this.object.position.z)
     const upper = wrapAngle(aimYaw - this.yaw)
     if (!this.usingClips) {
       if (this.spine) this.spine.rotation.y = upper * 0.55
       if (this.head) this.head.rotation.y = upper * 0.35
     }
     if (input.firing) this.shootT = 0.22
+    // Signed speed along her legs: negative = backpedal, the synced cycle runs backward.
+    const along = this.vel.x * Math.sin(this.yaw) + this.vel.z * Math.cos(this.yaw)
+    const signed = speed * (along < -0.25 * speed ? -1 : 1)
+    this.driveLocomotion(dt, speed, signed)
     let next = 'idle'
     if (this.dashing) next = 'run'
     else if (this.running && this.shootT > 0) next = 'runShoot'
     else if (this.moving && this.shootT > 0) next = 'shootMove'
     else if (this.running) next = 'run'
     else if (this.moving) next = 'walk'
-    this.play(next, 0.16)
-    this.syncStride()
     const hold: HoldState = this.dashing ? 'dash' : this.hitT > 0.2 ? 'hit' : next === 'idle' && this.shootT > 0 ? 'shoot' : (next as HoldState)
     this.holdState = hold
     this.blendHold(HOLD_POSES[hold], dt)
@@ -223,7 +272,10 @@ export class Hero {
       this.puppet.pose(this.walkPhase, this.moving || this.dashing, this.running || this.dashing, this.hitT, upper)
     }
     this.mixer?.update(dt)
-    this.twist = damp(this.twist, upperTwist(aimYaw, this.yaw, this.hold.twist), dt, 12)
+    // Walking somewhere without shooting, she glances at the cursor rather than corkscrewing.
+    const share = this.moving && !firing ? this.hold.twist * 0.35 : this.hold.twist
+    this.twist = damp(this.twist, upperTwist(aimYaw, this.yaw, share), dt, 12)
+    this.applySquash(dt)
     this.poseUpperBody(aimYaw)
     this.pointGun()
     const blink = this.iframes > 0 && Math.sin(this.iframes * 46) > 0
@@ -245,22 +297,38 @@ export class Hero {
     this.hp = Math.max(0, this.hp - amount)
     this.iframes = 0.45
     this.hitT = 0.55
-    if (this.hitAction && this.hp - amount > 0) {
+    this.squash = 1
+    if (this.hitAction && this.hp > 0) {
       this.hitAction.reset().setEffectiveWeight(0.85).fadeIn(0.05).play()
       this.hitAction.fadeOut(0.5)
     }
+    // A push that decays over a few frames. It used to add 1.4 m to her position in one frame,
+    // which read as a teleport and yanked the camera.
     const away = this.object.position.clone().sub(from)
     away.y = 0
-    if (away.lengthSq() > 0.01) {
-      away.normalize().multiplyScalar(1.4)
-      this.object.position.add(away)
-    }
+    if (away.lengthSq() < 0.01) away.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw))
+    away.normalize().multiplyScalar(KNOCK.speed)
+    this.knock.copy(away)
+    // Her own run is braked a little so the push reads, without zeroing it (no dead stop).
+    this.vel.multiplyScalar(0.45)
     if (this.hp <= 0) {
       this.alive = false
       this.deadT = 0
       this.play('death', 0.05)
     }
     return true
+  }
+
+  /** Back to life after "다시 하기". */
+  revive(): void {
+    this.alive = true
+    this.vel.set(0, 0, 0)
+    this.knock.set(0, 0, 0)
+    this.deadT = 0
+    const death = this.actions.get('death')
+    death?.fadeOut(0.2)
+    this.current = ''
+    this.startLocomotion()
   }
 
   /** Kick the gun back a touch on every shot. */
@@ -350,19 +418,77 @@ export class Hero {
   }
 
   /**
-   * While shooting she squares up to the aim, so walking away from the cursor would play the
-   * forward clip while her body travels backward (moonwalk). Run the clip in reverse then, and
-   * slow it a little when she sidesteps.
+   * Idle, walk and run all play at once; their weights follow her real speed and the walk/run
+   * clips are scrubbed from one shared cycle, so their feet stay in step through the blend and the
+   * planted foot moves backward at her ground speed. Running backward plays the cycle in reverse.
    */
-  private syncStride(): void {
-    const action = this.actions.get(this.current)
-    if (!action) return
-    if (this.current === 'idle' || this.current === 'death' || !this.moving || this.dashing) {
-      action.timeScale = 1
-      return
+  private driveLocomotion(dt: number, speed: number, signed: number): void {
+    if (!this.mixer || !this.alive) return
+    const walk = this.actions.get('walk')
+    const run = this.actions.get('run')
+    const idle = this.actions.get('idle')
+    if (!walk || !run || !idle) return
+    const w = gaitBlend(speed)
+    this.gait = (((this.gait + gaitRate(signed) * dt) % 1) + 1) % 1
+    idle.setEffectiveWeight(w.idle)
+    walk.setEffectiveWeight(w.walk)
+    run.setEffectiveWeight(w.run)
+    walk.time = (((this.gait + this.gaitOffset.walk) % 1) + 1) % 1 * walk.getClip().duration
+    run.time = (((this.gait + this.gaitOffset.run) % 1) + 1) % 1 * run.getClip().duration
+  }
+
+  private startLocomotion(): void {
+    if (!this.mixer) return
+    for (const key of ['idle', 'walk', 'run']) {
+      const action = this.actions.get(key)
+      if (!action) continue
+      action.reset().play()
+      action.setEffectiveWeight(key === 'idle' ? 1 : 0)
+      // Walk and run are scrubbed by hand from the shared cycle.
+      action.setEffectiveTimeScale(key === 'idle' ? 1 : 0)
     }
-    const along = Math.cos(this.moveYaw - this.yaw)
-    action.timeScale = along < -0.3 ? -0.9 : along < 0.3 ? 0.85 : 1
+    this.current = 'loco'
+  }
+
+  /** Phase of each locomotion clip where the left foot is furthest forward, so the blend is in step. */
+  private measureGaitOffsets(model: Object3D): void {
+    const foot = findNamed(model, 'LeftToeBase') ?? findNamed(model, 'LeftFoot')
+    if (!foot || !this.mixer) return
+    for (const key of ['walk', 'run'] as const) {
+      const action = this.actions.get(key)
+      if (!action) continue
+      this.mixer.stopAllAction()
+      action.reset().setEffectiveWeight(1).play()
+      const duration = action.getClip().duration
+      let best = -Infinity
+      let at = 0
+      for (let i = 0; i < 48; i += 1) {
+        action.time = (duration * i) / 48
+        this.mixer.update(0)
+        model.updateMatrixWorld(true)
+        const p = model.worldToLocal(foot.getWorldPosition(_v1))
+        if (p.z > best) {
+          best = p.z
+          at = i / 48
+        }
+      }
+      this.gaitOffset[key] = at
+    }
+    this.mixer.stopAllAction()
+  }
+
+  /** Quick squash-and-stretch on a hit instead of a jump in position. */
+  private applySquash(dt: number): void {
+    this.squash = Math.max(0, this.squash - dt * 4.5)
+    if (!this.model) return
+    const e = this.squash * this.squash
+    const wobble = Math.sin((1 - this.squash) * 9) * e
+    this.model.scale.set(this.baseScale * (1 + 0.07 * wobble), this.baseScale * (1 - 0.09 * wobble), this.baseScale * (1 + 0.07 * wobble))
+  }
+
+  /** Synced gait cycle, for QA. */
+  get gait_phase(): number {
+    return this.gait
   }
 
   /** Direction she travels this frame (yaw), for QA and the stride sync. */
@@ -371,15 +497,13 @@ export class Hero {
   }
 
   private play(name: string, fade: number): void {
-    if (!this.mixer) return
-    const resolved = this.actions.has(name) ? name : name === 'shoot' ? 'idle' : name === 'runShoot' || name === 'shootMove' ? (this.actions.has('walk') ? 'walk' : 'idle') : this.actions.has('walk') && name !== 'idle' ? 'walk' : 'idle'
-    if (!this.actions.has(resolved) || this.current === resolved) return
-    const next = this.actions.get(resolved)
-    const prev = this.actions.get(this.current)
-    next?.reset().fadeIn(fade).play()
-    if (resolved === 'hit') next?.setEffectiveWeight(0.45)
-    prev?.fadeOut(fade)
-    this.current = resolved
+    // Locomotion is a weighted blend (driveLocomotion); this only switches into the death clip.
+    if (!this.mixer || name !== 'death' || this.current === 'death') return
+    const death = this.actions.get('death')
+    if (!death) return
+    for (const key of ['idle', 'walk', 'run']) this.actions.get(key)?.fadeOut(fade)
+    death.reset().fadeIn(fade).play()
+    this.current = 'death'
   }
 
   private bindClip(key: string, clips: AnimationClip[], hint: string): void {
@@ -459,10 +583,6 @@ function createWaterGun(muzzle: Object3D): Group {
   }
   addOutline(gun)
   return gun
-}
-
-function dampAngle(current: number, target: number, dt: number, lambda: number): number {
-  return current + wrapAngle(target - current) * (1 - Math.exp(-lambda * dt))
 }
 
 class Puppet {

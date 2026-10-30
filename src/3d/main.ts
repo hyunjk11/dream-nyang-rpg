@@ -17,7 +17,7 @@ if (!canvas) throw new Error('canvas missing')
 
 const stage = createStage(canvas)
 if (stage.touch) document.body.classList.add('touch')
-installInput(canvas)
+installInput(canvas, (dx, dy) => stage.orbit(dx, dy))
 const hero = new Hero()
 const mochi = new Mochi()
 stage.scene.add(hero.object, mochi.object)
@@ -96,7 +96,8 @@ function frame(): void {
     if (fpsEl && showFps) fpsEl.textContent = `${fps} FPS`
   }
   const move = axis()
-  const wish = cameraRelativeWish(move.x, move.y)
+  // Always relative to the live (smoothed) camera yaw, so A is screen-left after any orbit.
+  const wish = cameraRelativeWish(move.x, move.y, stage.yaw)
   aimAt()
   fireCd = Math.max(0, fireCd - dt)
   const dash = consumeDash()
@@ -119,7 +120,7 @@ function frame(): void {
     const hurt = hero.hurt(amount, from)
     if (!hurt) return
     audio.sfx('hurt')
-    combat.shake = Math.max(combat.shake, 0.14)
+    combat.shake = Math.max(combat.shake, 0.07)
     float(`-${amount}`, heroPos.clone().setY(1.6), '#ff9eb8')
     if (!hero.alive) {
       audio.sfx('hurt')
@@ -149,7 +150,19 @@ function inspectCamera(at: Vector3): void {
   cam.lookAt(at.x, at.y + view.height, at.z)
 }
 
+const aimHold = new Vector3()
+let aimHeld = false
 function aimAt(): void {
+  // While right-dragging the view, keep her aim fixed in the world (relative to her), so the
+  // camera swings round without her spinning to chase the cursor.
+  if (pad.orbiting) {
+    const p = hero.object.position
+    if (!aimHeld) aimHold.set(aim.x - p.x, aim.y, aim.z - p.z)
+    aimHeld = true
+    aim.set(p.x + aimHold.x, aimHold.y, p.z + aimHold.z)
+    return
+  }
+  aimHeld = false
   if (import.meta.env.DEV && view.on) {
     const p = hero.object.position
     const yaw = view.aimYaw ?? hero.yaw
@@ -274,7 +287,7 @@ function float(text: string, at: Vector3, color: string): void {
 
 function restart(): void {
   hero.hp = hero.maxHp
-  hero.alive = true
+  hero.revive()
   hero.object.position.set(0, 0, 0)
   heroTracked = false
   mochi.place(0.8, -1.0)

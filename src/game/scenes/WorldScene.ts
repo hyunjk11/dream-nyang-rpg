@@ -117,6 +117,9 @@ export class WorldScene extends Phaser.Scene {
   /** Shared follow brain (src/sim/companion.ts), run in metres: PX_PER_M pixels per metre. */
   private mochiBrain = createCat(0, 0)
   private mochiReady = false
+  /** Decaying knockback push (px/s), added to steering so a hit slides her instead of a 1-frame lurch. */
+  private knockX = 0
+  private knockY = 0
   private frameDt = 1 / 60
   private leadX = 0
   private leadY = 0
@@ -232,6 +235,8 @@ export class WorldScene extends Phaser.Scene {
     // Scenes are reused across zone travel, so reset the follow state here, not in fields.
     this.mochiBrain = createCat(0, 0)
     this.mochiReady = false
+    this.knockX = 0
+    this.knockY = 0
     this.mochiShadow = this.add.ellipse(spawn.x, spawn.y, 36, 12, 0x241433, 0.22)
     const look = cameraFocus(spawn.x, spawn.y, 0, this.avatar.displayHeight)
     this.focus = this.add.zone(look.x, look.y, 4, 4)
@@ -379,7 +384,18 @@ export class WorldScene extends Phaser.Scene {
         this.tweens.add({ targets: ghost, alpha: 0, duration: 180, onComplete: () => ghost.destroy() })
       }
     } else {
-      this.player.setVelocity(axis.x * stats.moveSpeed, axis.y * stats.moveSpeed)
+      // The push used to be a one-off setVelocity that the very next frame overwrote with input,
+      // so it read as a jerk. Now it decays over ~0.35 s (frame-rate independent) and briefly
+      // takes some steering away so holding a key into the enemy can't cancel it.
+      const decay = Math.exp(-9 * dt)
+      this.knockX *= decay
+      this.knockY *= decay
+      if (Math.hypot(this.knockX, this.knockY) < 4) {
+        this.knockX = 0
+        this.knockY = 0
+      }
+      const control = 1 - Math.min(1, Math.hypot(this.knockX, this.knockY) / 320) * 0.6
+      this.player.setVelocity(axis.x * stats.moveSpeed * control + this.knockX, axis.y * stats.moveSpeed * control + this.knockY)
       this.moving = Math.hypot(axis.x, axis.y) > 0.1
     }
     const pointer = this.input.activePointer
@@ -890,7 +906,8 @@ export class WorldScene extends Phaser.Scene {
     this.floatText(this.player.x, this.player.y - 64, `-${left}`, '#ff9eb8', 20)
     if (source?.lifesteal) source.hp = Math.min(source.maxHp, source.hp + left * source.lifesteal)
     const ang = source ? Math.atan2(this.player.y - source.sprite.y, this.player.x - source.sprite.x) : this.aim + Math.PI
-    this.player.setVelocity(Math.cos(ang) * 180, Math.sin(ang) * 180)
+    this.knockX = Math.cos(ang) * 320
+    this.knockY = Math.sin(ang) * 320
     commit()
   }
 
