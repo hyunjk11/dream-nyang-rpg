@@ -1,3 +1,4 @@
+import { GunSound, type GunCue } from './dungeon/gunsound'
 import '@fontsource/jua/400.css'
 import '@fontsource/noto-sans-kr/400.css'
 import './style.css'
@@ -225,6 +226,10 @@ function enterSewer(seed = Math.floor(Math.random() * 1e9)): void {
         lights: stage.touch ? 2 : 4,
         hurt: (amount, from) => sewerHurt(amount, from),
         banner: (title, sub) => zoneBanner(title, sub),
+        gun: (cue, gain, pitch) => gunSfx(cue, gain, pitch),
+        hitStop: (seconds) => {
+          combat.hitStop = Math.max(combat.hitStop, seconds)
+        },
       },
       seed,
     )
@@ -676,6 +681,16 @@ function float(text: string, at: Vector3, color: string): void {
 }
 
 /** A sewer foe or boss orb landed on her. */
+let gunSound: GunSound | null = null
+/** Synth gun layer on the shared sfx bus, built the first time audio is live. */
+function gunSfx(cue: GunCue, gain?: number, pitch?: number): void {
+  if (audio.master <= 0.001) return
+  const c = audio.context()
+  if (!c) return
+  gunSound ??= new GunSound(c.ctx, c.bus)
+  gunSound.play(cue, gain, pitch)
+}
+
 function sewerHurt(amount: number, from: Vector3): void {
   const at = hero.object.position
   if (!hero.hurt(amount, from)) return

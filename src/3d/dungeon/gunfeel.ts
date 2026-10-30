@@ -121,8 +121,8 @@ export function spreadDir(dx: number, dy: number, dz: number, angle: number, r1:
   return { x: ox / l, y: oy / l, z: oz / l }
 }
 
-/** Surface normal where a ray (unit d) met the maze at p: floor, ceiling or a tile face. */
-export function hitNormal(maze: Maze, px: number, py: number, pz: number, dx: number, dy: number, dz: number): { x: number; y: number; z: number } {
+/** Surface normal where a ray (horizontal direction dx, dz) met the maze at p: floor, ceiling or a tile face. */
+export function hitNormal(maze: Maze, px: number, py: number, pz: number, dx: number, dz: number): { x: number; y: number; z: number } {
   if (py <= 0.04) return { x: 0, y: 1, z: 0 }
   if (py >= CEILING - 0.04) return { x: 0, y: -1, z: 0 }
   const tileOf = (x: number, z: number) => ({ x: Math.floor(x / TILE + maze.w / 2), y: Math.floor(z / TILE + maze.h / 2) })

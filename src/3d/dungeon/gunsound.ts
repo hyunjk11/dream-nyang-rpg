@@ -18,7 +18,7 @@ function noise(seed: number): () => number {
 }
 
 /** Mono samples for one cue variant at `rate` Hz, peak-normalised to `peak` (< 1, no clipping). */
-export function synth(cue: GunCue, rate: number, variant = 0, peak = 0.8): Float32Array {
+export function synth(cue: GunCue, rate: number, variant = 0, peak = 0.8): Float32Array<ArrayBuffer> {
   const len: Record<GunCue, number> = { shot: 0.085, tail: 0.18, tick: 0.045, crit: 0.07, pop: 0.11, thunk: 0.16, hiss: 0.6 }
   const n = Math.round(len[cue] * rate)
   const out = new Float32Array(n)

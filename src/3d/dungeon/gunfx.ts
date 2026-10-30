@@ -126,7 +126,6 @@ export class GunFx {
   private readonly casings: Casing[] = []
   private readonly splatList: Splat[] = []
   private readonly m = new Matrix4()
-  private readonly q = new Quaternion()
   private readonly e = new Object3D()
   private readonly s = new Vector3()
   private readonly c = new Color()
