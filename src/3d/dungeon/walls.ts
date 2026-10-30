@@ -91,3 +91,19 @@ export function rayHit(maze: Maze, ox: number, oy: number, oz: number, dx: numbe
   }
   return best
 }
+
+/** Wall faces between an open tile and a solid one: tile, side (0 +x, 1 -x, 2 +z, 3 -z). */
+export function wallFaces(maze: Maze): { x: number; y: number; side: number }[] {
+  const out: { x: number; y: number; side: number }[] = []
+  const solid = (x: number, y: number) => x < 0 || y < 0 || x >= maze.w || y >= maze.h || maze.tiles[y * maze.w + x] === Tile.Solid
+  for (let y = 0; y < maze.h; y += 1) {
+    for (let x = 0; x < maze.w; x += 1) {
+      if (solid(x, y)) continue
+      if (solid(x + 1, y)) out.push({ x, y, side: 0 })
+      if (solid(x - 1, y)) out.push({ x, y, side: 1 })
+      if (solid(x, y + 1)) out.push({ x, y, side: 2 })
+      if (solid(x, y - 1)) out.push({ x, y, side: 3 })
+    }
+  }
+  return out
+}

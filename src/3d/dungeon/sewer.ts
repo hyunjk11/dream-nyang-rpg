@@ -8,33 +8,68 @@ import {
   Mesh,
   MeshToonMaterial,
   Object3D,
-  PlaneGeometry,
 } from 'three'
 import { toonGradient } from '../materials'
+import { DREAM, brickTexture, flagTexture, hash } from './dream'
 import { CEILING, TILE, Tile, tileCentre, type Maze } from './maze'
+import { wallFaces } from './walls'
 
-/** Wall faces between an open tile and a solid one: tile, side (0 +x, 1 -x, 2 +z, 3 -z). */
-export function wallFaces(maze: Maze): { x: number; y: number; side: number }[] {
-  const out: { x: number; y: number; side: number }[] = []
-  const solid = (x: number, y: number) => x < 0 || y < 0 || x >= maze.w || y >= maze.h || maze.tiles[y * maze.w + x] === Tile.Solid
-  for (let y = 0; y < maze.h; y += 1) {
-    for (let x = 0; x < maze.w; x += 1) {
-      if (solid(x, y)) continue
-      if (solid(x + 1, y)) out.push({ x, y, side: 0 })
-      if (solid(x - 1, y)) out.push({ x, y, side: 1 })
-      if (solid(x, y + 1)) out.push({ x, y, side: 2 })
-      if (solid(x, y - 1)) out.push({ x, y, side: 3 })
+export { wallFaces }
+
+/** Radius of the vault where each wall curls in to meet the ceiling (an arched brick tunnel). */
+export const VAULT = 1.05
+
+/**
+ * One wall face: straight up from the floor, then a quarter arc curling 1.05 m into the tunnel
+ * to the ceiling. Faces +z, spans x in [-TILE/2, TILE/2]. UVs in brick units.
+ */
+export function vaultGeometry(segments = 7): BufferGeometry {
+  const prof: [number, number, number][] = [] // [z, y, arc length]
+  const y0 = CEILING - VAULT
+  prof.push([0, 0, 0], [0, y0, y0])
+  let len = y0
+  let pz = 0
+  let py = y0
+  for (let i = 1; i <= segments; i += 1) {
+    const a = Math.PI - (i / segments) * (Math.PI / 2)
+    const z = VAULT + Math.cos(a) * VAULT
+    const y = y0 + Math.sin(a) * VAULT
+    len += Math.hypot(z - pz, y - py)
+    prof.push([z, y, len])
+    pz = z
+    py = y
+  }
+  const pos: number[] = []
+  const uv: number[] = []
+  const h = TILE / 2
+  for (let i = 0; i < prof.length - 1; i += 1) {
+    const [z0, ya, s0] = prof[i]
+    const [z1, yb, s1] = prof[i + 1]
+    const quad = [
+      [-h, ya, z0, 0, s0],
+      [h, ya, z0, 1, s0],
+      [h, yb, z1, 1, s1],
+      [-h, yb, z1, 0, s1],
+    ]
+    for (const k of [0, 1, 2, 0, 2, 3]) {
+      const q = quad[k]
+      pos.push(q[0], q[1], q[2])
+      uv.push(q[3] * 1.5, q[4] / 2.4)
     }
   }
-  return out
+  const geo = new BufferGeometry()
+  geo.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
+  geo.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2))
+  geo.computeVertexNormals()
+  return geo
 }
 
 /** Room tint per tile kind, so the start, halls and the boss room read apart. */
 const FLOOR_TINT: Record<number, number> = {
-  [Tile.Corridor]: 0x8f7fb8,
-  [Tile.Chamber]: 0x7fa9b8,
-  [Tile.Start]: 0xb8a0c8,
-  [Tile.Boss]: 0xb87fa8,
+  [Tile.Corridor]: 0x8576b0,
+  [Tile.Chamber]: 0x6f9eaa,
+  [Tile.Start]: 0x8f9ed0,
+  [Tile.Boss]: 0xb482ac,
 }
 
 /**
@@ -64,7 +99,7 @@ export class Sewer {
         if (kind === Tile.Solid) continue
         const { x, z } = tileCentre(maze, tx, ty)
         c.set(FLOOR_TINT[kind] ?? 0x8f7fb8)
-        if (!up) c.multiplyScalar(0.7)
+        if (!up) c.set(0x4a3870)
         const a = [x - h, y, z - h]
         const b = [x + h, y, z - h]
         const d = [x - h, y, z + h]
@@ -87,7 +122,7 @@ export class Sewer {
   }
 
   private floor(): Mesh {
-    const mesh = new Mesh(this.quads(0, true), new MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() }))
+    const mesh = new Mesh(this.quads(0, true), new MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient(), map: flagTexture() }))
     mesh.name = 'sewer-floor'
     mesh.receiveShadow = true
     return mesh
@@ -101,10 +136,11 @@ export class Sewer {
 
   private walls(): InstancedMesh {
     const faces = wallFaces(this.maze)
-    const geo = new PlaneGeometry(TILE, CEILING)
-    geo.translate(0, CEILING / 2, 0)
-    const mesh = new InstancedMesh(geo, new MeshToonMaterial({ color: 0xa68fd0, gradientMap: toonGradient() }), faces.length)
+    const geo = vaultGeometry()
+    const mat = new MeshToonMaterial({ color: 0xffffff, gradientMap: toonGradient(), map: brickTexture(), side: DoubleSide })
+    const mesh = new InstancedMesh(geo, mat, faces.length)
     const o = new Object3D()
+    const tint = new Color()
     const yawFor = [-Math.PI / 2, Math.PI / 2, Math.PI, 0]
     faces.forEach((f, i) => {
       const { x, z } = tileCentre(this.maze, f.x, f.y)
@@ -113,6 +149,10 @@ export class Sewer {
       o.rotation.set(0, yawFor[f.side], 0)
       o.updateMatrix()
       mesh.setMatrixAt(i, o.matrix)
+      // Districts of lavender, mint and pink brick, so each part of the maze reads apart.
+      const kind = this.maze.tiles[f.y * this.maze.w + f.x]
+      const base = kind === Tile.Boss ? DREAM.brick[2] : DREAM.brick[Math.floor(hash(f.x >> 2, f.y >> 2, 1) * DREAM.brick.length)]
+      mesh.setColorAt(i, tint.set(base))
     })
     mesh.name = 'sewer-walls'
     mesh.receiveShadow = true
