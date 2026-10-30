@@ -155,3 +155,28 @@ body.sewer #hint { animation: sewer-hint 7s ease forwards; }
 #bossbar b { display: block; width: 100%; height: 12px; border-radius: 999px; background: rgba(36, 22, 58, 0.6); border: 2px solid rgba(255, 246, 251, 0.7); overflow: hidden; }
 #bossbar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ff7ab8, #ffd36e); transition: width 0.12s; }
 #bossbar.hidden { display: none; }
+
+/* Full-auto feedback: hit marker, damage numbers, heat ring. */
+#hitmark { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; opacity: 0; }
+#hitmark.on { opacity: 1; }
+#hitmark i { position: absolute; width: 2px; height: 8px; left: -1px; top: -4px; background: #ffffff; border-radius: 2px; box-shadow: 0 0 0 1px rgba(58, 36, 72, 0.7); }
+#hitmark i:nth-child(1) { transform: rotate(45deg) translateY(-11px); }
+#hitmark i:nth-child(2) { transform: rotate(135deg) translateY(-11px); }
+#hitmark i:nth-child(3) { transform: rotate(225deg) translateY(-11px); }
+#hitmark i:nth-child(4) { transform: rotate(315deg) translateY(-11px); }
+#hitmark.crit i { background: #ffe58a; }
+#hitmark.kill i { background: #ff6fb8; height: 12px; top: -6px; box-shadow: 0 0 6px #ff9fd2; }
+#hitmark.kill i:nth-child(1) { transform: rotate(45deg) translateY(-14px); }
+#hitmark.kill i:nth-child(2) { transform: rotate(135deg) translateY(-14px); }
+#hitmark.kill i:nth-child(3) { transform: rotate(225deg) translateY(-14px); }
+#hitmark.kill i:nth-child(4) { transform: rotate(315deg) translateY(-14px); }
+.dmg { position: absolute; left: 0; top: 0; pointer-events: none; font-family: "Jua", sans-serif; font-size: 17px; color: #fff6fb; text-shadow: 0 0 3px #5a2f78, 0 2px 0 #5a2f78; will-change: transform; white-space: nowrap; }
+.dmg.crit { font-size: 24px; color: #ffe27a; }
+.dmg.elite { color: #ffd0a0; }
+.dmg.boss { color: #ffb0dc; font-size: 20px; }
+#heat { position: absolute; left: 50%; top: calc(50% + 30px); transform: translateX(-50%); width: 56px; height: 5px; border-radius: 999px; background: rgba(36, 22, 58, 0.45); pointer-events: none; opacity: 0; transition: opacity 0.2s; --heat: 0; }
+#heat.on { opacity: 1; }
+#heat b { display: block; height: 100%; width: calc(var(--heat) * 100%); border-radius: 999px; background: linear-gradient(90deg, #9ad7ff, #ffb0dc 70%, #ff6f9a); }
+#heat span { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); font-family: "Jua", sans-serif; font-size: 13px; color: #ffb0dc; text-shadow: 0 1px 3px #3a1f50; display: none; white-space: nowrap; }
+#heat.vent span { display: block; animation: vent 0.3s ease-in-out infinite alternate; }
+@keyframes vent { from { opacity: 0.5; } to { opacity: 1; } }
