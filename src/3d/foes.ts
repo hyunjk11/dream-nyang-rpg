@@ -1,6 +1,6 @@
 import { Box3, ConeGeometry, Group, Mesh, MeshToonMaterial, Object3D, SphereGeometry, Vector3 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { applyToon, toon } from './materials'
+import { addOutline, applyToon, toon } from './materials'
 
 export type FoeKind = 'slime' | 'bat' | 'bug' | 'rabbit' | 'bloom'
 
@@ -176,6 +176,7 @@ export async function loadFoeModels(base: string): Promise<number> {
       model.position.set(-centre.x * scale, -box.min.y * scale, -centre.z * scale)
       const wrap = new Group()
       wrap.add(model)
+      addOutline(wrap, kind === 'bloom' ? 0.024 : 0.015)
       templates.set(kind, wrap)
       return 1
     } catch {
@@ -199,7 +200,7 @@ export function makeFoeBody(kind: FoeKind): FoeBody {
   const mats: MeshToonMaterial[] = []
   inner.traverse((obj) => {
     const mesh = obj as Mesh
-    if (!mesh.isMesh) return
+    if (!mesh.isMesh || mesh.userData.outline) return
     // Own materials per foe so a hit flash lights only the one that was hit.
     const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
     const own = list.map((m) => (m as MeshToonMaterial).clone())
@@ -207,6 +208,7 @@ export function makeFoeBody(kind: FoeKind): FoeBody {
     for (const m of own) if ((m as MeshToonMaterial).emissive) mats.push(m as MeshToonMaterial)
     mesh.castShadow = true
   })
+  if (!template) addOutline(inner, 0.015)
   rig.add(inner)
   return { rig, mats, meshy: Boolean(template) }
 }

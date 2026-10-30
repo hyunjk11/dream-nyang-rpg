@@ -10,14 +10,13 @@ export interface Budget {
   crystals: number
   mushrooms: number
   motes: number
-  clouds: number
   texture: number
 }
 
 export function islandBudget(lowPower: boolean): Budget {
   return lowPower
-    ? { grass: 800, flowers: 160, pebbles: 80, crystals: 12, mushrooms: 14, motes: 60, clouds: 46, texture: 1024 }
-    : { grass: 2200, flowers: 320, pebbles: 150, crystals: 18, mushrooms: 22, motes: 140, clouds: 72, texture: 2048 }
+    ? { grass: 800, flowers: 160, pebbles: 80, crystals: 12, mushrooms: 14, motes: 60, texture: 1024 }
+    : { grass: 2200, flowers: 320, pebbles: 150, crystals: 18, mushrooms: 22, motes: 140, texture: 2048 }
 }
 
 /** Deterministic RNG so the island looks the same every visit. */

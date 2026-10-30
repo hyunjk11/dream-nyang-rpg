@@ -10,7 +10,6 @@ import {
   DodecahedronGeometry,
   Float32BufferAttribute,
   Group,
-  IcosahedronGeometry,
   InstancedMesh,
   LinearMipmapLinearFilter,
   Mesh,
@@ -18,6 +17,7 @@ import {
   Object3D,
   OctahedronGeometry,
   Points,
+  RingGeometry,
   SRGBColorSpace,
   Scene,
   ShaderMaterial,
@@ -25,12 +25,16 @@ import {
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { ISLAND_RADIUS, PATH_WIDTH, islandBudget, islandPaths, mulberry32, rimRadius, scatterSpots, type Spot } from './island'
-import { toon, toonGradient } from './materials'
+import { outlineInstanced, toon, toonGradient } from './materials'
 
 /**
  * Dreamy pastel toon island. Every decoration family is one InstancedMesh (or one Points),
  * so the whole island costs about a dozen draw calls. Low power halves counts and texture size.
  */
+/** The cloud sea sits this far below the ground and starts this far outside the island. */
+export const CLOUD_SEA_Y = -7.5
+export const CLOUD_SEA_INNER = ISLAND_RADIUS + 1.5
+
 export function buildIsland(scene: Scene, lowPower: boolean): { tick: (time: number) => void; drawCalls: number } {
   const budget = islandBudget(lowPower)
   const paths = islandPaths()
@@ -53,7 +57,7 @@ export function buildIsland(scene: Scene, lowPower: boolean): { tick: (time: num
   // Grass tufts: three bent blades, swaying in the vertex shader.
   const grassSpots = scatterSpots({ count: budget.grass, minR: 0.6, maxR: ISLAND_RADIUS - 0.5, clearPath: 0.08, clearCenter: 0, scale: [0.7, 1.35], clumps: 26, seed: 11 }, paths)
   const grass = instanced(tuftGeometry(), sway(toonVertex(true), time, 1), grassSpots, (spot, color) => {
-    color.setHSL(0.26 + spot.tint * 0.12, 0.42 + spot.tint * 0.15, 0.62 + spot.tint * 0.12)
+    color.setHSL(0.27 + spot.tint * 0.12, 0.45 + spot.tint * 0.15, 0.46 + spot.tint * 0.12)
   })
   grass.name = 'grass'
   root.add(grass)
@@ -84,6 +88,7 @@ export function buildIsland(scene: Scene, lowPower: boolean): { tick: (time: num
   crystals.castShadow = !lowPower
   crystals.name = 'crystals'
   root.add(crystals)
+  if (!lowPower) root.add(outlineInstanced(crystals, 0.03))
 
   const mushroomSpots = scatterSpots({ count: budget.mushrooms, minR: 1.8, maxR: ISLAND_RADIUS - 1, clearPath: 0.3, clearCenter: 1.8, scale: [0.6, 1.4], clumps: 7, seed: 53 }, paths)
   const caps = [0xff8fb4, 0xc9a4ff, 0xffa77a, 0x8fd0ff]
@@ -93,24 +98,11 @@ export function buildIsland(scene: Scene, lowPower: boolean): { tick: (time: num
   mushrooms.castShadow = !lowPower
   mushrooms.name = 'mushrooms'
   root.add(mushrooms)
+  if (!lowPower) root.add(outlineInstanced(mushrooms, 0.025))
 
-  // Clouds hugging the cliffs and drifting below the rim.
-  const rand = mulberry32(71)
-  const cloudSpots: Spot[] = []
-  for (let i = 0; i < budget.clouds; i += 1) {
-    const ang = (i / budget.clouds) * Math.PI * 2 + rand() * 0.2
-    const r = rimRadius(ang) + 0.2 + rand() * 2.6
-    cloudSpots.push({ x: Math.cos(ang) * r, z: Math.sin(ang) * r, scale: 0.6 + rand() * 0.9, turn: rand() * 6.28, tint: rand() })
-  }
-  const cloudMat = toon(0xffffff, 0xffe9f6, 0.22)
-  const clouds = instanced(cloudGeometry(), drift(cloudMat, time), cloudSpots, (spot, color) => {
-    color.setHSL(0.88 - spot.tint * 0.12, 0.6, 0.9 + spot.tint * 0.06)
-  }, (spot, dummy) => {
-    dummy.position.y = -1.5 - spot.tint * 3.2
-    dummy.scale.set(spot.scale * 1.5, spot.scale * 0.7, spot.scale * 1.1)
-  })
-  clouds.name = 'clouds'
-  root.add(clouds)
+  // A soft sea of clouds far below the rim. The old instanced puffs hugged the cliff at
+  // -1.5..-4.7 m and read as flat pastel blobs in front of the camera at the island edge.
+  root.add(cloudSea(time))
 
   // A few tiny islands far away so the edge reads as "floating in a dream".
   const far = new InstancedMesh(cliffGeometry(0.16, 0.0, 99), toonVertex(), 5)
@@ -185,7 +177,7 @@ function groundMaterial(size: number, paths: ReturnType<typeof islandPaths>): Me
   const ctx = canvas.getContext('2d')
   const mat = toon(0xffffff)
   if (!ctx) {
-    mat.color.set(0xa8dca0)
+    mat.color.set(0x7cbf86)
     return mat
   }
   const span = ISLAND_RADIUS + 1
@@ -193,9 +185,9 @@ function groundMaterial(size: number, paths: ReturnType<typeof islandPaths>): Me
   const px = (x: number) => (x / (2 * span) + 0.5) * size
   const pz = (z: number) => (z / (2 * span) + 0.5) * size
   const rand = mulberry32(5)
-  ctx.fillStyle = '#a2dc96'
+  ctx.fillStyle = '#78bd80'
   ctx.fillRect(0, 0, size, size)
-  const blobs = ['#9dd796', '#bde8ab', '#b2e3c2', '#cfe8a6', '#9fd8b4', '#c5eab9', '#d9d4f0', '#f2d6e6']
+  const blobs = ['#6cb37a', '#8fcb88', '#7fc49a', '#a3cf84', '#68b090', '#93cf96', '#b9acdc', '#e2b4cc']
   for (let i = 0; i < 90; i += 1) {
     const x = rand() * size
     const y = rand() * size
@@ -218,7 +210,7 @@ function groundMaterial(size: number, paths: ReturnType<typeof islandPaths>): Me
     const y = rand() * size
     const len = (0.06 + rand() * 0.1) * ppm
     ctx.globalAlpha = 0.18 + rand() * 0.2
-    ctx.strokeStyle = rand() > 0.5 ? '#7fc283' : '#d6f2c2'
+    ctx.strokeStyle = rand() > 0.5 ? '#4f9a66' : '#b4e0a0'
     ctx.lineWidth = Math.max(1, ppm * 0.018)
     ctx.beginPath()
     ctx.moveTo(x, y)
@@ -235,10 +227,10 @@ function groundMaterial(size: number, paths: ReturnType<typeof islandPaths>): Me
     path.forEach((p, i) => (i ? ctx.lineTo(px(p.x), pz(p.z)) : ctx.moveTo(px(p.x), pz(p.z))))
     ctx.stroke()
   }
-  paths.forEach((path, k) => stroke(path, PATH_WIDTH[k] * 2 + 0.5, '#8fca8e', 0.35))
-  paths.forEach((path, k) => stroke(path, PATH_WIDTH[k] * 2 + 0.18, '#e6bfd0', 1))
-  paths.forEach((path, k) => stroke(path, PATH_WIDTH[k] * 2, '#f9e3ea', 1))
-  paths.forEach((path, k) => stroke(path, PATH_WIDTH[k] * 1.1, '#fff1f4', 0.6))
+  paths.forEach((path, k) => stroke(path, PATH_WIDTH[k] * 2 + 0.5, '#4f8f6a', 0.4))
+  paths.forEach((path, k) => stroke(path, PATH_WIDTH[k] * 2 + 0.18, '#c58aa8', 1))
+  paths.forEach((path, k) => stroke(path, PATH_WIDTH[k] * 2, '#deb2c2', 1))
+  paths.forEach((path, k) => stroke(path, PATH_WIDTH[k] * 1.1, '#ebc8d2', 0.5))
   // Stepping stones and sand specks on the paths.
   for (const [k, path] of paths.entries()) {
     for (let i = 1; i < path.length; i += 1) {
@@ -457,21 +449,40 @@ function pebbleGeometry(): BufferGeometry {
   return g
 }
 
-function cloudGeometry(): BufferGeometry {
-  const puffs = [
-    [0, 0, 0, 0.55],
-    [0.5, -0.05, 0.1, 0.42],
-    [-0.48, -0.08, -0.05, 0.4],
-    [0.2, 0.22, -0.1, 0.38],
-    [-0.15, 0.18, 0.2, 0.34],
-  ]
-  return mergeAll(
-    puffs.map(([x, y, z, r]) => {
-      const g = new IcosahedronGeometry(r, 1)
-      g.translate(x, y, z)
-      return paint(g, [1, 1, 1], 1)
-    }),
-  )
+
+function cloudSea(time: { value: number }): Mesh {
+  const mat = new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+    uniforms: {
+      uTime: time,
+      uLow: { value: new Color(0x8a68c0) },
+      uHigh: { value: new Color(0xffd6ee) },
+      uInner: { value: CLOUD_SEA_INNER },
+    },
+    vertexShader: 'varying vec2 vXZ; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vXZ = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: `uniform float uTime; uniform vec3 uLow; uniform vec3 uHigh; uniform float uInner; varying vec2 vXZ;
+      float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float n(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y); }
+      float fbm(vec2 p){ float v = 0.0; float a = 0.5; for (int k = 0; k < 4; k++){ v += a * n(p); p = p * 2.03 + 7.1; a *= 0.5; } return v; }
+      void main(){
+        vec2 p = vXZ * 0.07 + vec2(uTime * 0.012, uTime * 0.007);
+        float c = fbm(p);
+        float r = length(vXZ);
+        float alpha = smoothstep(0.38, 0.72, c) * smoothstep(uInner, uInner + 5.0, r) * (1.0 - smoothstep(42.0, 56.0, r));
+        vec3 col = mix(uLow, uHigh, smoothstep(0.45, 0.85, c));
+        gl_FragColor = vec4(col, alpha * 0.85);
+        #include <colorspace_fragment>
+      }`,
+  })
+  const sea = new Mesh(new RingGeometry(ISLAND_RADIUS - 1, 58, 128, 2), mat)
+  sea.rotation.x = -Math.PI / 2
+  sea.position.y = CLOUD_SEA_Y
+  sea.name = 'cloud-sea'
+  sea.renderOrder = -0.5
+  return sea
 }
 
 function skyDome(): Mesh {
@@ -604,23 +615,6 @@ transformed.z += cos(uTime * 1.3 + root.x * 0.8) * bend * 0.12;
   return mat
 }
 
-function drift(mat: MeshToonMaterial, time: { value: number }): MeshToonMaterial {
-  mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = time
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
-      .replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-#ifdef USE_INSTANCING
-vec3 root = instanceMatrix[3].xyz;
-transformed.y += sin(uTime * 0.35 + root.x * 0.2 + root.z * 0.17) * 0.35;
-#endif`,
-      )
-  }
-  mat.customProgramCacheKey = () => 'drift'
-  return mat
-}
 
 function paint(geo: BufferGeometry, rgb: number[], tint = 0): BufferGeometry {
   const count = geo.attributes.position.count

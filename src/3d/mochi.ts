@@ -1,4 +1,5 @@
 import {
+  BackSide,
   Box3,
   ConeGeometry,
   Group,
@@ -6,15 +7,17 @@ import {
   Matrix4,
   Material,
   Mesh,
+  MeshBasicMaterial,
   MeshDepthMaterial,
   Object3D,
   RGBADepthPacking,
   SphereGeometry,
+  Vector3,
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { CAT, createCat, gaitWeights, stepCat, type CatBrain } from '../sim/companion'
-import { applyToon, toon } from './materials'
+import { OUTLINE_COLOR, applyToon, chainOutlinePush, outlineGeometry, toon } from './materials'
 
 const loader = new GLTFLoader()
 loader.setMeshoptDecoder(MeshoptDecoder)
@@ -90,9 +93,10 @@ export class Mochi {
   private rigShaders(root: Object3D): void {
     this.visual.updateMatrixWorld(true)
     const toVisual = new Matrix4().copy(this.visual.matrixWorld).invert()
+    const shells: [Mesh, Mesh][] = []
     root.traverse((obj) => {
       const mesh = obj as Mesh
-      if (!mesh.isMesh) return
+      if (!mesh.isMesh || mesh.userData.outline) return
       const toCat = new Matrix4().multiplyMatrices(toVisual, mesh.matrixWorld)
       const fromCat = new Matrix3().setFromMatrix4(toCat).invert()
       const local = { uToCat: { value: toCat }, uFromCat: { value: fromCat } }
@@ -102,7 +106,18 @@ export class Mochi {
       gaitShader(depth, this.gait, local)
       mesh.customDepthMaterial = depth
       mesh.castShadow = true
+      // Ink outline that bends with the same leg/tail shader as the body.
+      const ws = mesh.getWorldScale(new Vector3())
+      const width = 0.012 / Math.max(1e-4, (ws.x + ws.y + ws.z) / 3)
+      const ink = new MeshBasicMaterial({ color: OUTLINE_COLOR, side: BackSide })
+      gaitShader(ink, this.gait, local)
+      chainOutlinePush(ink, width, `mochi-outline-${width.toFixed(5)}`)
+      const shell = new Mesh(outlineGeometry(mesh.geometry), ink)
+      shell.userData.outline = true
+      shell.frustumCulled = false
+      shells.push([mesh, shell])
     })
+    for (const [mesh, shell] of shells) mesh.add(shell)
   }
 
   /** Put Mochi at a spot without walking there (spawn, restart). */

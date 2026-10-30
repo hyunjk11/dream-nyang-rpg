@@ -106,7 +106,7 @@ export class Hero {
         this.flashMeshes.push(mesh)
       })
       applyToon(model)
-      addOutline(model)
+      addOutline(model, 0.014)
       this.object.add(model)
       this.mixer = new AnimationMixer(model)
       for (const clip of gltf.animations) plantFeet(clip)
@@ -581,7 +581,7 @@ function createWaterGun(muzzle: Object3D): Group {
     const mesh = child as Mesh
     if (mesh.isMesh) mesh.castShadow = true
   }
-  addOutline(gun)
+  addOutline(gun, 0.01)
   return gun
 }
 
