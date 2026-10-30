@@ -65,6 +65,11 @@ class Bus {
     this.beds.battle.gain.setTargetAtTime(gains.battle * MUSIC.level, now, 0.08)
   }
 
+  /** Live context + sfx bus for synthesised sounds (null until audio has started). */
+  context(): { ctx: AudioContext; bus: GainNode } | null {
+    return this.ctx && this.sfxBus ? { ctx: this.ctx, bus: this.sfxBus } : null
+  }
+
   get battleMix(): number {
     return this.music.mix
   }
