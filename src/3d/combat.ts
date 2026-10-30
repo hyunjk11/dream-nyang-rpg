@@ -92,8 +92,32 @@ export class Combat {
     })
   }
 
+  // Shots and drops reuse one geometry per size and one material per color. Each shot used to
+  // allocate a fresh sphere and toon material that were never disposed (GPU buffers piled up).
+  private geoms = new Map<number, SphereGeometry>()
+  private mats = new Map<string, MeshToonMaterial>()
+
+  private sphere(radius: number, w: number, h: number): SphereGeometry {
+    let geo = this.geoms.get(radius)
+    if (!geo) {
+      geo = new SphereGeometry(radius, w, h)
+      this.geoms.set(radius, geo)
+    }
+    return geo
+  }
+
+  private glow(color: number, intensity: number): MeshToonMaterial {
+    const key = `${color}:${intensity}`
+    let mat = this.mats.get(key)
+    if (!mat) {
+      mat = toon(color, color, intensity)
+      this.mats.set(key, mat)
+    }
+    return mat
+  }
+
   fire(origin: Vector3, dir: Vector3, damage: number, fromHero: boolean, color: number, speed: number): void {
-    const mesh = new Mesh(new SphereGeometry(fromHero ? 0.09 : 0.11, 8, 6), toon(color, color, 0.45))
+    const mesh = new Mesh(this.sphere(fromHero ? 0.09 : 0.11, 8, 6), this.glow(color, 0.45))
     mesh.position.copy(origin)
     this.root.add(mesh)
     this.shots.push({
@@ -241,7 +265,7 @@ export class Combat {
   private drop(at: Vector3): void {
     const roll = Math.random()
     const color = roll > 0.92 ? 0xffe08a : roll > 0.7 ? 0xd59bff : roll > 0.4 ? 0x7eb6ff : 0xb8f2d0
-    const mesh = new Mesh(new SphereGeometry(0.12, 10, 8), toon(color, color, 0.7))
+    const mesh = new Mesh(this.sphere(0.12, 10, 8), this.glow(color, 0.7))
     mesh.position.copy(at)
     mesh.position.y = 0.4
     this.root.add(mesh)

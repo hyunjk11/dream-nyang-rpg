@@ -52,3 +52,9 @@ input[type="range"] { width: 120px; }
   body .actions { display: flex; }
   body #hint { display: none; }
 }
+.bottom label { color: #241433; display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; background: rgba(255, 248, 252, 0.92); font-family: "Jua", sans-serif; }
+/* Touch: the settings row sat on top of the dash/attack buttons (음량 overlapped 대시).
+   Move it under the top HUD row, out of the thumbs' way. */
+body.touch .bottom { top: 58px; bottom: auto; left: auto; right: 16px; gap: 6px; }
+body.touch .bottom button, body.touch .bottom label { padding: 5px 10px; font-size: 13px; }
+body.touch #vol { width: 84px; }

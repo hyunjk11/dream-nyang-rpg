@@ -67,6 +67,7 @@ export class Hero {
   private holdState: HoldState = 'idle'
   private twist = 0
   private recoilT = 0
+  private moveYaw = 0
   private spines: Object3D[] = []
   private spine: Object3D | null = null
   private head: Object3D | null = null
@@ -181,6 +182,7 @@ export class Hero {
       this.object.position.x += nx * speed * dt
       this.object.position.z += nz * speed * dt
       const moveYaw = Math.atan2(nx, nz)
+      this.moveYaw = moveYaw
       const aimYaw = Math.atan2(input.aim.x - this.object.position.x, input.aim.z - this.object.position.z)
       // While firing she squares up to the aim (twin-stick feel); otherwise she faces where she walks.
       const firing = input.firing || this.shootT > 0
@@ -212,6 +214,7 @@ export class Hero {
     else if (this.running) next = 'run'
     else if (this.moving) next = 'walk'
     this.play(next, 0.16)
+    this.syncStride()
     const hold: HoldState = this.dashing ? 'dash' : this.hitT > 0.2 ? 'hit' : next === 'idle' && this.shootT > 0 ? 'shoot' : (next as HoldState)
     this.holdState = hold
     this.blendHold(HOLD_POSES[hold], dt)
@@ -344,6 +347,27 @@ export class Hero {
     const pitch = (pitchDeg * Math.PI) / 180
     const dir = new Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch))
     gun.lookAt(place.add(dir))
+  }
+
+  /**
+   * While shooting she squares up to the aim, so walking away from the cursor would play the
+   * forward clip while her body travels backward (moonwalk). Run the clip in reverse then, and
+   * slow it a little when she sidesteps.
+   */
+  private syncStride(): void {
+    const action = this.actions.get(this.current)
+    if (!action) return
+    if (this.current === 'idle' || this.current === 'death' || !this.moving || this.dashing) {
+      action.timeScale = 1
+      return
+    }
+    const along = Math.cos(this.moveYaw - this.yaw)
+    action.timeScale = along < -0.3 ? -0.9 : along < 0.3 ? 0.85 : 1
+  }
+
+  /** Direction she travels this frame (yaw), for QA and the stride sync. */
+  get move_yaw(): number {
+    return this.moveYaw
   }
 
   private play(name: string, fade: number): void {

@@ -66,8 +66,10 @@ export function cameraRelativeWish(axisX: number, axisY: number, yaw = CAMERA_YA
   const fl = Math.hypot(fx, fz) || 1
   const forwardX = fx / fl
   const forwardZ = fz / fl
-  const rightX = forwardZ
-  const rightZ = -forwardX
+  // Screen right = forward x up (Three.js is right-handed, Y up). The old (fz, -fx) pointed
+  // to screen left, which swapped A/D and the arrow keys.
+  const rightX = -forwardZ
+  const rightZ = forwardX
   return {
     x: rightX * axisX + forwardX * axisY,
     z: rightZ * axisX + forwardZ * axisY,

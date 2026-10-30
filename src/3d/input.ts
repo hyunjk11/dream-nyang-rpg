@@ -6,11 +6,13 @@ export interface Pad {
   pointer: boolean
   px: number
   py: number
+  /** Fire came from a finger (attack button or a tap), so auto-aim may help. */
+  touchFire: boolean
 }
 
 const keys = new Set<string>()
 
-export const pad: Pad = { x: 0, y: 0, fire: false, dash: false, pointer: false, px: 0, py: 0 }
+export const pad: Pad = { x: 0, y: 0, fire: false, dash: false, pointer: false, px: 0, py: 0, touchFire: false }
 
 let dashQueued = false
 
@@ -28,6 +30,7 @@ export function installInput(canvas: HTMLCanvasElement): void {
   canvas.addEventListener('pointerdown', (event) => {
     pad.pointer = true
     pad.fire = event.button === 0
+    pad.touchFire = event.pointerType !== 'mouse'
     pad.px = event.clientX
     pad.py = event.clientY
   })
@@ -50,6 +53,7 @@ export function installInput(canvas: HTMLCanvasElement): void {
   fire?.addEventListener('pointerdown', (event) => {
     event.preventDefault()
     pad.fire = true
+    pad.touchFire = true
   })
   const stick = document.getElementById('stick')
   const knob = document.getElementById('knob')
