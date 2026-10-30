@@ -21,6 +21,7 @@ import { PLAZA, PORTAL_ARRIVAL, destinations, gateLocked, zone3d, type ZoneId } 
 import { Color, Fog, HemisphereLight } from 'three'
 import type { Action, MutationResult } from '../sim/types'
 import { Vfx } from './vfx'
+import { DungeonRun, SEWER_FOG } from './dungeon/run'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -55,6 +56,11 @@ let mode: 'title' | 'intro' | 'play' | 'menu' = 'title'
 let zonePlaces: readonly Place[] = placesFor('meadow')
 let saveClock = 0
 let travelling = false
+/** The sewer run while she is down there; null on the island hub. */
+let run: DungeonRun | null = null
+const crosshair = document.getElementById('crosshair')
+const hint = document.getElementById('hint')
+const HUB_HINT = hint?.textContent ?? ''
 const talkTip = document.getElementById('talk-tip')
 const talkBtn = document.getElementById('talk')
 document.getElementById('dialog')?.addEventListener('pointerdown', (event) => {
@@ -95,7 +101,7 @@ document.getElementById('retry')?.addEventListener('click', () => restart())
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode } } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, enterSewer, leaveSewer } })
 
 void bootGame()
 
@@ -189,6 +195,64 @@ function enterZone(id: ZoneId, at: { x: number; z: number } = PORTAL_ARRIVAL): v
   if (id === 'altar' && !game.save.flags.bossIntro && combat.bossAwake) window.setTimeout(() => talk.start('boss_intro'), 900)
 }
 
+/** Down the portal into a fresh, seeded sewer maze (Hellgate-style shoulder camera). */
+function enterSewer(seed = Math.floor(Math.random() * 1e9)): void {
+  if (run) return
+  travelling = true
+  audio.sfx('windup', 0.7)
+  void fadeThrough(() => {
+    talk.close()
+    combat.setRoster([])
+    combat.places = []
+    stage.setColliders([])
+    landmarks.group.visible = false
+    stage.setWorld('sewer', SEWER_FOG)
+    setMood({ fog: SEWER_FOG.color, sky: 0xd8c8ff, clear: 0x1c1430 })
+    zonePlaces = []
+    run = new DungeonRun(
+      {
+        scene: stage.scene,
+        camera: stage.camera,
+        hero,
+        mochi,
+        vfx,
+        sfx: (cue, gain) => audio.sfx(cue, gain),
+        steps: footsteps,
+        leave: () => leaveSewer(),
+      },
+      seed,
+    )
+    document.body.classList.add('sewer')
+    crosshair?.classList.remove('hidden')
+    if (hint)
+      hint.textContent = stage.touch
+        ? '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · 공격 길게 눌러 연사 · 대시'
+        : '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · Space 대시 · Esc 시점 해제'
+    zoneBanner('꿈 하수도 미궁', '별빛 물길 아래, 꿈을 갉는 무리가 몰려온다')
+  }).then(() => {
+    travelling = false
+  })
+}
+
+/** Back up to the island hub (the village square). */
+function leaveSewer(): void {
+  if (!run || travelling) return
+  travelling = true
+  audio.sfx('windup', 0.7)
+  void fadeThrough(() => {
+    run?.dispose()
+    run = null
+    document.body.classList.remove('sewer')
+    crosshair?.classList.add('hidden')
+    if (hint) hint.textContent = HUB_HINT
+    landmarks.group.visible = true
+    stage.setWorld('island')
+    enterZone('village', PLAZA)
+  }).then(() => {
+    travelling = false
+  })
+}
+
 function travel(to: ZoneId): void {
   if (travelling) return
   travelling = true
@@ -233,7 +297,8 @@ function talkDone(actions: Action[], choice: TalkChoice | null, id: string | Tal
       mode = 'play'
     })
   }
-  if (choice?.go) travel(choice.go as ZoneId)
+  if (choice?.go === 'sewer') enterSewer()
+  else if (choice?.go) travel(choice.go as ZoneId)
   if (id === 'luna_bloom_done' && game.finished && !game.save.flags.ending) {
     game.save.flags.ending = true
     game.persist(store)
@@ -245,10 +310,14 @@ function talkDone(actions: Action[], choice: TalkChoice | null, id: string | Tal
 /** The portal's little menu, built from where the story lets her go. */
 function gateTalk(): TalkDef {
   const dests = destinations(game.save, game.zone, combat.bossAwake)
-  if (!dests.length) return { lines: [{ speaker: '모찌', portrait: 'mochi', text: gateLocked(game.zone) }] }
+  if (!dests.length && game.zone !== 'village') return { lines: [{ speaker: '모찌', portrait: 'mochi', text: gateLocked(game.zone) }] }
   return {
     lines: [{ speaker: '별문', portrait: 'prop_portal', text: '별빛 문이 일렁인다. 어디로 갈까?' }],
-    choices: [...dests.map((d) => ({ text: d.label, go: d.to })), { text: '그만두기' }],
+    choices: [
+      ...dests.map((d) => ({ text: d.label, go: d.to })),
+      ...(game.zone === 'village' ? [{ text: '꿈 하수도 미궁 (던전)', go: 'sewer' }] : []),
+      { text: '그만두기' },
+    ],
   }
 }
 
@@ -266,20 +335,17 @@ function frame(): void {
     return
   }
   game.save.playSeconds += raw
+  if (run) {
+    sewerFrame(dt, raw)
+    return
+  }
   saveClock += raw
   if (saveClock > 20) {
     saveClock = 0
     game.persist(store)
   }
   combat.shake = Math.max(0, combat.shake - raw * 1.5)
-  frames += 1
-  fpsTime += raw
-  if (fpsTime >= 0.5) {
-    fps = Math.round(frames / fpsTime)
-    fpsTime = 0
-    frames = 0
-    if (fpsEl && showFps) fpsEl.textContent = `${fps} FPS`
-  }
+  countFps(raw)
   const talking = talk.open
   const move = talking ? { x: 0, y: 0 } : axis()
   // Always relative to the live (smoothed) camera yaw, so A is screen-left after any orbit.
@@ -350,6 +416,43 @@ function frame(): void {
   paintMarkers()
   tickFloats(dt)
   stage.render()
+}
+
+/** One frame down in the sewer: the run drives hero, Mochi and the shoulder camera. */
+function sewerFrame(dt: number, raw: number): void {
+  if (!run) return
+  combat.shake = Math.max(0, combat.shake - raw * 1.5)
+  countFps(raw)
+  if (travelling) {
+    stage.render()
+    return
+  }
+  run.update(dt)
+  vfx.update(dt)
+  audio.update(dt, false)
+  if (hpFill) hpFill.style.width = `${Math.max(0, (hero.hp / hero.maxHp) * 100)}%`
+  talkTip?.classList.toggle('hidden', !run.nearPortal)
+  if (run.nearPortal && talkTip) {
+    tipAt.copy(hero.object.position).setY(2.0).project(stage.camera)
+    talkTip.style.left = `${(tipAt.x * 0.5 + 0.5) * window.innerWidth}px`
+    talkTip.style.top = `${(-tipAt.y * 0.5 + 0.5) * window.innerHeight}px`
+    talkTip.textContent = stage.touch ? '마을로' : 'E 마을로'
+  }
+  talkBtn?.classList.toggle('hidden', !run.nearPortal)
+  stage.camera.updateMatrixWorld()
+  tickFloats(dt)
+  stage.render()
+}
+
+function countFps(raw: number): void {
+  frames += 1
+  fpsTime += raw
+  if (fpsTime >= 0.5) {
+    fps = Math.round(frames / fpsTime)
+    fpsTime = 0
+    frames = 0
+    if (fpsEl && showFps) fpsEl.textContent = `${fps} FPS`
+  }
 }
 
 const stepFrom = new Vector3()

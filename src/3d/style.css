@@ -134,3 +134,15 @@ button:disabled { opacity: 0.55; cursor: default; }
 #quest-body p { margin: 2px 0; font-size: 13px; }
 #quest-body small { color: #8a7898; }
 body.menu #ui { visibility: hidden; }
+
+/* Sewer shoulder camera: centre crosshair, four ticks that spread with --spread (px). */
+#crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; --spread: 7px; pointer-events: none; }
+#crosshair i { position: absolute; background: #fff6fb; box-shadow: 0 0 0 1.5px rgba(58, 36, 72, 0.75); border-radius: 2px; }
+#crosshair i:nth-child(1) { width: 2px; height: 9px; left: -1px; top: calc(-9px - var(--spread)); }
+#crosshair i:nth-child(2) { width: 2px; height: 9px; left: -1px; top: var(--spread); }
+#crosshair i:nth-child(3) { width: 9px; height: 2px; top: -1px; left: calc(-9px - var(--spread)); }
+#crosshair i:nth-child(4) { width: 9px; height: 2px; top: -1px; left: var(--spread); }
+#crosshair b { position: absolute; width: 3px; height: 3px; left: -1.5px; top: -1.5px; border-radius: 50%; background: #ffd0ea; }
+body.sewer #tracker { display: none; }
+body.sewer #hint { animation: sewer-hint 7s ease forwards; }
+@keyframes sewer-hint { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }

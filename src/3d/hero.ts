@@ -35,6 +35,8 @@ export interface HeroInput {
   firing: boolean
   dash: boolean
   run: boolean
+  /** Shoulder camera: keep her chest on the aim even when not shooting (legs still follow travel). */
+  face?: boolean
 }
 
 export class Hero {
@@ -87,6 +89,8 @@ export class Hero {
   private spine: Object3D | null = null
   private head: Object3D | null = null
   modelLabel = '임시 모습'
+  /** Island edge (m from the centre); the sewer turns it off and does its own wall collision. */
+  limit = 13.2
 
   constructor() {
     this.object.add(shadow())
@@ -252,7 +256,7 @@ export class Hero {
     if (speed > 0.05) this.moveYaw = Math.atan2(this.vel.x, this.vel.z)
     const aimYaw = Math.atan2(input.aim.x - this.object.position.x, input.aim.z - this.object.position.z)
     const firing = input.firing || this.shootT > 0
-    if (firing) {
+    if (firing || input.face) {
       // Torso squares up to the aim; legs lean toward travel so strafing isn't a sideways moonwalk.
       this.idleTurning = false
       const face = this.moving ? legYaw(this.moveYaw, aimYaw) : aimYaw
@@ -268,7 +272,7 @@ export class Hero {
       if (off < MOVE.idleTurnStop) this.idleTurning = false
       if (this.idleTurning) this.yaw = turnToward(this.yaw, aimYaw, dt, MOVE.turnIdle, MOVE.turnIdleMax)
     }
-    const limit = 13.2
+    const limit = this.limit
     const radial = Math.hypot(this.object.position.x, this.object.position.z)
     if (radial > limit) {
       this.object.position.x *= limit / radial
