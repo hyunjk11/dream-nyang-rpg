@@ -1,6 +1,6 @@
 /** Pure layout for the island's landmarks and their solid footprints. No Three.js. */
 
-export type PlaceKind = 'house' | 'workshop' | 'tree' | 'portal' | 'fountain' | 'well' | 'board' | 'lantern' | 'kiki'
+export type PlaceKind = 'house' | 'workshop' | 'tree' | 'portal' | 'fountain' | 'well' | 'board' | 'lantern' | 'kiki' | 'luna'
 
 export interface Place {
   kind: PlaceKind
@@ -33,12 +33,13 @@ function at(kind: PlaceKind, x: number, z: number, height: number, solid: number
 export const PLACES: readonly Place[] = [
   at('house', 7.8, -8.6, 3.6, 1.55, undefined, 0),
   at('workshop', -8.4, -7.8, 3.4, 1.6, undefined, 0),
-  at('kiki', -6.0, -6.0, 1.45, 0.35, 'kiki_offer', 0.5),
-  at('board', -9.8, -3.6, 1.7, 0.4, 'board_look', 0.35),
+  at('kiki', -6.0, -6.0, 1.45, 0.35, 'kiki', 0.5),
+  at('luna', -1.4, -5.8, 1.6, 0.35, 'luna', 0.15),
+  at('board', -9.8, -3.6, 1.7, 0.4, 'board', 0.35),
   at('tree', 11.0, -4.6, 4.8, 0.9, undefined, -0.4),
-  at('portal', -11.0, 4.2, 3.4, 0, undefined, 0.6),
+  at('portal', -11.0, 4.2, 3.4, 0, 'gate', 0.6),
   at('fountain', 4.6, 9.8, 2.3, 1.25, undefined, 0),
-  at('well', 10.4, 4.4, 2.0, 0.85, 'well_rest', -0.5),
+  at('well', 10.4, 4.4, 2.0, 0.85, 'well', -0.5),
   at('lantern', 2.9, 7.4, 0, 0),
   at('lantern', -8.8, 3.7, 0, 0),
   at('lantern', 7.2, -2.5, 0, 0),
@@ -48,7 +49,7 @@ export const PLACES: readonly Place[] = [
 ]
 
 /** The models that ship as Meshy GLBs (lanterns are procedural). */
-export const PLACE_MODELS: readonly PlaceKind[] = ['house', 'workshop', 'kiki', 'board', 'tree', 'portal', 'fountain', 'well']
+export const PLACE_MODELS: readonly PlaceKind[] = ['house', 'workshop', 'kiki', 'luna', 'board', 'tree', 'portal', 'fountain', 'well']
 
 /**
  * Push a moving circle (x, z, radius) out of every solid landmark. Returns the corrected
@@ -93,4 +94,12 @@ export function nearestTalk(x: number, z: number, reach = 2.4, places: readonly 
     }
   }
   return best
+}
+
+/** Village-only landmarks: out in the wild zones only the tree, fountain, portal and lanterns stay. */
+export const VILLAGE_ONLY: readonly PlaceKind[] = ['house', 'workshop', 'kiki', 'luna', 'board', 'well']
+
+/** The landmarks standing (and solid) in one zone. */
+export function placesFor(zone: string): readonly Place[] {
+  return zone === 'village' ? PLACES : PLACES.filter((p) => !VILLAGE_ONLY.includes(p.kind))
 }

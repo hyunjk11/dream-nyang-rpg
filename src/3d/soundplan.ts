@@ -28,6 +28,7 @@ export const CUES = {
   splash: { files: [k('splash')], volume: 0.35, pitch: 0.15, gap: 60 },
   windup: { files: [k('windup')], volume: 0.4, pitch: 0.03, gap: 400 },
   ui: { files: [k('ui')], volume: 0.5, pitch: 0, gap: 45 },
+  quest: { files: [k('heal_ui')], volume: 0.55, pitch: 0, gap: 250 },
   talk_open: { files: [k('talk_open')], volume: 0.5, pitch: 0, gap: 150 },
   talk_next: { files: [k('talk_next')], volume: 0.5, pitch: 0.04, gap: 60 },
   victory: { files: [k('victory')], volume: 0.55, pitch: 0, gap: 1500 },

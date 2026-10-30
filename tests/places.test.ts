@@ -23,7 +23,7 @@ describe('섬 랜드마크', () => {
 
   it('Meshy 랜드마크마다 배포용 _mobile.glb 가 있다', () => {
     for (const kind of PLACE_MODELS) {
-      const file = kind === 'kiki' ? 'npc_kiki_mobile.glb' : `place_${kind}_mobile.glb`
+      const file = kind === 'kiki' || kind === 'luna' ? `npc_${kind}_mobile.glb` : `place_${kind}_mobile.glb`
       expect(shipped).toContain(file)
     }
   })
@@ -39,13 +39,14 @@ describe('섬 랜드마크', () => {
 
   it('가까이 있을 때만 대화를 건다', () => {
     const kiki = PLACES.find((p) => p.kind === 'kiki')!
-    expect(nearestTalk(kiki.x + 1.2, kiki.z)?.talk).toBe('kiki_offer')
+    expect(nearestTalk(kiki.x + 1.2, kiki.z)?.talk).toBe('kiki')
     expect(nearestTalk(0, 0)).toBeNull()
   })
 
   it('대사를 한 줄씩 넘기고 끝나면 행동을 돌려준다', () => {
     expect(talkStep('kiki_offer', 0).line?.speaker).toBe('키키')
-    expect(talkStep('well_rest', 1)).toEqual({ line: null, actions: [{ type: 'heal-full' }] })
+    expect(talkStep('well_rest', 1)).toEqual({ line: null, actions: [{ type: 'heal-full' }], choices: [] })
+    expect(talkStep('kiki_offer', 1).choices.map((c) => c.text)).toContain('부품을 모아 올게')
     expect(talkStep('nope', 0).line).toBeNull()
   })
 })
