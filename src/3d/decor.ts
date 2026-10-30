@@ -25,7 +25,8 @@ import {
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { ISLAND_RADIUS, PATH_WIDTH, islandBudget, islandPaths, mulberry32, rimRadius, scatterSpots, type Spot } from './island'
-import { outlineInstanced, toon, toonGradient } from './materials'
+import { nearFade, outlineInstanced, toon, toonGradient } from './materials'
+import { CAMERA_FADE_NEAR } from './camera'
 
 /**
  * Dreamy pastel toon island. Every decoration family is one InstancedMesh (or one Points),
@@ -81,24 +82,25 @@ export function buildIsland(scene: Scene, lowPower: boolean): { tick: (time: num
 
   const crystalSpots = scatterSpots({ count: budget.crystals, minR: 2.4, maxR: ISLAND_RADIUS - 1.0, clearPath: 0.45, clearCenter: 2.4, scale: [0.8, 1.6], clumps: 6, seed: 41 }, paths)
   const crystalTints = [0xffb7ea, 0xb7d6ff, 0xd9b8ff, 0xb8fff0]
-  const crystalMat = toon(0xffffff, 0xffe6f6, lowPower ? 0.5 : 0.32)
+  // Crystals and mushrooms dissolve near the lens, so the low behind-her view isn't walled off.
+  const crystalMat = nearFade(toon(0xffffff, 0xffe6f6, lowPower ? 0.5 : 0.32), CAMERA_FADE_NEAR)
   const crystals = instanced(crystalGeometry(), crystalMat, crystalSpots, (spot, color) => {
     color.set(crystalTints[Math.floor(spot.tint * crystalTints.length) % crystalTints.length])
   })
   crystals.castShadow = !lowPower
   crystals.name = 'crystals'
   root.add(crystals)
-  if (!lowPower) root.add(outlineInstanced(crystals, 0.03))
+  if (!lowPower) root.add(outlineInstanced(crystals, 0.03, undefined, CAMERA_FADE_NEAR))
 
   const mushroomSpots = scatterSpots({ count: budget.mushrooms, minR: 1.8, maxR: ISLAND_RADIUS - 1, clearPath: 0.3, clearCenter: 1.8, scale: [0.6, 1.4], clumps: 7, seed: 53 }, paths)
   const caps = [0xff8fb4, 0xc9a4ff, 0xffa77a, 0x8fd0ff]
-  const mushrooms = instanced(mushroomGeometry(), tintable(toonVertex()), mushroomSpots, (spot, color) => {
+  const mushrooms = instanced(mushroomGeometry(), nearFade(tintable(toonVertex()), CAMERA_FADE_NEAR), mushroomSpots, (spot, color) => {
     color.set(caps[Math.floor(spot.tint * caps.length) % caps.length])
   })
   mushrooms.castShadow = !lowPower
   mushrooms.name = 'mushrooms'
   root.add(mushrooms)
-  if (!lowPower) root.add(outlineInstanced(mushrooms, 0.025))
+  if (!lowPower) root.add(outlineInstanced(mushrooms, 0.025, undefined, CAMERA_FADE_NEAR))
 
   // A soft sea of clouds far below the rim. The old instanced puffs hugged the cliff at
   // -1.5..-4.7 m and read as flat pastel blobs in front of the camera at the island edge.
