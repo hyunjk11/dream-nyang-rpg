@@ -1,0 +1,14 @@
+KayKit : Skeletons Character Pack
+Created/distributed by Kay Lousberg (www.kaylousberg.com)
+
+License: Creative Commons Zero, CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+You may use these assets in personal and commercial projects.
+Credit (Kay Lousberg, www.kaylousberg.com) is not mandatory but appreciated.
+
+Used here (via hyunjk11/hero-defense-3d, reduced in size):
+  public/models/3d/kk_skel_minion_mobile.glb   (Skeleton_Minion + Walking_D_Skeletons clip)
+  public/models/3d/kk_skel_rogue_mobile.glb    (Skeleton_Rogue)
+  public/models/3d/kk_skel_warrior_mobile.glb  (Skeleton_Warrior)
+  public/models/3d/kk_skel_mage_mobile.glb     (Skeleton_Mage)

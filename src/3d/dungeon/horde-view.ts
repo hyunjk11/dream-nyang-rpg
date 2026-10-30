@@ -61,7 +61,7 @@ export const KIND_ART: Record<HordeKind, KindArt> = {
   slime: { source: 'meshy', height: FOE_SPECS.slime.height, pose: 'slime' },
   bug: { source: 'meshy', height: FOE_SPECS.bug.height, pose: 'bug' },
   rabbit: { source: 'meshy', height: FOE_SPECS.rabbit.height, pose: 'rabbit' },
-  bat: { source: 'meshy', height: FOE_SPECS.bat.height, pose: 'bat' },
+  bat: { source: 'meshy', height: FOE_SPECS.bat.height, pose: 'bat', hover: FOE_SPECS.bat.hover },
   skeleton: { source: 'kaykit', file: 'kk_skel_minion_mobile.glb', height: 1.2, pose: 'bug', tint: 0xe6dcff, lift: 0.22 },
   skel_rogue: { source: 'kaykit', file: 'kk_skel_rogue_mobile.glb', height: 1.25, pose: 'bug', tint: 0xd8ecff, lift: 0.22 },
   skel_warrior: { source: 'kaykit', file: 'kk_skel_warrior_mobile.glb', height: 1.35, pose: 'bug', tint: 0xffe0ec, lift: 0.22 },
