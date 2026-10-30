@@ -207,7 +207,7 @@ function enterSewer(seed = Math.floor(Math.random() * 1e9)): void {
     stage.setColliders([])
     landmarks.group.visible = false
     stage.setWorld('sewer', SEWER_FOG)
-    setMood({ fog: SEWER_FOG.color, sky: 0xd8c8ff, clear: 0x1c1430 })
+    setMood({ fog: SEWER_FOG.color, sky: 0xe6d8ff, clear: SEWER_FOG.color })
     zonePlaces = []
     run = new DungeonRun(
       {
@@ -219,6 +219,8 @@ function enterSewer(seed = Math.floor(Math.random() * 1e9)): void {
         sfx: (cue, gain) => audio.sfx(cue, gain),
         steps: footsteps,
         leave: () => leaveSewer(),
+        hud: crosshair?.parentElement ?? null,
+        lights: stage.touch ? 2 : 4,
       },
       seed,
     )

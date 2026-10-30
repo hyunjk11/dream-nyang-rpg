@@ -3,10 +3,8 @@ import {
   BoxGeometry,
   Color,
   InstancedMesh,
-  Mesh,
   MeshBasicMaterial,
   Object3D,
-  RingGeometry,
   Vector3,
   type PerspectiveCamera,
   type Scene,
@@ -16,6 +14,9 @@ import type { Mochi } from '../mochi'
 import type { Vfx } from '../vfx'
 import { axis, consumeDash, consumeTalk, pad, runningHeld, shoulder } from '../input'
 import { generateMaze, tileCentre, type Maze } from './maze'
+import { Decor } from './dream'
+import { Minimap } from './minimap'
+import { Portal } from './portal'
 import { Sewer } from './sewer'
 import { TPS, createView, kick, look, pose, recover, wishFrom, type TpsView } from './tps'
 import { collideCircle, rayHit } from './walls'
@@ -31,10 +32,14 @@ export interface RunHost {
   steps: (dt: number, at: Vector3) => void
   /** She stepped into the return portal. */
   leave: () => void
+  /** HUD layer for the minimap (null in tests). */
+  hud: HTMLElement | null
+  /** Real point lights following the nearest star lamps (fewer on phones). */
+  lights: number
 }
 
 /** Sewer fog: soft lavender haze that hides the far tunnels. */
-export const SEWER_FOG = { color: 0x3a2a58, near: 7, far: 34 }
+export const SEWER_FOG = { color: 0x55407e, near: 4, far: 25 }
 
 const FIRE_GAP = 0.11
 
@@ -47,11 +52,15 @@ export class DungeonRun {
   readonly view: TpsView
   readonly aim = new Vector3()
   readonly sewer: Sewer
+  readonly decor: Decor
+  readonly minimap: Minimap
+  /** Way home in the start room, and the exit beyond the boss. */
+  readonly homePortal: Portal
+  readonly exitPortal: Portal
   /** Last crosshair ray hit distance from the camera (m). */
   aimDistance = 0
   private readonly host: RunHost
   private fireCd = 0
-  private readonly portal: Mesh
   private readonly tracers: InstancedMesh
   private readonly tracerLife: number[] = []
   private readonly tracerFrom: Vector3[] = []
@@ -67,15 +76,18 @@ export class DungeonRun {
     host.scene.add(this.sewer.group)
     const s = tileCentre(this.maze, this.maze.start.x, this.maze.start.y)
     this.view = createView(Math.PI / 4, 0.1)
-    // Return portal: a glowing ring on the start-room floor.
-    this.portal = new Mesh(
-      new RingGeometry(0.55, 0.85, 32),
-      new MeshBasicMaterial({ color: new Color(0x9ad7ff).multiplyScalar(2.2), transparent: true, opacity: 0.85, blending: AdditiveBlending, depthWrite: false }),
-    )
-    this.portal.rotation.x = -Math.PI / 2
-    const p = tileCentre(this.maze, this.maze.startRoom.x, this.maze.startRoom.y)
-    this.portal.position.set(p.x, 0.04, p.z)
-    this.sewer.group.add(this.portal)
+    this.decor = new Decor(this.maze, host.lights)
+    this.sewer.group.add(this.decor.group)
+    const home = tileCentre(this.maze, this.maze.startRoom.x, this.maze.startRoom.y)
+    this.homePortal = new Portal(new Vector3(home.x, 0, home.z), 0x9ad7ff)
+    const b = this.maze.bossRoom
+    const exit = tileCentre(this.maze, b.x + 2, b.y + 2)
+    this.exitPortal = new Portal(new Vector3(exit.x, 0, exit.z), 0xff9fd2)
+    this.sewer.group.add(this.homePortal.group, this.exitPortal.group)
+    this.minimap = new Minimap(this.maze, host.hud)
+    this.minimap.mark(this.maze.startRoom.x, this.maze.startRoom.y, '#7fd0ff')
+    this.minimap.mark(b.x + 2, b.y + 2, '#ff6fb8')
+    for (const n of this.maze.nests) this.minimap.mark(n.x, n.y, '#7a3a8a')
     this.tracers = new InstancedMesh(
       new BoxGeometry(1, 1, 1).translate(0, 0, 0.5),
       new MeshBasicMaterial({ color: new Color(0xbfeaff).multiplyScalar(2.4), transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false }),
@@ -103,6 +115,10 @@ export class DungeonRun {
     if (document.pointerLockElement) document.exitPointerLock?.()
     this.host.hero.limit = 13.2
     this.host.hero.object.visible = true
+    this.minimap.dispose()
+    this.decor.dispose()
+    this.homePortal.dispose()
+    this.exitPortal.dispose()
     this.sewer.dispose()
   }
 
@@ -133,9 +149,11 @@ export class DungeonRun {
     // Backed hard into a wall the lens would sit in her hair: let her vanish rather than fill the screen.
     hero.object.visible = Math.hypot(cam.x - p.x, cam.y - p.y - TPS.height, cam.z - p.z) > 0.62
     camera.lookAt(cam.x + cam.fx, cam.y + cam.fy, cam.z + cam.fz)
-    this.portal.rotation.z += dt * 0.8
-    const near = Math.hypot(p.x - this.portal.position.x, p.z - this.portal.position.z) < 1.1
-    if (consumeTalk() && near) this.host.leave()
+    this.decor.update(this.time, dt, p)
+    this.homePortal.update(this.time)
+    this.exitPortal.update(this.time)
+    this.minimap.update(dt, p.x, p.z, this.view.yaw)
+    if (consumeTalk() && this.nearPortal) this.host.leave()
   }
 
   /** Mouse/touch look in pixels (pointer lock or the QA harness). */
@@ -146,7 +164,7 @@ export class DungeonRun {
   /** True when she stands on the way home (for the hint). */
   get nearPortal(): boolean {
     const p = this.host.hero.object.position
-    return Math.hypot(p.x - this.portal.position.x, p.z - this.portal.position.z) < 1.1
+    return this.homePortal.contains(p.x, p.z) || this.exitPortal.contains(p.x, p.z)
   }
 
   private aimRay(camera: PerspectiveCamera): void {
