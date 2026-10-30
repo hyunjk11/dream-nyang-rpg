@@ -78,6 +78,8 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   let currentDistance = distance
   let lastFollow = 0
   let focusReady = false
+  let leadX = 0
+  let leadZ = 0
   bindZoom(canvas, (delta) => {
     distance = clampCameraDistance(distance + delta)
   })
@@ -116,14 +118,22 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       const now = performance.now()
       const dt = Math.min(0.05, lastFollow ? (now - lastFollow) / 1000 : 1)
       lastFollow = now
-      const look = focusPoint(px, py, pz, aimX, aimZ)
-      // Frame-rate independent follow: tight on her body, softer on the aim lead.
-      const k = 1 - Math.exp(-9 * dt)
-      if (!focusReady) focus.set(look.x, look.y, look.z)
+      // The aim lead gets its own slow filter: flicking the mouse across her used to swing the
+      // whole view 1.8 m in about a third of a second, which read as the screen lurching.
+      const lead = focusPoint(0, 0, 0, aimX, aimZ)
+      const kl = 1 - Math.exp(-3.5 * dt)
+      leadX += (lead.x - leadX) * kl
+      leadZ += (lead.z - leadZ) * kl
+      const lookX = px + leadX
+      const lookY = py + lead.y
+      const lookZ = pz + leadZ
+      // Frame-rate independent follow on her body.
+      const k = 1 - Math.exp(-10 * dt)
+      if (!focusReady) focus.set(lookX, lookY, lookZ)
       focusReady = true
-      focus.x += (look.x - focus.x) * k
-      focus.y += (look.y - focus.y) * k
-      focus.z += (look.z - focus.z) * k
+      focus.x += (lookX - focus.x) * k
+      focus.y += (lookY - focus.y) * k
+      focus.z += (lookZ - focus.z) * k
       currentDistance += (distance - currentDistance) * (1 - Math.exp(-10 * dt))
       const offset = cameraOffset(CAMERA_YAW, CAMERA_PITCH_DEG, currentDistance)
       desired.set(focus.x + offset.x, focus.y + offset.y, focus.z + offset.z)

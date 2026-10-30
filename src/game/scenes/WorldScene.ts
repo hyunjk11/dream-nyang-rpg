@@ -11,6 +11,7 @@ import { controls } from '../input'
 import { RARITY_TINT } from '../assets'
 import { BYEOLHA_ORIGIN_Y, BYEOLHA_SCALE, HAND_LIFT, MOCHI_ORIGIN_Y, MOCHI_SCALE, cameraFocus, facingFromAim, gripPoint, gunInFront, gunSpec, muzzlePoint } from '../rig'
 import { runtime } from '../runtime'
+import { createCat, stepCat } from '../../sim/companion'
 import { commit, live, settings } from '../session'
 import { calcDamage } from '../../sim/formulas'
 import { xpToNext } from '../../sim/formulas'
@@ -79,6 +80,9 @@ const PROMPTS: Record<string, string> = {
   board: '게시판',
 }
 
+/** 2D pixels per metre for the shared companion brain (her base 228 px/s walk is ~3.2 m/s, like the 3D slice). */
+const PX_PER_M = 72
+
 export class WorldScene extends Phaser.Scene {
   private zoneId = 'meadow'
   private spawnId = 'default'
@@ -110,6 +114,12 @@ export class WorldScene extends Phaser.Scene {
   private avatarAnim = ''
   private mochiAnim = ''
   private mochiMoved = 0
+  /** Shared follow brain (src/sim/companion.ts), run in metres: PX_PER_M pixels per metre. */
+  private mochiBrain = createCat(0, 0)
+  private mochiReady = false
+  private frameDt = 1 / 60
+  private leadX = 0
+  private leadY = 0
   private hitStop = 0
   private dying = false
   private traveling = false
@@ -219,9 +229,14 @@ export class WorldScene extends Phaser.Scene {
     this.mochi.setScale(MOCHI_SCALE)
     this.mochi.play('mochi_idle')
     this.mochiAnim = 'mochi_idle'
+    // Scenes are reused across zone travel, so reset the follow state here, not in fields.
+    this.mochiBrain = createCat(0, 0)
+    this.mochiReady = false
     this.mochiShadow = this.add.ellipse(spawn.x, spawn.y, 36, 12, 0x241433, 0.22)
     const look = cameraFocus(spawn.x, spawn.y, 0, this.avatar.displayHeight)
     this.focus = this.add.zone(look.x, look.y, 4, 4)
+    this.leadX = look.x - spawn.x
+    this.leadY = look.y - spawn.y
 
     for (const spawnDef of zone.enemies) this.addEnemy(spawnDef.id, spawnDef.x, spawnDef.y, spawnDef.tags, spawnDef.elite, spawnDef.fixed)
     for (const drop of zone.pickups) {
@@ -917,18 +932,33 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private followMochi(dt: number): void {
-    if (this.pounce.on) return
-    const dist = 78
-    const tx = this.player.x - Math.cos(this.aim) * dist + Math.sin(this.aim) * 34
-    const ty = this.player.y - Math.sin(this.aim) * dist * 0.45 + 8
-    const k = 1 - Math.pow(0.001, dt)
-    const beforeX = this.mochi.x
-    const beforeY = this.mochi.y
-    this.mochi.x += (tx - this.mochi.x) * k
-    this.mochi.y += (ty - this.mochi.y) * k
-    this.mochiMoved = Math.hypot(this.mochi.x - beforeX, this.mochi.y - beforeY)
-    if (this.mochi.x < beforeX - 0.2) this.mochi.setFlipX(true)
-    else if (this.mochi.x > beforeX + 0.2) this.mochi.setFlipX(false)
+    this.frameDt = dt
+    const cat = this.mochiBrain
+    const px = PX_PER_M
+    if (!this.mochiReady || this.pounce.on) {
+      // Spawn or pounce moved the sprite directly: adopt that spot without a lurch afterwards.
+      cat.x = this.mochi.x / px
+      cat.z = this.mochi.y / px
+      cat.vx = 0
+      cat.vz = 0
+      this.mochiReady = true
+      this.mochiMoved = this.pounce.on ? 999 : 0
+      if (this.pounce.on) return
+    }
+    // The old rule put Mochi at a slot behind the *aim*. Every mouse flick swung that slot to
+    // the other side of her and Mochi zipped across in a fraction of a second, which read as the
+    // screen hitching. Now it trails her travel heading with capped speed and acceleration.
+    const body = this.player.body as Phaser.Physics.Arcade.Body | null
+    const vx = body ? body.velocity.x / px : 0
+    const vy = body ? body.velocity.y / px : 0
+    // Keep Mochi from parking straight below her (it would cover her in this view).
+    stepCat(cat, dt, this.player.x / px, this.player.y / px, vx, vy, 0, 1)
+    this.mochi.x = cat.x * px
+    this.mochi.y = cat.z * px
+    // px/s, not px/frame: the old 0.45 px/frame threshold flickered walk/idle on fast screens.
+    this.mochiMoved = Math.hypot(cat.vx, cat.vz) * px
+    if (cat.vx < -0.15) this.mochi.setFlipX(true)
+    else if (cat.vx > 0.15) this.mochi.setFlipX(false)
   }
 
   private pose(): void {
@@ -942,7 +972,13 @@ export class WorldScene extends Phaser.Scene {
     this.playerShadow.setPosition(this.player.x, this.player.y - 2)
     this.playerShadow.setDepth(this.player.y - 3)
     const look = cameraFocus(this.player.x, this.player.y, this.aim, this.avatar.displayHeight)
-    this.focus.setPosition(look.x, look.y)
+    // Aim lead on its own slow, frame-rate independent filter; body follow stays tight.
+    const kl = 1 - Math.exp(-3.5 * this.frameDt)
+    this.leadX += (look.x - this.player.x - this.leadX) * kl
+    this.leadY += (look.y - this.player.y - this.leadY) * kl
+    this.focus.setPosition(this.player.x + this.leadX, this.player.y + this.leadY)
+    const follow = 1 - Math.pow(1 - 0.14, this.frameDt * 60)
+    this.cameras.main.setLerp(follow, follow)
     this.recoil = Math.max(0, this.recoil - 0.9)
     const spec = gunSpec(this.gunKey())
     const grip = gripPoint(this.player.x, this.player.y, this.aim, this.recoil)
@@ -958,7 +994,7 @@ export class WorldScene extends Phaser.Scene {
     this.gun.setDepth(gunInFront(this.aim) ? this.player.y + 2 : this.player.y - 2)
     if (runtime.focus > 0) this.gun.setTint(0xffe08a)
     else this.gun.clearTint()
-    const mochiWalking = this.pounce.on || this.mochiMoved > 0.45
+    const mochiWalking = this.pounce.on || (this.mochiBrain.moving && this.mochiMoved > 18)
     this.playMochi(mochiWalking ? 'mochi_walk' : 'mochi_idle')
     if (!mochiWalking) this.mochi.setFlipX(this.mochi.x > this.player.x)
     this.mochi.setDepth(this.mochi.y)

@@ -6,6 +6,7 @@ import { createStage } from './arena'
 import { audio } from './audio'
 import { Combat } from './combat'
 import { cameraRelativeWish } from './feel'
+import { WALK_RADIUS } from './island'
 import { Hero } from './hero'
 import { axis, consumeDash, installInput, pad, runningHeld } from './input'
 import { Mochi } from './mochi'
@@ -155,7 +156,10 @@ function aimAt(): void {
     aim.set(p.x + Math.sin(yaw) * 5, 1.05, p.z + Math.cos(yaw) * 5)
     return
   }
-  if (!pad.pointer || pad.fire && stage.mobile) {
+  // Auto-aim only helps fingers. It used to key off stage.mobile, the low-power flag, which is
+  // also on for weak desktop GPUs and short windows, so a mouse click snapped her aim (and the
+  // camera lead) to the nearest foe.
+  if (!pad.pointer || (pad.fire && pad.touchFire)) {
     const nearest = nearestFoe()
     if (nearest) {
       aim.set(nearest.object.position.x, 0.9, nearest.object.position.z)
@@ -192,12 +196,17 @@ function nearestFoe() {
   return best
 }
 
+const lastHero = new Vector3()
+let heroTracked = false
 function mochiFollow(dt: number, heroPos: Vector3): void {
-  const yaw = hero.yaw
-  const forwardX = Math.sin(yaw)
-  const forwardZ = Math.cos(yaw)
-  const target = new Vector3(heroPos.x - forwardX * 1.35 + forwardZ * 0.55, 0, heroPos.z - forwardZ * 1.35 - forwardX * 0.55)
-  mochi.update(dt, target, heroPos)
+  if (!heroTracked) lastHero.copy(heroPos)
+  heroTracked = true
+  // Her real ground velocity, so Mochi trails where she travels rather than where she aims.
+  const vx = dt > 0 ? (heroPos.x - lastHero.x) / dt : 0
+  const vz = dt > 0 ? (heroPos.z - lastHero.z) / dt : 0
+  lastHero.copy(heroPos)
+  const cam = stage.camera.position
+  mochi.update(dt, heroPos.x, heroPos.z, vx, vz, cam.x - heroPos.x, cam.z - heroPos.z, WALK_RADIUS)
   mochiCd -= dt
   const prey = nearestFoe()
   if (prey && mochiCd <= 0 && hero.alive) {
@@ -267,6 +276,8 @@ function restart(): void {
   hero.hp = hero.maxHp
   hero.alive = true
   hero.object.position.set(0, 0, 0)
+  heroTracked = false
+  mochi.place(0.8, -1.0)
   document.getElementById('down')?.classList.add('hidden')
   audio.sfx('heal')
 }
