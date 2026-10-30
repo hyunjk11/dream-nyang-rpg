@@ -17,7 +17,8 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { CAT, createCat, gaitWeights, stepCat, type CatBrain } from '../sim/companion'
-import { OUTLINE_COLOR, applyToon, chainOutlinePush, outlineGeometry, toon } from './materials'
+import { CHARACTER_INK } from './grip'
+import { applyToon, chainOutlinePush, characterGradient, outlineGeometry, toon } from './materials'
 
 const loader = new GLTFLoader()
 loader.setMeshoptDecoder(MeshoptDecoder)
@@ -68,7 +69,8 @@ export class Mochi {
     try {
       const gltf = await loader.loadAsync(url)
       const model = gltf.scene
-      model.rotation.y = (30 * Math.PI) / 180
+      // The chibi Meshy cat already faces +Z (the old painted model was baked 30° off).
+      model.rotation.y = 0
       const box = new Box3().setFromObject(model)
       const height = box.max.y - box.min.y
       const width = Math.max(box.max.x - box.min.x, box.max.z - box.min.z)
@@ -76,7 +78,7 @@ export class Mochi {
       const scale = height > 0.05 ? 0.62 / height : 1
       model.scale.setScalar(scale)
       model.position.y = -box.min.y * scale
-      applyToon(model)
+      applyToon(model, characterGradient())
       this.visual.add(model)
       this.rigShaders(model)
       return true
@@ -108,10 +110,10 @@ export class Mochi {
       mesh.castShadow = true
       // Ink outline that bends with the same leg/tail shader as the body.
       const ws = mesh.getWorldScale(new Vector3())
-      const width = 0.012 / Math.max(1e-4, (ws.x + ws.y + ws.z) / 3)
-      const ink = new MeshBasicMaterial({ color: OUTLINE_COLOR, side: BackSide })
+      const width = CHARACTER_INK.width / Math.max(1e-4, (ws.x + ws.y + ws.z) / 3)
+      const ink = new MeshBasicMaterial({ color: CHARACTER_INK.color, side: BackSide })
       gaitShader(ink, this.gait, local)
-      chainOutlinePush(ink, width, `mochi-outline-${width.toFixed(5)}`)
+      chainOutlinePush(ink, width, `mochi-outline-${width.toFixed(5)}`, CHARACTER_INK.near)
       const shell = new Mesh(outlineGeometry(mesh.geometry), ink)
       shell.userData.outline = true
       shell.frustumCulled = false

@@ -30,6 +30,21 @@ export function toonGradient(): DataTexture {
   return gradient
 }
 
+let softGradient: DataTexture | null = null
+
+/**
+ * Softer three-band ramp for the characters: the scenery ramp's darkest band (25%) turned the
+ * hero's face and hair muddy at close range, so characters keep 62% in shadow.
+ */
+export function characterGradient(): DataTexture {
+  if (softGradient) return softGradient
+  softGradient = new DataTexture(new Uint8Array([158, 214, 255]), 3, 1, RedFormat)
+  softGradient.magFilter = NearestFilter
+  softGradient.minFilter = NearestFilter
+  softGradient.needsUpdate = true
+  return softGradient
+}
+
 export function toon(color: number, emissive = 0x000000, emissiveIntensity = 0): MeshToonMaterial {
   return new MeshToonMaterial({
     color,
@@ -39,25 +54,25 @@ export function toon(color: number, emissive = 0x000000, emissiveIntensity = 0):
   })
 }
 
-export function applyToon(root: Object3D): void {
+export function applyToon(root: Object3D, ramp: DataTexture = toonGradient()): void {
   root.traverse((obj) => {
     const mesh = obj as Mesh
     if (!mesh.isMesh) return
     const source = mesh.material
     const list = Array.isArray(source) ? source : [source]
-    const next = list.map((material) => toonFrom(material))
+    const next = list.map((material) => toonFrom(material, ramp))
     mesh.material = Array.isArray(source) ? next : next[0]
     mesh.castShadow = true
     mesh.receiveShadow = true
   })
 }
 
-function toonFrom(material: Material): MeshToonMaterial {
+function toonFrom(material: Material, ramp: DataTexture): MeshToonMaterial {
   const colored = material as Material & { map?: Texture; color?: Color; name?: string }
   const mat = new MeshToonMaterial({
     color: colored.color ? colored.color.clone() : new Color(0xffffff),
     map: colored.map ?? null,
-    gradientMap: toonGradient(),
+    gradientMap: ramp,
   })
   mat.name = colored.name ?? ''
   return mat
@@ -69,20 +84,30 @@ const outlineMats = new Map<string, MeshBasicMaterial>()
 const outlineGeoms = new WeakMap<BufferGeometry, BufferGeometry>()
 
 /** Back-face shell pushed along smooth normals. Shared per colour + width. */
-export function outlineMaterial(width: number, color = OUTLINE_COLOR, fade = 0): MeshBasicMaterial {
-  const key = `${color}:${width.toFixed(5)}:${fade}`
+/** Shrink the ink as the lens comes closer: full width at `ref` metres and beyond, down to `min` of it. */
+export interface InkNear {
+  ref: number
+  min: number
+}
+
+export function outlineMaterial(width: number, color = OUTLINE_COLOR, fade = 0, near?: InkNear): MeshBasicMaterial {
+  const key = `${color}:${width.toFixed(5)}:${fade}:${near ? `${near.ref}/${near.min}` : '-'}`
   let mat = outlineMats.get(key)
   if (mat) return mat
   mat = new MeshBasicMaterial({ color, side: BackSide })
   const uniform = { value: width }
+  const scaleBy = near
+    ? `vec4 inkWorld = modelMatrix * vec4(transformed, 1.0);\n  float inkK = clamp(distance(inkWorld.xyz, cameraPosition) / ${near.ref.toFixed(3)}, ${near.min.toFixed(3)}, 1.0);\n`
+    : '  float inkK = 1.0;\n'
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uOutline = uniform
     shader.vertexShader = 'uniform float uOutline;\n' + shader.vertexShader.replace(
       '#include <project_vertex>',
-      '#ifdef USE_SKINNING\n  transformed += normalize(objectNormal) * uOutline;\n#else\n  transformed += normalize(normal) * uOutline;\n#endif\n#include <project_vertex>',
+      `${scaleBy}#ifdef USE_SKINNING\n  transformed += normalize(objectNormal) * uOutline * inkK;\n#else\n  transformed += normalize(normal) * uOutline * inkK;\n#endif\n#include <project_vertex>`,
     )
   }
-  mat.customProgramCacheKey = () => 'outline-shell'
+  const programKey = near ? `outline-shell-near-${near.ref}-${near.min}` : 'outline-shell'
+  mat.customProgramCacheKey = () => programKey
   if (fade > 0) nearFade(mat, fade)
   outlineMats.set(key, mat)
   return mat
@@ -154,7 +179,7 @@ export function outlineGeometry(source: BufferGeometry): BufferGeometry {
  * Adds an ink outline to every mesh under root. Width is in world metres, measured at the
  * mesh's current world scale, so a 2.5 m boss and a 0.8 m slime get the same line.
  */
-export function addOutline(root: Object3D, width = 0.016, color = OUTLINE_COLOR): void {
+export function addOutline(root: Object3D, width = 0.016, color = OUTLINE_COLOR, near?: InkNear): void {
   root.updateWorldMatrix(true, true)
   const targets: Mesh[] = []
   root.traverse((obj) => {
@@ -171,10 +196,10 @@ export function addOutline(root: Object3D, width = 0.016, color = OUTLINE_COLOR)
     let shell: Mesh
     if ((mesh as SkinnedMesh).isSkinnedMesh) {
       const skin = mesh as SkinnedMesh
-      const s = new SkinnedMesh(geo, outlineMaterial(local, color))
+      const s = new SkinnedMesh(geo, outlineMaterial(local, color, 0, near))
       s.bind(skin.skeleton, skin.bindMatrix)
       shell = s
-    } else shell = new Mesh(geo, outlineMaterial(local, color))
+    } else shell = new Mesh(geo, outlineMaterial(local, color, 0, near))
     shell.userData.outline = true
     shell.castShadow = false
     shell.receiveShadow = false
@@ -188,13 +213,16 @@ export function addOutline(root: Object3D, width = 0.016, color = OUTLINE_COLOR)
  * Wraps an existing onBeforeCompile (e.g. Mochi's gait deformation) so the outline push runs
  * after it. Use for shells that must follow a custom vertex shader.
  */
-export function chainOutlinePush(material: MeshBasicMaterial, width: number, key: string): void {
+export function chainOutlinePush(material: MeshBasicMaterial, width: number, key: string, near?: InkNear): void {
   const inner = material.onBeforeCompile
+  const k = near
+    ? `clamp(distance((modelMatrix * vec4(transformed, 1.0)).xyz, cameraPosition) / ${near.ref.toFixed(3)}, ${near.min.toFixed(3)}, 1.0)`
+    : '1.0'
   material.onBeforeCompile = (shader, renderer) => {
     inner.call(material, shader, renderer)
     shader.vertexShader = shader.vertexShader.replace(
       '#include <project_vertex>',
-      `transformed += normalize(normal) * ${width.toFixed(5)};\n#include <project_vertex>`,
+      `transformed += normalize(normal) * ${width.toFixed(5)} * ${k};\n#include <project_vertex>`,
     )
   }
   material.customProgramCacheKey = () => key
