@@ -21,7 +21,8 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { HOLD_POSES, aimPitchDeg, damp, upperTwist, wrapAngle, type HoldPose, type HoldState } from './feel'
-import { addOutline, applyToon, toon } from './materials'
+import { BARREL_CONE, CHARACTER_INK, GUN_SIZE, HERO_HEIGHT, REST_PITCH, barrelQuaternion, barrelYaw, calibrateGrip, handForGun, type Grip } from './grip'
+import { addOutline, applyToon, characterGradient, toon } from './materials'
 import { KNOCK, MOVE, gaitBlend, gaitRate, knockDecay, legYaw, turnToward } from './motion'
 
 const loader = new GLTFLoader()
@@ -62,11 +63,14 @@ export class Hero {
   private puppet: Puppet | null = null
   private flashMeshes: Mesh[] = []
   private gun: Group | null = null
+  private grip: Grip | null = null
   private rightHand: Object3D | null = null
   private arm: ArmRig | null = null
   private readonly hold: HoldPose = clonePose(HOLD_POSES.idle)
   private holdState: HoldState = 'idle'
   private twist = 0
+  /** 0 = gun at rest (low ready), 1 = raised along the aim. */
+  private ready = 0
   private recoilT = 0
   private moveYaw = 0
   /** Her own steering velocity (m/s), eased in and out, and a separate decaying knockback push. */
@@ -95,7 +99,7 @@ export class Hero {
       const model = gltf.scene
       const box = new Box3().setFromObject(model)
       const height = box.max.y - box.min.y
-      const scale = height > 0.2 ? 1.62 / height : 1
+      const scale = height > 0.2 ? HERO_HEIGHT / height : 1
       model.scale.setScalar(scale)
       model.position.y = -box.min.y * scale
       this.model = model
@@ -105,9 +109,15 @@ export class Hero {
         if (!mesh.isMesh) return
         this.flashMeshes.push(mesh)
       })
-      applyToon(model)
-      addOutline(model, 0.014)
+      applyToon(model, characterGradient())
+      // Thin, distance-scaled ink: the toy-like model reads by its silhouette, not by heavy lines.
+      addOutline(model, CHARACTER_INK.width, CHARACTER_INK.color, CHARACTER_INK.near)
       this.object.add(model)
+      // Grip calibration needs the bind pose, so it runs before any clip touches the bones.
+      this.object.updateMatrixWorld(true)
+      const bindHand = findNamed(model, 'RightHand')
+      const bindFore = findNamed(model, 'RightForeArm')
+      const grip = bindHand && bindFore ? calibrateGrip(this.object, bindFore, bindHand) : null
       this.mixer = new AnimationMixer(model)
       for (const clip of gltf.animations) plantFeet(clip)
       this.bindClip('idle', gltf.animations, 'Idle')
@@ -136,7 +146,8 @@ export class Hero {
       this.head = findNamed(model, 'Head')
       this.spines = ['Spine02', 'Spine01', 'Spine'].map((name) => findNamed(model, name)).filter((bone): bone is Object3D => !!bone)
       this.arm = ArmRig.from(model, gltf.animations, this.mixer)
-      this.attachGun(this.rightHand ?? model)
+      if (grip && this.rightHand) this.holdGun(this.rightHand, grip)
+      else this.attachGun(this.rightHand ?? model)
       this.modelLabel = '메쉬 모델'
       this.measureGaitOffsets(model)
       this.startLocomotion()
@@ -156,10 +167,27 @@ export class Hero {
     }
   }
 
+  /** Placeholder path: the gun floats with the puppet hand and is aimed every frame (pointGun). */
   private attachGun(hand: Object3D): void {
     this.rightHand = hand
     this.gun = createWaterGun(this.muzzle)
     this.object.add(this.gun)
+  }
+
+  /**
+   * Rigged path: the gun is parented to the RightHand bone with a fixed grip (barrel along the
+   * fingers, palm against the grip), so it always sits in her hand whatever the clip does.
+   * Aiming turns the wrist (orientHand), never the gun on its own.
+   */
+  private holdGun(hand: Object3D, grip: Grip): void {
+    this.rightHand = hand
+    const gun = createWaterGun(this.muzzle)
+    gun.position.copy(grip.offset)
+    gun.quaternion.copy(grip.rotation)
+    gun.scale.setScalar(GUN_SIZE / grip.handScale)
+    hand.add(gun)
+    this.gun = gun
+    this.grip = grip
   }
 
   update(dt: number, input: HeroInput): void {
@@ -275,6 +303,7 @@ export class Hero {
     // Walking somewhere without shooting, she glances at the cursor rather than corkscrewing.
     const share = this.moving && !firing ? this.hold.twist * 0.35 : this.hold.twist
     this.twist = damp(this.twist, upperTwist(aimYaw, this.yaw, share), dt, 12)
+    this.ready = damp(this.ready, firing ? 1 : 0, dt, firing ? 22 : 5)
     this.applySquash(dt)
     this.poseUpperBody(aimYaw)
     this.pointGun()
@@ -371,18 +400,42 @@ export class Hero {
     const right = _v3.set(-fwd.z, 0, fwd.x)
     const kick = this.recoilT * this.recoilT
     const r = this.hold.reach
+    // Hold poses are tuned in metres for a 0.5 m arm; the chibi arm is shorter, so scale them.
+    const k = arm.span / ARM_REFERENCE
     const target = _v4
       .copy(chestPos)
-      .addScaledVector(fwd, r.fwd - kick * 0.06)
-      .addScaledVector(right, r.right)
-    target.y += r.up + kick * 0.02
+      .addScaledVector(fwd, (r.fwd - kick * 0.06) * k)
+      .addScaledVector(right, r.right * k)
+    target.y += (r.up + kick * 0.02) * k
     arm.solve(target, fwd, right)
+    if (this.grip) this.orientHand(aimYaw, kick)
+  }
+
+  /** Turn the wrist so the hand-held barrel points along the aim, or rests in a low ready when she isn't shooting. */
+  private orientHand(aimYaw: number, kick: number): void {
+    const hand = this.rightHand
+    const grip = this.grip
+    if (!hand || !grip || !hand.parent) return
+    hand.updateWorldMatrix(true, false)
+    const at = this.muzzle.getWorldPosition(_v1)
+    const toAim = _v2.copy(this.aimPoint).sub(at)
+    const flat = Math.hypot(toAim.x, toAim.z)
+    const facing = this.yaw + this.twist
+    const yaw = barrelYaw(flat > 0.25 ? Math.atan2(toAim.x, toAim.z) : aimYaw, facing, this.alive)
+    const pitchDeg = aimPitchDeg(toAim.y, flat, this.hold.pitch) + kick * 9
+    const aimQ = barrelQuaternion(yaw, (pitchDeg * Math.PI) / 180, _q1)
+    const restQ = barrelQuaternion(facing + 0.18, REST_PITCH, _q2)
+    const gunWorld = restQ.slerp(aimQ, this.ready)
+    const handWorld = handForGun(gunWorld, grip, _q3)
+    const parentQ = hand.parent.getWorldQuaternion(_q4).invert()
+    hand.quaternion.copy(parentQ.multiply(handWorld))
+    hand.updateWorldMatrix(false, true)
   }
 
   private pointGun(): void {
     const gun = this.gun
     const hand = this.rightHand
-    if (!gun || !hand) return
+    if (!gun || !hand || this.grip) return
     const handPos = new Vector3()
     const handQuat = new Quaternion()
     hand.updateWorldMatrix(true, false)
@@ -407,7 +460,7 @@ export class Hero {
     // Never point across her back: keep the barrel inside a cone in front of her chest.
     const facing = this.yaw + this.twist
     const off = wrapAngle(yaw - facing)
-    const cone = (70 * Math.PI) / 180
+    const cone = BARREL_CONE
     if (Math.abs(off) > cone) yaw = facing + Math.sign(off) * cone
     if (!this.alive) yaw = this.yaw
     const kick = this.recoilT * this.recoilT
@@ -701,7 +754,11 @@ const _v3 = new Vector3()
 const _v4 = new Vector3()
 const _q1 = new Quaternion()
 const _q2 = new Quaternion()
+const _q3 = new Quaternion()
+const _q4 = new Quaternion()
 const UP = new Vector3(0, 1, 0)
+/** Arm length (m) the HOLD_POSES reach offsets were tuned for. */
+const ARM_REFERENCE = 0.5
 
 function clonePose(pose: HoldPose): HoldPose {
   return { reach: { ...pose.reach }, palm: { ...pose.palm }, pitch: pose.pitch, twist: pose.twist }
@@ -740,6 +797,8 @@ function aimBone(bone: Object3D, childPos: Vector3, goal: Vector3): void {
  */
 class ArmRig {
   private ready: { bone: Object3D; q: Quaternion }[] = []
+  /** Upper arm + forearm length in world metres, measured from the bind pose. */
+  span = ARM_REFERENCE
   private fingers = new Vector3(0, 1, 0)
   private thumb = new Vector3(1, 0, 0)
   private palm = new Vector3(0, 0, 1)
@@ -770,6 +829,7 @@ class ArmRig {
     }
     // Hand axes in its own space: the forearm->hand direction continues as "fingers".
     model.updateMatrixWorld(true)
+    rig.span = upper.getWorldPosition(new Vector3()).distanceTo(fore.getWorldPosition(new Vector3())) + fore.getWorldPosition(new Vector3()).distanceTo(hand.getWorldPosition(new Vector3()))
     const handPos = hand.getWorldPosition(new Vector3())
     const forePos = fore.getWorldPosition(new Vector3())
     const handQ = hand.getWorldQuaternion(new Quaternion()).invert()
