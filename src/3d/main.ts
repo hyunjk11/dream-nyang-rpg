@@ -6,6 +6,7 @@ import { createStage } from './arena'
 import { audio } from './audio'
 import { Combat } from './combat'
 import { loadFoeModels } from './foes'
+import { loadHordeArt } from './dungeon/horde-view'
 import { cameraRelativeWish } from './feel'
 import { groundAim } from './camera'
 import { WALK_RADIUS } from './island'
@@ -114,6 +115,7 @@ async function bootGame(): Promise<void> {
     hero.load(`${base}models/3d/byeolha_animated_mobile.glb`),
     mochi.load(`${base}models/3d/mochi_mobile.glb`),
     loadFoeModels(base),
+    loadHordeArt(base),
     landmarks.load(base),
   ])
   combat.rebuildBodies()
@@ -221,6 +223,8 @@ function enterSewer(seed = Math.floor(Math.random() * 1e9)): void {
         leave: () => leaveSewer(),
         hud: crosshair?.parentElement ?? null,
         lights: stage.touch ? 2 : 4,
+        hurt: (amount, from) => sewerHurt(amount, from),
+        banner: (title, sub) => zoneBanner(title, sub),
       },
       seed,
     )
@@ -671,7 +675,32 @@ function float(text: string, at: Vector3, color: string): void {
   floats.push({ el, life: 0.7, y: 0, at: at.clone() })
 }
 
+/** A sewer foe or boss orb landed on her. */
+function sewerHurt(amount: number, from: Vector3): void {
+  const at = hero.object.position
+  if (!hero.hurt(amount, from)) return
+  audio.sfx('hurt')
+  hurtFlash()
+  vfx.hit(at.clone().setY(1.0), 0xff9eb8, true)
+  combat.shake = Math.max(combat.shake, 0.05)
+  float(`-${amount}`, at.clone().setY(1.6), '#ff9eb8')
+  if (hero.alive) return
+  audio.sfx('down')
+  if (document.pointerLockElement) document.exitPointerLock?.()
+  const text = document.getElementById('down-text')
+  if (text) text.textContent = '별하가 꿈 하수도에서 잠시 눈을 감았다. 마을 광장에서 다시 일어나자.'
+  document.getElementById('down')?.classList.remove('hidden')
+}
+
 function restart(): void {
+  if (run) {
+    hero.hp = hero.maxHp
+    hero.revive()
+    document.getElementById('down')?.classList.add('hidden')
+    leaveSewer()
+    audio.sfx('heal')
+    return
+  }
   hero.hp = hero.maxHp
   document.getElementById('down')?.classList.add('hidden')
   void fadeThrough(() => {
