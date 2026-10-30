@@ -1,6 +1,8 @@
 import {
+  ACESFilmicToneMapping,
   DirectionalLight,
   Fog,
+  HalfFloatType,
   HemisphereLight,
   InstancedMesh,
   Object3D,
@@ -10,11 +12,14 @@ import {
   SphereGeometry,
   Vector2,
   Vector3,
+  WebGLRenderTarget,
   WebGLRenderer,
 } from 'three'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+import { LOOK } from './look'
 import { CAMERA_DISTANCE, CAMERA_FOV, CAMERA_PITCH_DEG, CAMERA_YAW, cameraOffset, clampCameraDistance, focusPoint } from './feel'
 import { buildIsland } from './decor'
 import { ORBIT, createOrbit, orbitDrag, orbitStep } from './motion'
@@ -47,17 +52,21 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   renderer.setSize(window.innerWidth, window.innerHeight, false)
   renderer.shadowMap.enabled = !mobile
   renderer.shadowMap.type = PCFSoftShadowMap
-  renderer.setClearColor(0x1b1030, 1)
+  renderer.setClearColor(LOOK.clear, 1)
+  // Filmic grade: pastel highlights roll off instead of clipping to flat white.
+  renderer.toneMapping = ACESFilmicToneMapping
+  renderer.toneMappingExposure = LOOK.exposure
 
   const scene = new Scene()
   // Fog only touches the far dream, never the play area, so foes read early.
-  scene.fog = new Fog(0x8a6ab8, 22, 58)
-  scene.add(new HemisphereLight(0xfff0fa, 0x9ccf9a, 0.75))
-  const sun = new DirectionalLight(0xfff6ec, 1.2)
-  sun.position.set(-6, 12, 8)
+  scene.fog = new Fog(LOOK.fog.color, LOOK.fog.near, LOOK.fog.far)
+  scene.add(new HemisphereLight(LOOK.hemi.sky, LOOK.hemi.ground, LOOK.hemi.intensity))
+  const sun = new DirectionalLight(LOOK.key.color, LOOK.key.intensity)
+  sun.position.set(...LOOK.key.position)
   if (!mobile) {
     sun.castShadow = true
-    sun.shadow.mapSize.set(1024, 1024)
+    sun.shadow.mapSize.set(LOOK.shadow.size, LOOK.shadow.size)
+    sun.shadow.radius = LOOK.shadow.radius
     sun.shadow.camera.near = 1
     sun.shadow.camera.far = 40
     sun.shadow.camera.left = -16
@@ -65,10 +74,15 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     sun.shadow.camera.top = 16
     sun.shadow.camera.bottom = -16
     sun.shadow.bias = -0.0004
+    sun.shadow.normalBias = 0.02
   }
   scene.add(sun)
-  const fill = new DirectionalLight(0xffd0e8, 0.18)
-  fill.position.set(8, 4, -6)
+  // Cool rim from behind the view: separates characters from the green ground.
+  const rim = new DirectionalLight(LOOK.rim.color, LOOK.rim.intensity)
+  rim.position.set(...LOOK.rim.position)
+  scene.add(rim)
+  const fill = new DirectionalLight(LOOK.bounce.color, LOOK.bounce.intensity)
+  fill.position.set(...LOOK.bounce.position)
   scene.add(fill)
 
   const island = buildIsland(scene, mobile)
@@ -93,10 +107,18 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
 
   let composer: EffectComposer | null = null
   if (!mobile) {
-    composer = new EffectComposer(renderer)
+    // HalfFloat + MSAA target: the composer path used to drop antialiasing (jaggy outlines) and
+    // had no OutputPass, so tone mapping and sRGB conversion never ran on desktop.
+    const ratio = renderer.getPixelRatio()
+    const target = new WebGLRenderTarget(window.innerWidth * ratio, window.innerHeight * ratio, {
+      type: HalfFloatType,
+      samples: Math.min(LOOK.msaa, renderer.capabilities.maxSamples || 0),
+    })
+    composer = new EffectComposer(renderer, target)
     composer.addPass(new RenderPass(scene, camera))
-    const bloom = new UnrealBloomPass(new Vector2(window.innerWidth, window.innerHeight), 0.22, 0.35, 0.94)
+    const bloom = new UnrealBloomPass(new Vector2(window.innerWidth, window.innerHeight), LOOK.bloom.strength, LOOK.bloom.radius, LOOK.bloom.threshold)
     composer.addPass(bloom)
+    composer.addPass(new OutputPass())
   }
 
   const resize = () => {
