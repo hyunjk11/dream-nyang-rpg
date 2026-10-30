@@ -12,6 +12,7 @@ import {
 } from 'three'
 import { FOE_SPECS, foePose, makeFoeBody, type FoeBody, type FoeKind } from './foes'
 import { toon } from './materials'
+import { insidePlace, pushOutOfPlaces } from './places'
 
 export interface Foe {
   kind: FoeKind
@@ -285,10 +286,23 @@ export class Combat {
     }
 
     this.separate()
+    // Houses, the well and the fountain are solid: foes slide round them, never through.
+    for (const foe of this.foes) {
+      const p = foe.object.position
+      const out = pushOutOfPlaces(p.x, p.z, FOE_SPECS[foe.kind].radius)
+      p.x = out.x
+      p.z = out.z
+    }
 
     for (const shot of this.shots) {
       shot.life -= dt
       shot.mesh.position.addScaledVector(shot.vel, dt)
+      // Shots splash on landmark walls instead of passing through them.
+      if (shot.mesh.position.y < 2.4 && insidePlace(shot.mesh.position.x, shot.mesh.position.z)) {
+        this.flashBurst(shot.mesh.position, 0xe8f4ff)
+        shot.life = 0
+        continue
+      }
       if (!shot.fromHero) {
         const body = heroPos.clone()
         body.y = 0.9

@@ -9,8 +9,11 @@ import { loadFoeModels } from './foes'
 import { cameraRelativeWish } from './feel'
 import { WALK_RADIUS } from './island'
 import { Hero } from './hero'
-import { axis, consumeDash, installInput, pad, runningHeld } from './input'
+import { axis, consumeDash, consumeTalk, installInput, pad, runningHeld } from './input'
+import { Landmarks } from './landmarks'
 import { Mochi } from './mochi'
+import { nearestTalk, pushOutOfPlaces } from './places'
+import { TalkBox } from './talk'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -24,6 +27,19 @@ const mochi = new Mochi()
 stage.scene.add(hero.object, mochi.object)
 const combat = new Combat(stage.scene)
 combat.camera = stage.camera
+const landmarks = new Landmarks(stage.scene)
+const talk = new TalkBox(base, (action) => {
+  if (action.type !== 'heal-full') return
+  hero.hp = hero.maxHp
+  float('+기운', hero.object.position.clone().setY(1.7), '#b8f0c8')
+  audio.sfx('heal')
+})
+const talkTip = document.getElementById('talk-tip')
+const talkBtn = document.getElementById('talk')
+document.getElementById('dialog')?.addEventListener('pointerdown', (event) => {
+  event.preventDefault()
+  talk.advance()
+})
 const clock = new Clock()
 const raycaster = new Raycaster()
 const ndc = new Vector2()
@@ -60,7 +76,7 @@ document.getElementById('retry')?.addEventListener('click', () => restart())
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, landmarks, talk } })
 
 void bootGame()
 
@@ -69,6 +85,7 @@ async function bootGame(): Promise<void> {
     hero.load(`${base}models/3d/byeolha_animated_mobile.glb`),
     mochi.load(`${base}models/3d/mochi_mobile.glb`),
     loadFoeModels(base),
+    landmarks.load(base),
   ])
   combat.rebuildBodies()
   if (boot) boot.classList.add('hidden')
@@ -99,16 +116,25 @@ function frame(): void {
     frames = 0
     if (fpsEl && showFps) fpsEl.textContent = `${fps} FPS`
   }
-  const move = axis()
+  const talking = talk.open
+  const move = talking ? { x: 0, y: 0 } : axis()
   // Always relative to the live (smoothed) camera yaw, so A is screen-left after any orbit.
   const wish = cameraRelativeWish(move.x, move.y, stage.yaw)
   aimAt()
   fireCd = Math.max(0, fireCd - dt)
   const dash = consumeDash()
   if (dash && hero.alive) audio.sfx('dash')
-  hero.update(dt, { wishX: wish.x, wishZ: wish.z, aim, firing: pad.fire, dash, run: runningHeld() })
+  hero.update(dt, { wishX: wish.x, wishZ: wish.z, aim, firing: pad.fire && !talking, dash: dash && !talking, run: runningHeld() })
+  {
+    // Landmarks are solid; she slides round the house corner instead of walking through it.
+    const p = hero.object.position
+    const out = pushOutOfPlaces(p.x, p.z, 0.32)
+    p.x = out.x
+    p.z = out.z
+  }
+  updateTalk()
   if (hero.dashing) ghost()
-  if (pad.fire && fireCd <= 0 && hero.alive) {
+  if (pad.fire && !talking && fireCd <= 0 && hero.alive) {
     fireCd = 0.16
     const tip = hero.muzzle.getWorldPosition(new Vector3())
     const dir = aim.clone().sub(tip)
@@ -120,6 +146,7 @@ function frame(): void {
   }
   const heroPos = hero.object.position
   mochiFollow(dt, heroPos)
+  landmarks.update(dt, heroPos)
   const notes = combat.update(dt, heroPos, 0.7, (amount, from) => {
     const hurt = hero.hurt(amount, from)
     if (!hurt) return
@@ -144,6 +171,28 @@ function frame(): void {
   if (import.meta.env.DEV && view.on) inspectCamera(heroPos)
   tickFloats(dt)
   stage.render()
+}
+
+const tipAt = new Vector3()
+function updateTalk(): void {
+  const p = hero.object.position
+  const near = hero.alive ? nearestTalk(p.x, p.z) : null
+  if (consumeTalk()) {
+    if (talk.open) talk.advance()
+    else if (near?.talk) {
+      talk.start(near.talk)
+      audio.sfx('ui')
+    }
+  }
+  if (talk.open && !near) talk.close()
+  const showTip = Boolean(near && !talk.open)
+  talkTip?.classList.toggle('hidden', !showTip)
+  talkBtn?.classList.toggle('hidden', !near)
+  if (!showTip || !near || !talkTip) return
+  tipAt.set(near.x, near.kind === 'kiki' ? 1.75 : near.kind === 'board' ? 1.95 : 2.2, near.z).project(stage.camera)
+  talkTip.style.left = `${(tipAt.x * 0.5 + 0.5) * window.innerWidth}px`
+  talkTip.style.top = `${(-tipAt.y * 0.5 + 0.5) * window.innerHeight}px`
+  talkTip.textContent = stage.touch ? '대화' : 'E 대화'
 }
 
 function inspectCamera(at: Vector3): void {

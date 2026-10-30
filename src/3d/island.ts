@@ -1,5 +1,7 @@
 /** Pure layout for the dream island: paths, decoration spots and budgets. No Three.js. */
 
+import { PLACES } from './places'
+
 export const ISLAND_RADIUS = 14.5
 export const WALK_RADIUS = 13.2
 
@@ -131,6 +133,8 @@ export function scatterSpots(rule: ScatterRule, paths = islandPaths()): Spot[] {
     const radial = Math.hypot(x, z)
     if (radial < rule.minR || radial > rule.maxR || radial < rule.clearCenter) continue
     if (pathEdgeDistance({ x, z }, paths) < rule.clearPath) continue
+    // Leave the landmark footprints (and a little apron) clear of crystals and tufts.
+    if (PLACES.some((p) => p.solid > 0 && Math.hypot(x - p.x, z - p.z) < p.solid + 0.35)) continue
     out.push({ x, z, scale: rule.scale[0] + rand() * (rule.scale[1] - rule.scale[0]), turn: rand() * Math.PI * 2, tint: rand() })
   }
   return out
