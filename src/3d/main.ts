@@ -5,6 +5,7 @@ import { Clock, Mesh, MeshBasicMaterial, Raycaster, SphereGeometry, Vector2, Vec
 import { createStage } from './arena'
 import { audio } from './audio'
 import { Combat } from './combat'
+import { loadFoeModels } from './foes'
 import { cameraRelativeWish } from './feel'
 import { WALK_RADIUS } from './island'
 import { Hero } from './hero'
@@ -22,6 +23,7 @@ const hero = new Hero()
 const mochi = new Mochi()
 stage.scene.add(hero.object, mochi.object)
 const combat = new Combat(stage.scene)
+combat.camera = stage.camera
 const clock = new Clock()
 const raycaster = new Raycaster()
 const ndc = new Vector2()
@@ -66,7 +68,9 @@ async function bootGame(): Promise<void> {
   const [byeolha, cat] = await Promise.all([
     hero.load(`${base}models/3d/byeolha_animated_mobile.glb`),
     mochi.load(`${base}models/3d/mochi_mobile.glb`),
+    loadFoeModels(base),
   ])
+  combat.rebuildBodies()
   if (boot) boot.classList.add('hidden')
   if (note && (!byeolha || !cat)) {
     note.textContent = '메쉬 파일을 찾지 못해 임시 모습으로 보여 줄게. 카메라와 손맛은 그대로야.'
@@ -225,7 +229,7 @@ function mochiFollow(dt: number, heroPos: Vector3): void {
   if (prey && mochiCd <= 0 && hero.alive) {
     mochiCd = 1.35
     const from = mochi.fishMuzzle.getWorldPosition(new Vector3())
-    const dir = prey.object.position.clone().setY(0.5).sub(from)
+    const dir = combat.centre(prey).sub(from)
     combat.fire(from, dir, 8, true, 0xffcf70, 11)
     audio.sfx('shoot_bubble')
   }
