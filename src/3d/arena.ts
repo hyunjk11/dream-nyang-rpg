@@ -44,6 +44,10 @@ export interface Stage {
   setColliders: (places: readonly Place[]) => void
   /** Current (smoothed) camera yaw, for camera-relative movement. */
   readonly yaw: number
+  /** Island hub or the sewer dungeon: the island, sky stars, sun shadows and fog swap out. */
+  setWorld: (world: 'island' | 'sewer', fog?: { color: number; near: number; far: number }) => void
+  /** Draw calls in the last rendered frame (QA). */
+  readonly drawCalls: number
 }
 
 export function createStage(canvas: HTMLCanvasElement): Stage {
@@ -92,7 +96,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   scene.add(fill)
 
   const island = buildIsland(scene, mobile)
-  renderer.info.autoReset = true
+  renderer.info.autoReset = false
   const stars = starField()
   scene.add(stars)
 
@@ -143,7 +147,31 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     composer?.setSize(width, height)
   }
 
+  const islandRoot = scene.getObjectByName('island')
+  let calls = 0
   return {
+    get drawCalls() {
+      return calls
+    },
+    setWorld: (world, fogLook) => {
+      const sewer = world === 'sewer'
+      if (islandRoot) islandRoot.visible = !sewer
+      stars.visible = !sewer
+      sun.castShadow = !mobile && !sewer
+      const fog = scene.fog instanceof Fog ? scene.fog : null
+      const look = fogLook ?? LOOK.fog
+      if (fog) {
+        fog.color.set(look.color)
+        fog.near = look.near
+        fog.far = look.far
+      }
+      if (!sewer) {
+        camera.fov = CAMERA_FOV
+        camera.updateProjectionMatrix()
+        focusReady = false
+        boom = -1
+      }
+    },
     get yaw() {
       return view.yaw
     },
@@ -163,8 +191,10 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     render: () => {
       stars.rotation.y += 0.0004
       island.tick(performance.now() / 1000)
+      renderer.info.reset()
       if (composer) composer.render()
       else renderer.render(scene, camera)
+      calls = renderer.info.render.calls
     },
     follow: (px, py, pz, aimX, aimZ, shake) => {
       const now = performance.now()
