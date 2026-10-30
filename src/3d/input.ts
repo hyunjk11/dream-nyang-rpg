@@ -17,6 +17,7 @@ const keys = new Set<string>()
 export const pad: Pad = { x: 0, y: 0, fire: false, dash: false, pointer: false, px: 0, py: 0, touchFire: false, orbiting: false }
 
 let dashQueued = false
+let talkQueued = false
 
 export function installInput(canvas: HTMLCanvasElement, orbit: (dx: number, dy: number) => void = () => {}): void {
   // Right-drag turns the view; the browser menu would pop over the game.
@@ -32,6 +33,7 @@ export function installInput(canvas: HTMLCanvasElement, orbit: (dx: number, dy: 
     if (event.code === 'Space' || event.code.startsWith('Arrow')) event.preventDefault()
     keys.add(event.code)
     if (event.code === 'Space' && !event.repeat) dashQueued = true
+    if ((event.code === 'KeyE' || event.code === 'Enter') && !event.repeat) talkQueued = true
   })
   window.addEventListener('keyup', (event) => keys.delete(event.code))
   window.addEventListener('blur', () => {
@@ -95,9 +97,20 @@ export function installInput(canvas: HTMLCanvasElement, orbit: (dx: number, dy: 
     pad.fire = true
     pad.touchFire = true
   })
+  document.getElementById('talk')?.addEventListener('pointerdown', (event) => {
+    event.preventDefault()
+    talkQueued = true
+  })
   const stick = document.getElementById('stick')
   const knob = document.getElementById('knob')
   if (stick && knob) bindStick(stick, knob)
+}
+
+/** E / Enter / the talk button: talk to whoever is close, or advance the line. */
+export function consumeTalk(): boolean {
+  const had = talkQueued
+  talkQueued = false
+  return had
 }
 
 export function consumeDash(): boolean {

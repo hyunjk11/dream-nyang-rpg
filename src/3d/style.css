@@ -58,3 +58,22 @@ input[type="range"] { width: 120px; }
 body.touch .bottom { top: 58px; bottom: auto; left: auto; right: 16px; gap: 6px; }
 body.touch .bottom button, body.touch .bottom label { padding: 5px 10px; font-size: 13px; }
 body.touch #vol { width: 84px; }
+
+/* Landmark talk: a small tag over whoever is in reach, and a storybook dialogue box. */
+#talk-tip {
+  position: absolute; transform: translate(-50%, -100%); padding: 5px 11px; border-radius: 999px;
+  background: rgba(255, 248, 252, 0.95); color: #4a3358; font-family: "Jua", sans-serif; font-size: 14px;
+  box-shadow: 0 3px 0 rgba(58, 36, 72, 0.35); white-space: nowrap;
+}
+#dialog {
+  position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); width: min(640px, calc(100% - 32px));
+  display: flex; gap: 14px; align-items: center; padding: 14px 18px; border-radius: 22px;
+  background: rgba(255, 248, 252, 0.96); color: #4a3358; box-shadow: 0 6px 0 rgba(58, 36, 72, 0.3);
+  pointer-events: auto;
+}
+#dialog img { width: 76px; height: 76px; object-fit: contain; border-radius: 16px; background: #f3e6f6; flex: none; }
+#dialog b { font-family: "Jua", sans-serif; font-weight: 400; color: #8a4fb0; font-size: 17px; }
+#dialog p { margin: 4px 0 6px; line-height: 1.5; }
+#dialog small { color: #9a86a8; }
+body.touch #dialog { bottom: 120px; }
+body.talking #hint { display: none; }
