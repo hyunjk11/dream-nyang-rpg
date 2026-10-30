@@ -10,7 +10,26 @@
 import { TILE, tileCentre, walkable, worldToTile, type Maze } from './maze'
 import { collideCircle } from './walls'
 
-export type HordeKind = 'slime' | 'bug' | 'rabbit' | 'bat'
+export type HordeKind =
+  | 'slime'
+  | 'bug'
+  | 'rabbit'
+  | 'bat'
+  // Reused from hero-defense-3d: KayKit skeletons (CC0) and the Meshy lich.
+  | 'skeleton'
+  | 'skel_rogue'
+  | 'skel_warrior'
+  | 'skel_mage'
+  | 'lich'
+  // Reused from lucky-defense-3d: the procedural monsters.
+  | 'jelly'
+  | 'wolf'
+  | 'goblin'
+  | 'knight'
+  | 'wraith'
+  | 'golem'
+  | 'drake'
+  | 'lord'
 
 export interface HordeSpec {
   hp: number
@@ -28,7 +47,23 @@ export const HORDE: Record<HordeKind, HordeSpec> = {
   bug: { hp: 34, speed: 3.3, radius: 0.42, damage: 7, chest: 0.42, dust: 2 },
   rabbit: { hp: 30, speed: 2.8, radius: 0.4, damage: 6, chest: 0.5, dust: 2 },
   bat: { hp: 20, speed: 3.0, radius: 0.36, damage: 4, chest: 1.15, dust: 1 },
+  skeleton: { hp: 30, speed: 2.6, radius: 0.4, damage: 6, chest: 0.75, dust: 2 },
+  skel_rogue: { hp: 26, speed: 3.6, radius: 0.38, damage: 6, chest: 0.75, dust: 2 },
+  skel_warrior: { hp: 52, speed: 2.2, radius: 0.46, damage: 9, chest: 0.8, dust: 3 },
+  skel_mage: { hp: 28, speed: 2.4, radius: 0.4, damage: 7, chest: 0.8, dust: 3 },
+  lich: { hp: 150, speed: 1.7, radius: 0.6, damage: 12, chest: 1.1, dust: 12 },
+  jelly: { hp: 22, speed: 2.3, radius: 0.38, damage: 4, chest: 0.35, dust: 1 },
+  wolf: { hp: 30, speed: 3.9, radius: 0.44, damage: 7, chest: 0.5, dust: 2 },
+  goblin: { hp: 26, speed: 3.2, radius: 0.38, damage: 6, chest: 0.55, dust: 2 },
+  knight: { hp: 60, speed: 2.0, radius: 0.46, damage: 9, chest: 0.75, dust: 3 },
+  wraith: { hp: 34, speed: 2.7, radius: 0.42, damage: 7, chest: 1.0, dust: 3 },
+  golem: { hp: 90, speed: 1.6, radius: 0.6, damage: 12, chest: 0.9, dust: 4 },
+  drake: { hp: 70, speed: 2.4, radius: 0.6, damage: 10, chest: 0.9, dust: 4 },
+  lord: { hp: 110, speed: 1.8, radius: 0.7, damage: 12, chest: 1.1, dust: 10 },
 }
+
+/** Champions only ever spawn as elites, one per wave once unlocked. */
+export const CHAMPIONS: HordeKind[] = ['lord', 'lich']
 
 /** Elites: bigger, tougher, hit harder; a golden tint so they read in the crowd. */
 export const ELITE = { scale: 1.45, hp: 4.5, damage: 2, speed: 0.9 }
