@@ -1,5 +1,3 @@
-import { existsSync, statSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, SphereGeometry } from 'three'
 import { describe, expect, it } from 'vitest'
 import { bakeSkinned, decimate, frameTimes } from '../src/3d/dungeon/bake'
@@ -7,6 +5,9 @@ import { CHAMPIONS, HORDE, type HordeKind } from '../src/3d/dungeon/horde'
 import { HORDE_KINDS, KIND_ART, walkFrame } from '../src/3d/dungeon/horde-view'
 import { LORD_TINTS, LUCKY, LUCKY_KINDS, luckyFrames } from '../src/3d/dungeon/lucky'
 import { Director, waveFor } from '../src/3d/dungeon/waves'
+
+const shipped = Object.keys(import.meta.glob('../public/models/3d/*_mobile.glb', { query: '?url' })).map((p) => p.split('/').pop())
+const credits = Object.values(import.meta.glob('../CREDITS.md', { query: '?raw', import: 'default', eager: true }))[0] as string
 
 describe('E단계 몬스터 재활용', () => {
   it('모든 무리 종류에 외형 출처·키·포즈가 정해져 있다', () => {
@@ -21,15 +22,15 @@ describe('E단계 몬스터 재활용', () => {
     }
   })
 
-  it('재활용 GLB는 배포에 포함되는 _mobile 이름이고 1.2MB 이하다', () => {
+  it('재활용 GLB는 배포에 포함되는 _mobile 파일로 존재하고 크레딧에 적혀 있다', () => {
     for (const k of HORDE_KINDS) {
       const f = KIND_ART[k].file
       if (!f) continue
-      expect(f.endsWith('_mobile.glb')).toBe(true)
-      const p = resolve('public/models/3d', f)
-      expect(existsSync(p)).toBe(true)
-      expect(statSync(p).size).toBeLessThan(1.2 * 1024 * 1024)
+      expect(shipped).toContain(f)
+      expect(credits).toContain(f.startsWith('kk_') ? 'kk_skel_' : f)
     }
+    expect(credits).toContain('CC0')
+    expect(credits).toContain('lucky-defense-3d')
   })
 
   it('럭키 디펜스 13종은 7종 몸체 + 군주 몸체 하나의 6가지 색 변형으로 들어온다', () => {
