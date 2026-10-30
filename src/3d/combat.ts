@@ -5,6 +5,7 @@ import {
   MeshBasicMaterial,
   MeshToonMaterial,
   Object3D,
+  OctahedronGeometry,
   PlaneGeometry,
   SphereGeometry,
   Vector3,
@@ -12,7 +13,9 @@ import {
 } from 'three'
 import { FOE_SPECS, foePose, makeFoeBody, type FoeBody, type FoeKind } from './foes'
 import { toon } from './materials'
-import { insidePlace, pushOutOfPlaces } from './places'
+import { PLACES, insidePlace, pushOutOfPlaces, type Place } from './places'
+import type { Loot } from './loop'
+import type { ZoneFoe } from './zones3d'
 import type { CueName } from './soundplan'
 import type { Vfx } from './vfx'
 
@@ -39,6 +42,12 @@ export interface Foe {
   yaw: number
   stride: number
   bar: { group: Group; fill: Mesh }
+  /** Quest tags from the 2D roster ('wild', 'tutorial', 'boss'). */
+  tags: string[]
+  /** 2D elite affix: a bigger, tougher foe that always carries a toy part. */
+  elite?: string
+  /** Zone foes sleep for good once beaten (until she comes back to the zone). */
+  once: boolean
 }
 
 interface Shot {
@@ -56,6 +65,7 @@ interface Drop {
   vel: Vector3
   life: number
   amount: number
+  item: 'gold' | Loot
 }
 
 interface Spark {
@@ -91,6 +101,11 @@ export class Combat {
   hitStop = 0
   shake = 0
   dust = 0
+  /** Solid landmarks standing in the current zone. */
+  places: readonly Place[] = PLACES
+  /** Fired once when a foe is beaten, and when she picks up a drop. */
+  onKill: (foe: Foe) => void = () => {}
+  onPickup: (item: 'gold' | Loot, amount: number, at: Vector3) => void = () => {}
   /** Set by main so HP bars face the camera. */
   camera: Camera | null = null
   private sparks: Spark[] = []
@@ -108,6 +123,41 @@ export class Combat {
     for (const [x, z, kind] of FOE_HOMES) this.spawn(kind, x, z)
   }
 
+  /** Swap the whole cast for a zone's roster (and clear shots and drops in flight). */
+  setRoster(roster: readonly ZoneFoe[]): void {
+    for (const foe of this.foes) {
+      this.vfx?.endTelegraph(foe)
+      foe.object.removeFromParent()
+    }
+    this.foes.length = 0
+    for (const shot of this.shots) shot.mesh.removeFromParent()
+    this.shots = []
+    for (const drop of this.drops) drop.mesh.removeFromParent()
+    this.drops = []
+    for (const f of roster) this.spawn(f.kind, f.x, f.z, f.tags, f.elite, true)
+  }
+
+  /** Any boss still awake in this zone (it seals the altar's portal). */
+  get bossAwake(): boolean {
+    return this.foes.some((f) => f.kind === 'bloom' && f.alive)
+  }
+
+  /** A quest pickup lying in the zone, or popping out of a beaten foe. */
+  dropLoot(at: Vector3, item: Loot, burst = true): void {
+    const color = item === 'toy_part' ? 0xffb86a : 0xc8a8ff
+    const mesh = new Mesh(this.gem(), this.glow(color, 1.1))
+    mesh.position.copy(at).setY(0.4)
+    this.root.add(mesh)
+    const v = burst ? 2.4 : 0
+    this.drops.push({ mesh, vel: new Vector3((Math.random() - 0.5) * v, 0, (Math.random() - 0.5) * v), life: 0, amount: 1, item })
+  }
+
+  private gemGeo: OctahedronGeometry | null = null
+  private gem(): OctahedronGeometry {
+    this.gemGeo ??= new OctahedronGeometry(0.17, 0)
+    return this.gemGeo
+  }
+
   /** Swap every foe's body for the freshly loaded Meshy model (or keep the fallback). */
   rebuildBodies(): void {
     for (const foe of this.foes) {
@@ -123,13 +173,15 @@ export class Combat {
     return out.copy(foe.object.position).setY(spec.hover + spec.height * 0.5)
   }
 
-  private spawn(kind: FoeKind, x: number, z: number): void {
+  private spawn(kind: FoeKind, x: number, z: number, tags: string[] = [], elite?: string, once = false): void {
     const spec = FOE_SPECS[kind]
+    const hp = elite ? Math.round(spec.hp * 2.2) : spec.hp
     const object = new Group()
     const body = makeFoeBody(kind)
     object.add(body.rig)
     object.position.set(x, 0, z)
-    const bar = hpBar(kind === 'bloom' ? 1.6 : 0.7)
+    const bar = hpBar(kind === 'bloom' ? 1.6 : 0.7, elite ? 0xffc65a : 0xff6fae)
+    if (elite) object.scale.setScalar(1.3)
     bar.group.position.y = spec.hover + spec.height + 0.25
     object.add(bar.group)
     this.root.add(object)
@@ -137,8 +189,8 @@ export class Combat {
       kind,
       object,
       body,
-      hp: spec.hp,
-      maxHp: spec.hp,
+      hp,
+      maxHp: hp,
       alive: true,
       flash: 0,
       attack: 0.4 + Math.random(),
@@ -153,6 +205,9 @@ export class Combat {
       yaw: 0,
       stride: 1,
       bar,
+      tags,
+      elite,
+      once,
     })
   }
 
@@ -237,8 +292,9 @@ export class Combat {
         continue
       }
       if (!foe.alive) {
-        foe.respawn -= dt
         foe.object.visible = false
+        if (foe.once) continue
+        foe.respawn -= dt
         if (foe.respawn <= 0) {
           foe.alive = true
           foe.hp = foe.maxHp
@@ -312,7 +368,7 @@ export class Combat {
     // Houses, the well and the fountain are solid: foes slide round them, never through.
     for (const foe of this.foes) {
       const p = foe.object.position
-      const out = pushOutOfPlaces(p.x, p.z, FOE_SPECS[foe.kind].radius)
+      const out = pushOutOfPlaces(p.x, p.z, FOE_SPECS[foe.kind].radius, this.places)
       p.x = out.x
       p.z = out.z
     }
@@ -321,7 +377,7 @@ export class Combat {
       shot.life -= dt
       shot.mesh.position.addScaledVector(shot.vel, dt)
       // Shots splash on landmark walls instead of passing through them.
-      if (shot.mesh.position.y < 2.4 && insidePlace(shot.mesh.position.x, shot.mesh.position.z)) {
+      if (shot.mesh.position.y < 2.4 && insidePlace(shot.mesh.position.x, shot.mesh.position.z, this.places)) {
         this.flashBurst(shot.mesh.position, 0xe8f4ff)
         this.sound('splash')
         shot.life = 0
@@ -367,7 +423,8 @@ export class Combat {
           foe.knock.multiplyScalar(1.6)
           this.shake = Math.max(this.shake, foe.kind === 'bloom' ? 0.3 : 0.16)
           this.hitStop = Math.max(this.hitStop, foe.kind === 'bloom' ? 0.12 : 0.07)
-          this.drop(foe.object.position, spec.dust)
+          this.drop(foe.object.position, foe.elite ? spec.dust * 2 : spec.dust)
+          this.onKill(foe)
         }
         break
       }
@@ -386,9 +443,13 @@ export class Combat {
       if (drop.life > 0.25 && to.length() < 2.8) drop.vel.add(to.normalize().multiplyScalar(14 * dt))
       drop.mesh.position.addScaledVector(drop.vel, dt)
       drop.mesh.position.y = 0.35 + Math.sin(drop.life * 6) * 0.06
+      if (drop.item !== 'gold') drop.mesh.rotation.y += dt * 2.5
       if (to.length() < 0.7 && drop.life > 0.2) {
-        this.dust += drop.amount
-        notes.push({ text: `+${drop.amount}`, at: drop.mesh.position.clone() })
+        if (drop.item === 'gold') {
+          this.dust += drop.amount
+          notes.push({ text: `+${drop.amount}`, at: drop.mesh.position.clone() })
+        }
+        this.onPickup(drop.item, drop.amount, drop.mesh.position.clone())
         drop.life = -1
       }
     }
@@ -495,6 +556,7 @@ export class Combat {
         vel: new Vector3((Math.random() - 0.5) * (count > 1 ? 5 : 2), 2, (Math.random() - 0.5) * (count > 1 ? 5 : 2)),
         life: 0,
         amount: Math.round(amount / count) + (roll > 0.92 ? 5 : 0),
+        item: 'gold',
       })
     }
   }
@@ -514,12 +576,12 @@ function paintHurt(foe: Foe): void {
   }
 }
 
-function hpBar(width: number): { group: Group; fill: Mesh } {
+function hpBar(width: number, color = 0xff6fae): { group: Group; fill: Mesh } {
   const group = new Group()
   const back = new Mesh(new PlaneGeometry(width + 0.06, 0.13), new MeshBasicMaterial({ color: 0x3a2350, transparent: true, opacity: 0.6, depthWrite: false, depthTest: false }))
   const fillGeo = new PlaneGeometry(width, 0.085)
   fillGeo.translate(width / 2, 0, 0.001)
-  const fill = new Mesh(fillGeo, new MeshBasicMaterial({ color: 0xff6fae, depthWrite: false, depthTest: false }))
+  const fill = new Mesh(fillGeo, new MeshBasicMaterial({ color, depthWrite: false, depthTest: false }))
   fill.position.x = -width / 2
   back.renderOrder = 10
   fill.renderOrder = 11

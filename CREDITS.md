@@ -23,7 +23,7 @@ CC0(퍼블릭 도메인)라 출처 표기 의무는 없지만 감사의 뜻으�
 
 ## 3D 모델
 
-`public/models/3d`의 적·랜드마크·NPC 키키 모델은 이 프로젝트의 오리지널 2D 원화(`public/assets`)를 Meshy(image-to-3D, 리깅, 애니메이션)로 입체화한 것이다.
+`public/models/3d`의 적·랜드마크·NPC 키키·루나 모델은 이 프로젝트의 오리지널 2D 원화(`public/assets`)를 Meshy(image-to-3D, 리깅, 애니메이션)로 입체화한 것이다.
 
 ## 글꼴
 

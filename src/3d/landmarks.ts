@@ -19,17 +19,17 @@ import {
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { addOutline, applyToon, toon } from './materials'
-import { PLACES, type Place, type PlaceKind } from './places'
+import { PLACES, VILLAGE_ONLY, type Place, type PlaceKind } from './places'
 
 const loader = new GLTFLoader()
 
 /** How much of each model's own texture to add back as glow, so shaded sides stay readable. */
-const LIFT: Partial<Record<PlaceKind, number>> = { portal: 0.75, fountain: 0.3, kiki: 0.18, tree: 0.18, well: 0.22 }
+const LIFT: Partial<Record<PlaceKind, number>> = { portal: 0.75, fountain: 0.3, kiki: 0.18, luna: 0.2, tree: 0.18, well: 0.22 }
 /** Ink-line width in world metres; big buildings get a slightly heavier line. */
-const INK: Partial<Record<PlaceKind, number>> = { house: 0.03, workshop: 0.03, tree: 0.028, kiki: 0.012, board: 0.018 }
+const INK: Partial<Record<PlaceKind, number>> = { house: 0.03, workshop: 0.03, tree: 0.028, kiki: 0.012, luna: 0.012, board: 0.018 }
 
 function fileFor(kind: PlaceKind): string {
-  return kind === 'kiki' ? 'npc_kiki_mobile.glb' : `place_${kind}_mobile.glb`
+  return kind === 'kiki' || kind === 'luna' ? `npc_${kind}_mobile.glb` : `place_${kind}_mobile.glb`
 }
 
 /** Scale to the target height, stand on the ground, centre on the footprint. */
@@ -114,6 +114,8 @@ export class Landmarks {
   private readonly lanterns: Mesh[] = []
   private readonly glow: { mats: MeshToonMaterial[]; base: number; speed: number }[] = []
   private sparks: Points | null = null
+  private readonly byKind = new Map<PlaceKind, Group[]>()
+  private zone = 'village'
   private time = 0
 
   constructor(scene: Scene) {
@@ -144,19 +146,38 @@ export class Landmarks {
         wrap.position.set(place.x, 0, place.z)
         wrap.rotation.y = place.turn
         this.group.add(wrap)
+        this.track(place.kind, wrap)
         if (place.kind === 'portal') {
           this.glow.push({ mats, base: LIFT.portal ?? 0.7, speed: 1.6 })
           this.sparks = portalSparks()
           wrap.add(this.sparks)
         }
         if (place.kind === 'fountain') this.glow.push({ mats, base: LIFT.fountain ?? 0.3, speed: 2.4 })
-        if (place.kind === 'kiki') this.npcs.push(this.makeNpc(place, wrap, gltf.animations))
+        if (place.kind === 'kiki' || place.kind === 'luna') this.npcs.push(this.makeNpc(place, wrap, gltf.animations))
         return 1
       } catch {
         return 0
       }
     })
     return (await Promise.all(jobs)).reduce<number>((a, b) => a + b, 0)
+  }
+
+  private track(kind: PlaceKind, object: Group): void {
+    const list = this.byKind.get(kind) ?? []
+    list.push(object)
+    this.byKind.set(kind, list)
+    object.visible = this.zone === 'village' || !VILLAGE_ONLY.includes(kind)
+  }
+
+  /** Only the village has houses and townsfolk; the wild zones keep the tree, fountain and portal. */
+  setZone(zone: string): void {
+    this.zone = zone
+    for (const [kind, list] of this.byKind) for (const object of list) object.visible = zone === 'village' || !VILLAGE_ONLY.includes(kind)
+  }
+
+  /** Where a talkable NPC's head is, for the quest marker. */
+  npcAt(kind: PlaceKind): Npc | undefined {
+    return this.npcs.find((n) => n.place.kind === kind)
   }
 
   private makeNpc(place: Place, object: Group, clips: import('three').AnimationClip[]): Npc {
@@ -193,6 +214,7 @@ export class Landmarks {
       ;(this.sparks.material as PointsMaterial).opacity = 0.6 + Math.sin(t * 2.2) * 0.25
     }
     for (const npc of this.npcs) {
+      if (!npc.object.visible) continue
       npc.mixer?.update(dt)
       const dx = hero.x - npc.place.x
       const dz = hero.z - npc.place.z

@@ -12,8 +12,13 @@ import { Hero } from './hero'
 import { axis, consumeDash, consumeTalk, installInput, pad, runningHeld } from './input'
 import { Landmarks } from './landmarks'
 import { Mochi } from './mochi'
-import { nearestTalk, pushOutOfPlaces } from './places'
-import { TalkBox } from './talk'
+import { killLoot, GameState, type Storageish } from './loop'
+import { nearestTalk, placesFor, pushOutOfPlaces, type Place } from './places'
+import { fadeThrough, hideTitle, openQuestLog, paintStats, paintTracker, playIntro, showEnding, showTitle, titleReady, toast, zoneBanner } from './screens'
+import { TalkBox, type TalkChoice, type TalkDef } from './talk'
+import { PLAZA, PORTAL_ARRIVAL, destinations, gateLocked, zone3d, type ZoneId } from './zones3d'
+import { Color, Fog, HemisphereLight } from 'three'
+import type { Action, MutationResult } from '../sim/types'
 import { Vfx } from './vfx'
 
 const base = import.meta.env.BASE_URL
@@ -33,12 +38,22 @@ vfx.resize(window.innerHeight)
 combat.vfx = vfx
 combat.sound = (cue, gain) => audio.sfx(cue, gain)
 const landmarks = new Landmarks(stage.scene)
-const talk = new TalkBox(base, (action) => {
-  if (action.type !== 'heal-full') return
-  hero.hp = hero.maxHp
-  float('+기운', hero.object.position.clone().setY(1.7), '#b8f0c8')
-  audio.sfx('heal')
-})
+const talk = new TalkBox(base, (actions, choice, id) => talkDone(actions, choice, id))
+
+function safeStore(): Storageish | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage
+  } catch {
+    return null
+  }
+}
+const store = safeStore()
+let game = new GameState()
+/** title → intro → play; 'menu' freezes play under the quest log or ending card. */
+let mode: 'title' | 'intro' | 'play' | 'menu' = 'title'
+let zonePlaces: readonly Place[] = placesFor('meadow')
+let saveClock = 0
+let travelling = false
 const talkTip = document.getElementById('talk-tip')
 const talkBtn = document.getElementById('talk')
 document.getElementById('dialog')?.addEventListener('pointerdown', (event) => {
@@ -59,7 +74,6 @@ let showFps = true
 const floats: { el: HTMLElement; life: number; y: number; at: Vector3 }[] = []
 
 const hpFill = document.getElementById('hp-fill')
-const dustEl = document.getElementById('dust')
 const fpsEl = document.getElementById('fps')
 const boot = document.getElementById('boot')
 const note = document.getElementById('note')
@@ -81,11 +95,15 @@ document.getElementById('retry')?.addEventListener('click', () => restart())
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, landmarks, talk, vfx, audio } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode } } })
 
 void bootGame()
 
 async function bootGame(): Promise<void> {
+  const saved = GameState.load(store)
+  showTitle(base, false, { fresh: newGame, resume: () => resumeGame() })
+  titleReady(false, '꿈을 입체로 모으는 중…')
+  requestAnimationFrame(frame)
   const [byeolha, cat] = await Promise.all([
     hero.load(`${base}models/3d/byeolha_animated_mobile.glb`),
     mochi.load(`${base}models/3d/mochi_mobile.glb`),
@@ -94,13 +112,143 @@ async function bootGame(): Promise<void> {
   ])
   combat.rebuildBodies()
   if (boot) boot.classList.add('hidden')
+  showTitle(base, Boolean(saved), { fresh: newGame, resume: () => resumeGame() })
+  titleReady(true, saved ? `저장된 꿈: ${zone3d(saved.zone).name} · Lv ${saved.save.level}` : '')
   if (note && (!byeolha || !cat)) {
     note.textContent = '메쉬 파일을 찾지 못해 임시 모습으로 보여 줄게. 카메라와 손맛은 그대로야.'
     note.classList.remove('hidden')
     window.setTimeout(() => note.classList.add('hidden'), 4200)
   }
   audio.start()
-  requestAnimationFrame(frame)
+  combat.onKill = (foe) => {
+    const zone = game.zone
+    showResult(game.kill(foe.kind, foe.tags))
+    for (const loot of killLoot(zone, foe.tags, foe.elite, Math.random())) combat.dropLoot(foe.object.position, loot)
+    if (zone === 'meadow' && foe.tags.includes('tutorial')) toast('서쪽 별문이 반짝인다. 마을로 가 보자!', 'quest')
+    if (foe.kind === 'bloom') toast('별문의 봉인이 풀렸다. 루나에게 돌아가자.', 'quest')
+  }
+  combat.onPickup = (item, amount, at) => {
+    if (item === 'gold') {
+      game.pickup('gold', amount)
+      paintStats(game.save)
+      return
+    }
+    showResult(game.pickup(item))
+    float(item === 'toy_part' ? '+장난감 부품' : '+꿈가루', at.setY(1.2), item === 'toy_part' ? '#ffc890' : '#d7b8ff')
+    audio.sfx('quest')
+  }
+}
+
+function newGame(): void {
+  audio.sfx('ui')
+  game = new GameState()
+  hideTitle()
+  mode = 'intro'
+  playIntro(base, () => beginPlay())
+}
+
+function resumeGame(): void {
+  const saved = GameState.load(store)
+  if (!saved) return
+  audio.sfx('ui')
+  game = saved
+  hideTitle()
+  document.body.classList.remove('menu')
+  beginPlay()
+}
+
+function beginPlay(): void {
+  mode = 'play'
+  enterZone(game.zone, game.zone === 'meadow' || game.zone === 'village' ? PLAZA : PORTAL_ARRIVAL)
+  if (!game.save.flags.metMochi) window.setTimeout(() => talk.start('mochi_meet'), 700)
+}
+
+/** Lay out one zone on the island: its foes, pickups, standing landmarks, light and name. */
+function enterZone(id: ZoneId, at: { x: number; z: number } = PORTAL_ARRIVAL): void {
+  const zone = zone3d(id)
+  const tutorialDone = (game.save.quests.q_awaken?.counts.slime ?? 0) >= 1
+  combat.setRoster(zone.foes.filter((f) => !(f.tags.includes('tutorial') && tutorialDone)))
+  for (const p of zone.pickups) combat.dropLoot(new Vector3(p.x, 0, p.z), p.id as 'dream_dust' | 'toy_part', false)
+  combat.rebuildBodies()
+  zonePlaces = placesFor(id)
+  combat.places = zonePlaces
+  landmarks.setZone(id)
+  setMood(zone.mood)
+  hero.revive()
+  hero.object.position.set(at.x, 0, at.z)
+  heroTracked = false
+  stepTracked = false
+  mochi.place(at.x + 0.8, at.z - 0.8)
+  talk.close()
+  const result = game.enter(id)
+  if (id === 'village') hero.hp = hero.maxHp
+  showResult(result)
+  zoneBanner(zone.name, zone.bgm === 'battle' ? '괴물들이 꿈을 갉고 있어' : '평온한 꿈결')
+  game.persist(store)
+  if (id === 'altar' && !game.save.flags.bossIntro && combat.bossAwake) window.setTimeout(() => talk.start('boss_intro'), 900)
+}
+
+function travel(to: ZoneId): void {
+  if (travelling) return
+  travelling = true
+  audio.sfx('windup', 0.7)
+  void fadeThrough(() => enterZone(to, PORTAL_ARRIVAL)).then(() => {
+    travelling = false
+  })
+}
+
+const hemi = stage.scene.children.find((c): c is HemisphereLight => (c as HemisphereLight).isHemisphereLight)
+function setMood(mood: { fog: number; sky: number; clear: number }): void {
+  if (stage.scene.fog instanceof Fog) stage.scene.fog.color.set(mood.fog)
+  hemi?.color.set(mood.sky)
+  stage.renderer.setClearColor(new Color(mood.clear), 1)
+}
+
+function showResult(result: MutationResult): void {
+  for (const text of result.toasts) {
+    const quest = /완료!|새 기록|기록 달성|레벨/.test(text)
+    toast(text, quest ? 'quest' : /\+|획득/.test(text) ? 'reward' : 'info')
+  }
+  if (result.questPop) audio.sfx('quest')
+  paintTracker(game.tracker())
+  paintStats(game.save)
+}
+
+/** A dialogue just ended: run its 2D actions on the save, then any portal hop or ending. */
+function talkDone(actions: Action[], choice: TalkChoice | null, id: string | TalkDef): void {
+  const out = game.run(actions)
+  showResult(out.result)
+  if (actions.some((a) => a.type === 'heal-full')) {
+    hero.hp = hero.maxHp
+    float('+기운', hero.object.position.clone().setY(1.7), '#b8f0c8')
+    audio.sfx('heal')
+  }
+  if (out.openTinker) toast('총 재조정은 아직 2D 판 공방에서만 할 수 있어.', 'info')
+  if (out.openShop) toast('포포 상점은 아직 2D 판에만 있어.', 'info')
+  game.persist(store)
+  if (out.openQuests) {
+    mode = 'menu'
+    openQuestLog(game.save, () => {
+      mode = 'play'
+    })
+  }
+  if (choice?.go) travel(choice.go as ZoneId)
+  if (id === 'luna_bloom_done' && game.finished && !game.save.flags.ending) {
+    game.save.flags.ending = true
+    game.persist(store)
+    mode = 'menu'
+    window.setTimeout(() => showEnding(game.save, () => (mode = 'play')), 600)
+  }
+}
+
+/** The portal's little menu, built from where the story lets her go. */
+function gateTalk(): TalkDef {
+  const dests = destinations(game.save, game.zone, combat.bossAwake)
+  if (!dests.length) return { lines: [{ speaker: '모찌', portrait: 'mochi', text: gateLocked(game.zone) }] }
+  return {
+    lines: [{ speaker: '별문', portrait: 'prop_portal', text: '별빛 문이 일렁인다. 어디로 갈까?' }],
+    choices: [...dests.map((d) => ({ text: d.label, go: d.to })), { text: '그만두기' }],
+  }
 }
 
 function frame(): void {
@@ -111,6 +259,16 @@ function frame(): void {
   if (combat.hitStop > 0) {
     combat.hitStop -= raw
     dt *= 0.08
+  }
+  if (mode !== 'play') {
+    stage.render()
+    return
+  }
+  game.save.playSeconds += raw
+  saveClock += raw
+  if (saveClock > 20) {
+    saveClock = 0
+    game.persist(store)
   }
   combat.shake = Math.max(0, combat.shake - raw * 1.5)
   frames += 1
@@ -137,11 +295,10 @@ function frame(): void {
   {
     // Landmarks are solid; she slides round the house corner instead of walking through it.
     const p = hero.object.position
-    const out = pushOutOfPlaces(p.x, p.z, 0.32)
+    const out = pushOutOfPlaces(p.x, p.z, 0.32, zonePlaces)
     p.x = out.x
     p.z = out.z
   }
-  updateTalk()
   if (hero.dashing) ghost()
   if (pad.fire && !talking && fireCd <= 0 && hero.alive) {
     fireCd = 0.16
@@ -166,6 +323,10 @@ function frame(): void {
     float(`-${amount}`, heroPos.clone().setY(1.6), '#ff9eb8')
     if (!hero.alive) {
       audio.sfx('down')
+      const { lost, home } = game.died()
+      const text = document.getElementById('down-text')
+      if (text) text.textContent = `별하가 잠시 눈을 감았다.${lost ? ` 골드 ${lost}을 흘렸어.` : ''} ${zone3d(home).name}에서 다시 일어나자.`
+      game.persist(store)
       document.getElementById('down')?.classList.remove('hidden')
     }
   })
@@ -178,11 +339,14 @@ function frame(): void {
   audio.update(dt, threatNear(heroPos))
   vfx.update(dt)
   if (hpFill) hpFill.style.width = `${Math.max(0, (hero.hp / hero.maxHp) * 100)}%`
-  if (dustEl) dustEl.textContent = `꿈가루 ${combat.dust}`
   const aimFlatX = aim.x - heroPos.x
   const aimFlatZ = aim.z - heroPos.z
   stage.follow(heroPos.x, heroPos.y, heroPos.z, aimFlatX, aimFlatZ, combat.shake)
   if (import.meta.env.DEV && view.on) inspectCamera(heroPos)
+  // Tags are projected after the camera moved this frame, so they sit on the heads instead of trailing.
+  stage.camera.updateMatrixWorld()
+  updateTalk()
+  paintMarkers()
   tickFloats(dt)
   stage.render()
 }
@@ -223,25 +387,43 @@ function hurtFlash(): void {
 const tipAt = new Vector3()
 function updateTalk(): void {
   const p = hero.object.position
-  const near = hero.alive ? nearestTalk(p.x, p.z) : null
+  const near = hero.alive && !travelling ? nearestTalk(p.x, p.z, 2.4, zonePlaces) : null
   if (consumeTalk()) {
     if (talk.open) {
       talk.advance()
       audio.sfx('talk_next')
     } else if (near?.talk) {
-      talk.start(near.talk)
+      talk.start(near.talk === 'gate' ? gateTalk() : game.dialogueFor(near.talk))
       audio.sfx('talk_open')
     }
   }
-  if (talk.open && !near) talk.close()
   const showTip = Boolean(near && !talk.open)
   talkTip?.classList.toggle('hidden', !showTip)
   talkBtn?.classList.toggle('hidden', !near)
   if (!showTip || !near || !talkTip) return
-  tipAt.set(near.x, near.kind === 'kiki' ? 1.75 : near.kind === 'board' ? 1.95 : 2.2, near.z).project(stage.camera)
+  tipAt.set(near.x, TIP_HEIGHT[near.kind] ?? 2.2, near.z).project(stage.camera)
   talkTip.style.left = `${(tipAt.x * 0.5 + 0.5) * window.innerWidth}px`
   talkTip.style.top = `${(-tipAt.y * 0.5 + 0.5) * window.innerHeight}px`
-  talkTip.textContent = stage.touch ? '대화' : 'E 대화'
+  const verb = near.talk === 'gate' ? '별문' : near.talk === 'well' ? '우물' : near.talk === 'board' ? '게시판' : '대화'
+  talkTip.textContent = stage.touch ? verb : `E ${verb}`
+}
+
+const TIP_HEIGHT: Partial<Record<Place['kind'], number>> = { kiki: 1.75, luna: 1.95, board: 1.95, portal: 2.6 }
+const markAt = new Vector3()
+/** Quest markers (! new errand, ? ready to report) over the villagers, like the 2D game. */
+function paintMarkers(): void {
+  for (const npc of ['kiki', 'luna'] as const) {
+    const el = document.getElementById(`mk-${npc}`)
+    if (!el) continue
+    const who = landmarks.npcAt(npc)
+    const mark = game.zone === 'village' && who ? game.marker(npc) : ''
+    el.classList.toggle('hidden', !mark || talk.open)
+    if (!mark || !who) continue
+    markAt.set(who.place.x, who.place.height + 0.45, who.place.z).project(stage.camera)
+    el.textContent = mark
+    el.style.left = `${(markAt.x * 0.5 + 0.5) * window.innerWidth}px`
+    el.style.top = `${(-markAt.y * 0.5 + 0.5) * window.innerHeight}px`
+  }
 }
 
 function inspectCamera(at: Vector3): void {
@@ -389,11 +571,11 @@ function float(text: string, at: Vector3, color: string): void {
 
 function restart(): void {
   hero.hp = hero.maxHp
-  hero.revive()
-  hero.object.position.set(0, 0, 0)
-  heroTracked = false
-  mochi.place(0.8, -1.0)
   document.getElementById('down')?.classList.add('hidden')
+  void fadeThrough(() => {
+    enterZone(game.zone, PLAZA)
+    hero.hp = hero.maxHp
+  })
   audio.sfx('heal')
 }
 
