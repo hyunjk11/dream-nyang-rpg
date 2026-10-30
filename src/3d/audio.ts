@@ -1,15 +1,26 @@
 import { MASTER_DEFAULT } from './feel'
+import { CUES, MUSIC, musicGains, pickVariant, stepMusic, type CueName, type MusicState } from './soundplan'
 
 const KEY = 'dream-nyang-3d-master'
 const base = import.meta.env.BASE_URL
 
+/**
+ * Web Audio bus: decoded buffers (no per-shot <audio> elements), random variants and pitch,
+ * and two looping music beds that crossfade between village calm and battle.
+ */
 class Bus {
   master = read()
-  private bgm: HTMLAudioElement | null = null
-  private last = new Map<string, number>()
+  private ctx: AudioContext | null = null
+  private out: GainNode | null = null
+  private sfxBus: GainNode | null = null
+  private beds: { village: GainNode; battle: GainNode } | null = null
+  private readonly buffers = new Map<string, Promise<AudioBuffer | null>>()
+  private readonly last = new Map<string, number>()
+  private readonly lastVariant = new Map<string, number>()
+  private music: MusicState = { mix: 0, calm: MUSIC.calm }
 
   apply(): void {
-    if (this.bgm) this.bgm.volume = this.master * 0.34
+    if (this.out && this.ctx) this.out.gain.setTargetAtTime(this.master, this.ctx.currentTime, 0.05)
   }
 
   setMaster(value: number): void {
@@ -18,25 +29,91 @@ class Bus {
     this.apply()
   }
 
+  /** Create the context; browsers keep it suspended until the first tap or key. */
   start(): void {
-    if (this.bgm) return
-    const audio = new Audio(`${base}assets/audio/bgm_village.wav`)
-    audio.loop = true
-    audio.volume = this.master * 0.34
-    this.bgm = audio
-    void audio.play().catch(() => undefined)
+    if (this.ctx) return
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctx) return
+    const ctx = new Ctx()
+    this.ctx = ctx
+    this.out = ctx.createGain()
+    this.out.gain.value = this.master
+    this.out.connect(ctx.destination)
+    this.sfxBus = ctx.createGain()
+    this.sfxBus.connect(this.out)
+    const village = ctx.createGain()
+    const battle = ctx.createGain()
+    village.gain.value = MUSIC.level
+    battle.gain.value = 0
+    village.connect(this.out)
+    battle.connect(this.out)
+    this.beds = { village, battle }
+    const unlock = () => void ctx.resume()
+    for (const type of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(type, unlock, { passive: true })
+    void this.loop(MUSIC.village, village)
+    void this.loop(MUSIC.battle, battle)
+    for (const cue of Object.values(CUES)) for (const file of cue.files) void this.buffer(file)
   }
 
-  sfx(name: string): void {
-    if (this.master <= 0.001) return
+  /** Call every frame with whether a foe is near; drives the crossfade. */
+  update(dt: number, threat: boolean): void {
+    this.music = stepMusic(this.music, dt, threat)
+    if (!this.beds || !this.ctx) return
+    const gains = musicGains(this.music.mix)
+    const now = this.ctx.currentTime
+    this.beds.village.gain.setTargetAtTime(gains.village * MUSIC.level, now, 0.08)
+    this.beds.battle.gain.setTargetAtTime(gains.battle * MUSIC.level, now, 0.08)
+  }
+
+  get battleMix(): number {
+    return this.music.mix
+  }
+
+  sfx(name: CueName, gain = 1): void {
+    if (this.master <= 0.001 || !this.ctx || !this.sfxBus || this.ctx.state !== 'running') return
+    const cue = CUES[name]
     const now = performance.now()
-    const gap = name.startsWith('shoot') ? 70 : 45
-    if (now - (this.last.get(name) ?? 0) < gap) return
+    if (now - (this.last.get(name) ?? -1e9) < cue.gap) return
     this.last.set(name, now)
-    const audio = new Audio(`${base}assets/audio/${name}.wav`)
-    audio.volume = Math.min(1, this.master * 0.5)
-    audio.playbackRate = name === 'ui' ? 1 : 0.96 + Math.random() * 0.08
-    void audio.play().catch(() => undefined)
+    const index = pickVariant(cue.files.length, this.lastVariant.get(name) ?? -1, Math.random())
+    this.lastVariant.set(name, index)
+    const ctx = this.ctx
+    const bus = this.sfxBus
+    void this.buffer(cue.files[index]).then((buffer) => {
+      if (!buffer) return
+      const src = ctx.createBufferSource()
+      src.buffer = buffer
+      src.playbackRate.value = 1 + (Math.random() * 2 - 1) * cue.pitch
+      const g = ctx.createGain()
+      g.gain.value = cue.volume * gain
+      src.connect(g).connect(bus)
+      src.start()
+    })
+  }
+
+  private buffer(file: string): Promise<AudioBuffer | null> {
+    let job = this.buffers.get(file)
+    if (!job) {
+      const ctx = this.ctx
+      job = ctx
+        ? fetch(`${base}assets/${file}`)
+            .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(file))))
+            .then((data) => ctx.decodeAudioData(data))
+            .catch(() => null)
+        : Promise.resolve(null)
+      this.buffers.set(file, job)
+    }
+    return job
+  }
+
+  private async loop(file: string, bed: GainNode): Promise<void> {
+    const buffer = await this.buffer(file)
+    if (!buffer || !this.ctx) return
+    const src = this.ctx.createBufferSource()
+    src.buffer = buffer
+    src.loop = true
+    src.connect(bed)
+    src.start()
   }
 }
 

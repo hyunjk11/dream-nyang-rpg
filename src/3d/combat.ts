@@ -13,6 +13,8 @@ import {
 import { FOE_SPECS, foePose, makeFoeBody, type FoeBody, type FoeKind } from './foes'
 import { toon } from './materials'
 import { insidePlace, pushOutOfPlaces } from './places'
+import type { CueName } from './soundplan'
+import type { Vfx } from './vfx'
 
 export interface Foe {
   kind: FoeKind
@@ -46,6 +48,7 @@ interface Shot {
   fromHero: boolean
   damage: number
   radius: number
+  color: number
 }
 
 interface Drop {
@@ -63,6 +66,8 @@ interface Spark {
 
 const DEATH_TIME = 0.5
 const SPAWN_TIME = 0.45
+/** Dream-dust colour each foe bursts into. */
+const POOF: Record<FoeKind, number> = { slime: 0xffb8e0, bat: 0xc9a8ff, bug: 0xd8a8ff, rabbit: 0xa890ff, bloom: 0xff8fd0 }
 
 /** Where the starter island's foes live. The bloom guards the far side. */
 export const FOE_HOMES: readonly (readonly [number, number, FoeKind])[] = [
@@ -79,6 +84,9 @@ export const FOE_HOMES: readonly (readonly [number, number, FoeKind])[] = [
 export class Combat {
   readonly foes: Foe[] = []
   shots: Shot[] = []
+  /** Particle kit and sound hook, wired by main; combat still runs (silently) without them. */
+  vfx: Vfx | null = null
+  sound: (cue: CueName, gain?: number) => void = () => {}
   drops: Drop[] = []
   hitStop = 0
   shake = 0
@@ -184,10 +192,15 @@ export class Combat {
       fromHero,
       damage,
       radius: fromHero ? 0.28 : radius * 3,
+      color,
     })
   }
 
   flashBurst(at: Vector3, color: number, count = 8): void {
+    if (this.vfx) {
+      this.vfx.hit(at, color, count > 8)
+      return
+    }
     for (let i = 0; i < count; i += 1) {
       const angle = (i / count) * Math.PI * 2
       this.sparks.push({
@@ -215,7 +228,10 @@ export class Combat {
         if (foe.dying >= 1) {
           foe.dying = 0
           foe.object.visible = false
-          this.flashBurst(this.centre(foe), 0xffe08a, 10)
+          const boss = foe.kind === 'bloom'
+          if (this.vfx) this.vfx.poof(this.centre(foe), POOF[foe.kind], boss ? 2 : 1)
+          else this.flashBurst(this.centre(foe), 0xffe08a, 10)
+          this.sound(boss ? 'victory' : 'pop')
         } else this.pose(foe, false)
         paintHurt(foe)
         continue
@@ -270,15 +286,22 @@ export class Combat {
       foe.object.rotation.set(0, foe.yaw, 0)
 
       if (foe.windup > 0) {
+        // Ground warning that fills as the strike nears, so every attack can be read and dodged.
+        const reach = foe.kind === 'bloom' ? 2.6 : spec.ranged ? 0.9 : heroRadius + 1.2
+        this.vfx?.telegraph(foe, foe.object.position.x, foe.object.position.z, reach, 1 - foe.windup / spec.windup, foe.kind === 'bloom' ? 0xff6fae : spec.ranged ? 0xb48cff : 0xff8aa8)
         foe.windup -= dt
         if (foe.windup <= 0) {
           foe.windup = 0
           foe.attack = spec.cooldown
+          this.vfx?.endTelegraph(foe)
           this.strike(foe, heroPos, heroRadius, dist, to, onHeroHit)
         }
       } else if (foe.attack <= 0 && foe.spawn >= 1) {
         const inReach = spec.ranged ? dist < (foe.kind === 'bloom' ? 8 : 7.5) && dist > 1.4 : dist < heroRadius + 0.85
-        if (inReach) foe.windup = spec.windup
+        if (inReach) {
+          foe.windup = spec.windup
+          if (foe.kind === 'bloom') this.sound('windup')
+        }
       }
       this.pose(foe, moving)
       paintHurt(foe)
@@ -300,6 +323,7 @@ export class Combat {
       // Shots splash on landmark walls instead of passing through them.
       if (shot.mesh.position.y < 2.4 && insidePlace(shot.mesh.position.x, shot.mesh.position.z)) {
         this.flashBurst(shot.mesh.position, 0xe8f4ff)
+        this.sound('splash')
         shot.life = 0
         continue
       }
@@ -330,12 +354,14 @@ export class Combat {
         this.hitStop = Math.max(this.hitStop, 0.045)
         this.shake = Math.max(this.shake, 0.08)
         notes.push({ text: String(Math.round(shot.damage)), at: aim.clone().setY(spec.hover + spec.height + 0.1) })
-        this.flashBurst(aim, 0xffd0ea)
+        this.flashBurst(aim, shot.color, foe.kind === 'bloom' ? 9 : 8)
+        if (foe.kind === 'bloom') this.sound('boss_hit')
         shot.life = 0
         if (foe.hp <= 0) {
           foe.alive = false
           foe.dying = 0.001
           foe.windup = 0
+          this.vfx?.endTelegraph(foe)
           foe.respawn = spec.respawn
           foe.bar.group.visible = false
           foe.knock.multiplyScalar(1.6)

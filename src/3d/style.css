@@ -77,3 +77,9 @@ body.touch #vol { width: 84px; }
 #dialog small { color: #9a86a8; }
 body.touch #dialog { bottom: 120px; }
 body.talking #hint { display: none; }
+/* Hit feedback: a pink edge pulse when she is hurt, and damage numbers that pop then rise. */
+#hurt-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(255, 110, 160, 0.55) 100%); }
+#hurt-flash.on { animation: hurt-pulse 0.42s ease-out; }
+@keyframes hurt-pulse { 0% { opacity: 1; } 100% { opacity: 0; } }
+#floats span { transform: translate(-50%, -50%); animation: float-pop 0.7s ease-out; }
+@keyframes float-pop { 0% { transform: translate(-50%, -50%) scale(0.4); } 18% { transform: translate(-50%, -50%) scale(1.35); } 35% { transform: translate(-50%, -50%) scale(1); } }

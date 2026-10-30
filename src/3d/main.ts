@@ -14,6 +14,7 @@ import { Landmarks } from './landmarks'
 import { Mochi } from './mochi'
 import { nearestTalk, pushOutOfPlaces } from './places'
 import { TalkBox } from './talk'
+import { Vfx } from './vfx'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -27,6 +28,10 @@ const mochi = new Mochi()
 stage.scene.add(hero.object, mochi.object)
 const combat = new Combat(stage.scene)
 combat.camera = stage.camera
+const vfx = new Vfx(stage.scene, stage.mobile)
+vfx.resize(window.innerHeight)
+combat.vfx = vfx
+combat.sound = (cue, gain) => audio.sfx(cue, gain)
 const landmarks = new Landmarks(stage.scene)
 const talk = new TalkBox(base, (action) => {
   if (action.type !== 'heal-full') return
@@ -76,7 +81,7 @@ document.getElementById('retry')?.addEventListener('click', () => restart())
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, landmarks, talk } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, landmarks, talk, vfx, audio } })
 
 void bootGame()
 
@@ -123,7 +128,11 @@ function frame(): void {
   aimAt()
   fireCd = Math.max(0, fireCd - dt)
   const dash = consumeDash()
-  if (dash && hero.alive) audio.sfx('dash')
+  if (dash && hero.alive && !talking) {
+    audio.sfx('dash')
+    vfx.dust(hero.object.position, 2.4)
+    vfx.ring(hero.object.position.clone().setY(0.05), 0xffd0ea, 0.3, 1.2, 0.3, 0.5)
+  }
   hero.update(dt, { wishX: wish.x, wishZ: wish.z, aim, firing: pad.fire && !talking, dash: dash && !talking, run: runningHeld() })
   {
     // Landmarks are solid; she slides round the house corner instead of walking through it.
@@ -140,7 +149,7 @@ function frame(): void {
     const dir = aim.clone().sub(tip)
     if (dir.lengthSq() < 0.01) dir.set(0, 0, 1)
     combat.fire(tip, dir, 12, true, 0x9ad7ff, 16)
-    combat.flashBurst(tip, 0xd7f4ff)
+    vfx.burst(tip, 0xd7f4ff, { count: 3, speed: 1.4, up: 0.4, life: 0.14, size: 0.22, gravity: 0, drag: 8 })
     hero.recoil()
     audio.sfx('shoot_water')
   }
@@ -151,10 +160,12 @@ function frame(): void {
     const hurt = hero.hurt(amount, from)
     if (!hurt) return
     audio.sfx('hurt')
+    hurtFlash()
+    vfx.hit(heroPos.clone().setY(1.0), 0xff9eb8, true)
     combat.shake = Math.max(combat.shake, 0.07)
     float(`-${amount}`, heroPos.clone().setY(1.6), '#ff9eb8')
     if (!hero.alive) {
-      audio.sfx('hurt')
+      audio.sfx('down')
       document.getElementById('down')?.classList.remove('hidden')
     }
   })
@@ -163,6 +174,9 @@ function frame(): void {
     if (item.text.startsWith('+')) audio.sfx('coin')
     else audio.sfx('hit')
   }
+  footsteps(dt, heroPos)
+  audio.update(dt, threatNear(heroPos))
+  vfx.update(dt)
   if (hpFill) hpFill.style.width = `${Math.max(0, (hero.hp / hero.maxHp) * 100)}%`
   if (dustEl) dustEl.textContent = `꿈가루 ${combat.dust}`
   const aimFlatX = aim.x - heroPos.x
@@ -173,15 +187,50 @@ function frame(): void {
   stage.render()
 }
 
+const stepFrom = new Vector3()
+let stepClock = 0
+let stepTracked = false
+/** Grass footfalls: a soft step and a puff of dust in time with her stride. */
+function footsteps(dt: number, at: Vector3): void {
+  if (!stepTracked) stepFrom.copy(at)
+  stepTracked = true
+  const speed = dt > 0 ? Math.hypot(at.x - stepFrom.x, at.z - stepFrom.z) / dt : 0
+  stepFrom.copy(at)
+  if (speed < 1.2 || !hero.alive || hero.dashing) {
+    stepClock = Math.min(stepClock, 0.12)
+    return
+  }
+  stepClock -= dt
+  if (stepClock > 0) return
+  stepClock = speed > 4.2 ? 0.26 : 0.34
+  audio.sfx('step', speed > 4.2 ? 1.2 : 0.9)
+  vfx.dust(at, speed > 4.2 ? 1 : 0.6)
+}
+
+/** Battle music while anything awake is close or striking. */
+function threatNear(at: Vector3): boolean {
+  return combat.foes.some((foe) => foe.alive && (foe.windup > 0 || foe.object.position.distanceTo(at) < (foe.kind === 'bloom' ? 9 : 6.5)))
+}
+
+const flashEl = document.getElementById('hurt-flash')
+function hurtFlash(): void {
+  if (!flashEl) return
+  flashEl.classList.remove('on')
+  void flashEl.offsetWidth
+  flashEl.classList.add('on')
+}
+
 const tipAt = new Vector3()
 function updateTalk(): void {
   const p = hero.object.position
   const near = hero.alive ? nearestTalk(p.x, p.z) : null
   if (consumeTalk()) {
-    if (talk.open) talk.advance()
-    else if (near?.talk) {
+    if (talk.open) {
+      talk.advance()
+      audio.sfx('talk_next')
+    } else if (near?.talk) {
       talk.start(near.talk)
-      audio.sfx('ui')
+      audio.sfx('talk_open')
     }
   }
   if (talk.open && !near) talk.close()
@@ -348,4 +397,7 @@ function restart(): void {
   audio.sfx('heal')
 }
 
-window.addEventListener('resize', () => stage.resize())
+window.addEventListener('resize', () => {
+  stage.resize()
+  vfx.resize(window.innerHeight)
+})
