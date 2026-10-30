@@ -17,6 +17,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { CAMERA_DISTANCE, CAMERA_FOV, CAMERA_PITCH_DEG, CAMERA_YAW, cameraOffset, clampCameraDistance, focusPoint } from './feel'
 import { buildIsland } from './decor'
+import { ORBIT, createOrbit, orbitDrag, orbitStep } from './motion'
 import { toon } from './materials'
 
 export interface Stage {
@@ -28,6 +29,10 @@ export interface Stage {
   follow: (px: number, py: number, pz: number, aimX: number, aimZ: number, shake: number) => void
   mobile: boolean
   touch: boolean
+  /** Rotate the view by a drag of (dx, dy) pixels (right-drag on desktop, two fingers on touch). */
+  orbit: (dx: number, dy: number, touch?: boolean) => void
+  /** Current (smoothed) camera yaw, for camera-relative movement. */
+  readonly yaw: number
 }
 
 export function createStage(canvas: HTMLCanvasElement): Stage {
@@ -80,9 +85,11 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   let focusReady = false
   let leadX = 0
   let leadZ = 0
+  const view = createOrbit(CAMERA_YAW, CAMERA_PITCH_DEG)
+  let shakeT = 0
   bindZoom(canvas, (delta) => {
     distance = clampCameraDistance(distance + delta)
-  })
+  }, (dx) => orbitDrag(view, dx, 0, ORBIT.touchYawPerPx))
 
   let composer: EffectComposer | null = null
   if (!mobile) {
@@ -102,6 +109,10 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   }
 
   return {
+    get yaw() {
+      return view.yaw
+    },
+    orbit: (dx, dy, touch) => orbitDrag(view, dx, dy, touch ? ORBIT.touchYawPerPx : ORBIT.yawPerPx),
     scene,
     camera,
     renderer,
@@ -135,25 +146,32 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       focus.y += (lookY - focus.y) * k
       focus.z += (lookZ - focus.z) * k
       currentDistance += (distance - currentDistance) * (1 - Math.exp(-10 * dt))
-      const offset = cameraOffset(CAMERA_YAW, CAMERA_PITCH_DEG, currentDistance)
+      orbitStep(view, dt)
+      const offset = cameraOffset(view.yaw, view.pitch, currentDistance)
       desired.set(focus.x + offset.x, focus.y + offset.y, focus.z + offset.z)
       camera.position.copy(desired)
+      // Smooth shake (a few summed sines) instead of a fresh random offset each frame, which
+      // looked like the picture skipping.
+      shakeT += dt
       if (shake > 0) {
-        camera.position.x += (Math.random() - 0.5) * shake
-        camera.position.y += (Math.random() - 0.5) * shake * 0.45
+        const sx = Math.sin(shakeT * 61) * 0.6 + Math.sin(shakeT * 37 + 1.3) * 0.4
+        const sy = Math.sin(shakeT * 53 + 0.7) * 0.6 + Math.sin(shakeT * 29 + 2.1) * 0.4
+        camera.position.x += sx * shake * 0.5
+        camera.position.y += sy * shake * 0.22
       }
       camera.lookAt(focus)
     },
   }
 }
 
-function bindZoom(canvas: HTMLCanvasElement, onDelta: (delta: number) => void): void {
+function bindZoom(canvas: HTMLCanvasElement, onDelta: (delta: number) => void, onTwist: (dx: number) => void): void {
   canvas.addEventListener('wheel', (event) => {
     event.preventDefault()
     onDelta(Math.sign(event.deltaY) * 0.28)
   }, { passive: false })
   const pointers = new Map<number, { x: number; y: number }>()
   let pinch = 0
+  let midX = 0
   canvas.addEventListener('pointerdown', (event) => {
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
   })
@@ -163,8 +181,14 @@ function bindZoom(canvas: HTMLCanvasElement, onDelta: (delta: number) => void): 
     if (pointers.size < 2) return
     const [a, b] = [...pointers.values()]
     const dist = Math.hypot(a.x - b.x, a.y - b.y)
-    if (pinch > 0) onDelta((pinch - dist) * 0.012)
+    const mid = (a.x + b.x) / 2
+    if (pinch > 0) {
+      onDelta((pinch - dist) * 0.012)
+      // Two fingers sliding sideways together turn the view.
+      onTwist(mid - midX)
+    }
     pinch = dist
+    midX = mid
   })
   const end = (event: PointerEvent) => {
     pointers.delete(event.pointerId)

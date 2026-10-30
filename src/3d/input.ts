@@ -8,15 +8,26 @@ export interface Pad {
   py: number
   /** Fire came from a finger (attack button or a tap), so auto-aim may help. */
   touchFire: boolean
+  /** Right mouse button held: dragging turns the camera instead of moving the aim. */
+  orbiting: boolean
 }
 
 const keys = new Set<string>()
 
-export const pad: Pad = { x: 0, y: 0, fire: false, dash: false, pointer: false, px: 0, py: 0, touchFire: false }
+export const pad: Pad = { x: 0, y: 0, fire: false, dash: false, pointer: false, px: 0, py: 0, touchFire: false, orbiting: false }
 
 let dashQueued = false
 
-export function installInput(canvas: HTMLCanvasElement): void {
+export function installInput(canvas: HTMLCanvasElement, orbit: (dx: number, dy: number) => void = () => {}): void {
+  // Right-drag turns the view; the browser menu would pop over the game.
+  canvas.addEventListener('contextmenu', (event) => event.preventDefault())
+  let orbitX = 0
+  let orbitY = 0
+  // Fingers on the canvas: a second one means pinch/turn the view, not shoot.
+  const touches = new Set<number>()
+  const lift = (event: PointerEvent) => touches.delete(event.pointerId)
+  canvas.addEventListener('pointerup', lift)
+  canvas.addEventListener('pointercancel', lift)
   window.addEventListener('keydown', (event) => {
     if (event.code === 'Space' || event.code.startsWith('Arrow')) event.preventDefault()
     keys.add(event.code)
@@ -26,22 +37,51 @@ export function installInput(canvas: HTMLCanvasElement): void {
   window.addEventListener('blur', () => {
     keys.clear()
     pad.fire = false
+    pad.orbiting = false
   })
   canvas.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button === 2) {
+      // Keep the cursor (and so the aim) where it was; only the drag delta turns the camera.
+      pad.orbiting = true
+      orbitX = event.clientX
+      orbitY = event.clientY
+      canvas.setPointerCapture?.(event.pointerId)
+      return
+    }
+    if (event.pointerType === 'touch') {
+      touches.add(event.pointerId)
+      if (touches.size >= 2) {
+        pad.fire = false
+        return
+      }
+    }
     pad.pointer = true
-    pad.fire = event.button === 0
+    if (event.button === 0) pad.fire = true
     pad.touchFire = event.pointerType !== 'mouse'
     pad.px = event.clientX
     pad.py = event.clientY
   })
   window.addEventListener('pointermove', (event) => {
+    if (pad.orbiting) {
+      orbit(event.clientX - orbitX, event.clientY - orbitY)
+      orbitX = event.clientX
+      orbitY = event.clientY
+      return
+    }
     if (event.target === canvas || pad.fire) {
       pad.pointer = true
       pad.px = event.clientX
       pad.py = event.clientY
     }
   })
-  window.addEventListener('pointerup', () => {
+  window.addEventListener('pointerup', (event) => {
+    if (event.pointerType === 'mouse' && event.button === 2) {
+      pad.orbiting = false
+      // Resume aiming from wherever the cursor ended up; her turn-rate cap smooths it.
+      pad.px = event.clientX
+      pad.py = event.clientY
+      return
+    }
     pad.fire = false
   })
   const dash = document.getElementById('dash')
