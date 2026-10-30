@@ -7,6 +7,7 @@ import { audio } from './audio'
 import { Combat } from './combat'
 import { loadFoeModels } from './foes'
 import { cameraRelativeWish } from './feel'
+import { groundAim } from './camera'
 import { WALK_RADIUS } from './island'
 import { Hero } from './hero'
 import { axis, consumeDash, consumeTalk, installInput, pad, runningHeld } from './input'
@@ -64,7 +65,6 @@ const clock = new Clock()
 const raycaster = new Raycaster()
 const ndc = new Vector2()
 const aim = new Vector3(0, 1.1, 4)
-const ground = new Vector3()
 let fireCd = 0
 let mochiCd = 1
 let frames = 0
@@ -95,7 +95,7 @@ document.getElementById('retry')?.addEventListener('click', () => restart())
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode } } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode } } })
 
 void bootGame()
 
@@ -172,6 +172,7 @@ function enterZone(id: ZoneId, at: { x: number; z: number } = PORTAL_ARRIVAL): v
   combat.rebuildBodies()
   zonePlaces = placesFor(id)
   combat.places = zonePlaces
+  stage.setColliders(zonePlaces)
   landmarks.setZone(id)
   setMood(zone.mood)
   hero.revive()
@@ -466,17 +467,13 @@ function aimAt(): void {
   ndc.x = (pad.px / window.innerWidth) * 2 - 1
   ndc.y = -(pad.py / window.innerHeight) * 2 + 1
   raycaster.setFromCamera(ndc, stage.camera)
-  const planeY = 0.05
-  const origin = raycaster.ray.origin
-  const dir = raycaster.ray.direction
-  if (Math.abs(dir.y) > 0.0001) {
-    const t = (planeY - origin.y) / dir.y
-    if (t > 0) {
-      ground.copy(origin).addScaledVector(dir, t)
-      aim.set(ground.x, 1.05, ground.z)
-      return
-    }
-  }
+  // Low views put the cursor near (or above) the horizon: the hit is reined in to a sane reach
+  // and, with no hit at all, the aim follows the ray's heading from her instead.
+  const o = raycaster.ray.origin
+  const d = raycaster.ray.direction
+  const p = hero.object.position
+  const hit = groundAim(o.x, o.y, o.z, d.x, d.y, d.z, p.x, p.z)
+  aim.set(hit.x, 1.05, hit.z)
 }
 
 function nearestFoe() {

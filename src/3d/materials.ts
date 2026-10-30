@@ -69,8 +69,8 @@ const outlineMats = new Map<string, MeshBasicMaterial>()
 const outlineGeoms = new WeakMap<BufferGeometry, BufferGeometry>()
 
 /** Back-face shell pushed along smooth normals. Shared per colour + width. */
-export function outlineMaterial(width: number, color = OUTLINE_COLOR): MeshBasicMaterial {
-  const key = `${color}:${width.toFixed(5)}`
+export function outlineMaterial(width: number, color = OUTLINE_COLOR, fade = 0): MeshBasicMaterial {
+  const key = `${color}:${width.toFixed(5)}:${fade}`
   let mat = outlineMats.get(key)
   if (mat) return mat
   mat = new MeshBasicMaterial({ color, side: BackSide })
@@ -83,7 +83,42 @@ export function outlineMaterial(width: number, color = OUTLINE_COLOR): MeshBasic
     )
   }
   mat.customProgramCacheKey = () => 'outline-shell'
+  if (fade > 0) nearFade(mat, fade)
   outlineMats.set(key, mat)
+  return mat
+}
+
+/** Her chest in world space, updated by the camera each frame; decor between it and the lens thins out. */
+export const FADE_FOCUS = { value: new Vector3(0, 1, 0) }
+
+/**
+ * Dither away whatever comes within `near` metres of the lens, and thin out decor standing
+ * between the lens and her. Low views sweep the camera
+ * through the crystal and mushroom clumps; instead of a wall of pastel filling the frame they
+ * dissolve into a fine screen-door pattern (no transparency sorting, shadows untouched).
+ */
+export function nearFade<T extends Material>(mat: T, near = 1.6): T {
+  const prev = mat.onBeforeCompile
+  const prevKey = mat.customProgramCacheKey.bind(mat)
+  const uniform = { value: near }
+  mat.onBeforeCompile = (shader, renderer) => {
+    prev.call(mat, shader, renderer)
+    shader.uniforms.uFadeNear = uniform
+    shader.uniforms.uFadeFocus = FADE_FOCUS
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vFadeWorld;')
+      .replace(
+        '#include <project_vertex>',
+        '#include <project_vertex>\n#ifdef USE_INSTANCING\n  vFadeWorld = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;\n#else\n  vFadeWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#endif',
+      )
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vFadeWorld;\nuniform float uFadeNear;\nuniform vec3 uFadeFocus;')
+      .replace(
+        '#include <clipping_planes_fragment>',
+        '#include <clipping_planes_fragment>\n  {\n    float keep = smoothstep(uFadeNear * 0.4, uFadeNear, distance(vFadeWorld, cameraPosition));\n    vec3 boom = uFadeFocus - cameraPosition;\n    float len = max(length(boom), 0.001);\n    vec3 rel = vFadeWorld - cameraPosition;\n    float along = dot(rel, boom) / len;\n    float off = length(rel - boom * (along / len));\n    if (along > 0.0 && along < len - 0.45) keep = min(keep, max(0.3, smoothstep(0.5, 1.0, off)));\n    float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));\n    if (keep < ign) discard;\n  }',
+      )
+  }
+  mat.customProgramCacheKey = () => `${prevKey()}|fade${near}`
   return mat
 }
 
@@ -166,8 +201,8 @@ export function chainOutlinePush(material: MeshBasicMaterial, width: number, key
 }
 
 /** Outline for an InstancedMesh: a second instanced shell sharing the same instance matrices. */
-export function outlineInstanced(mesh: InstancedMesh, width: number, color = OUTLINE_COLOR): InstancedMesh {
-  const shell = new InstancedMesh(outlineGeometry(mesh.geometry), outlineMaterial(width, color), mesh.count)
+export function outlineInstanced(mesh: InstancedMesh, width: number, color = OUTLINE_COLOR, fade = 0): InstancedMesh {
+  const shell = new InstancedMesh(outlineGeometry(mesh.geometry), outlineMaterial(width, color, fade), mesh.count)
   shell.instanceMatrix = mesh.instanceMatrix
   shell.count = mesh.count
   shell.frustumCulled = false

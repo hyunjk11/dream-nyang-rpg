@@ -21,9 +21,11 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { LOOK } from './look'
 import { CAMERA_DISTANCE, CAMERA_FOV, CAMERA_PITCH_DEG, CAMERA_YAW, cameraOffset, clampCameraDistance, focusPoint } from './feel'
+import { boomLength, cameraColliders, cameraRig, wheelStep, type CameraCollider } from './camera'
+import type { Place } from './places'
 import { buildIsland } from './decor'
 import { ORBIT, createOrbit, orbitDrag, orbitStep } from './motion'
-import { toon } from './materials'
+import { FADE_FOCUS, toon } from './materials'
 
 export interface Stage {
   scene: Scene
@@ -36,6 +38,10 @@ export interface Stage {
   touch: boolean
   /** Rotate the view by a drag of (dx, dy) pixels (right-drag on desktop, two fingers on touch). */
   orbit: (dx: number, dy: number, touch?: boolean) => void
+  /** Live view pitch in degrees (smoothed). */
+  readonly pitch: number
+  /** Landmarks the camera must not pass through in this zone. */
+  setColliders: (places: readonly Place[]) => void
   /** Current (smoothed) camera yaw, for camera-relative movement. */
   readonly yaw: number
 }
@@ -93,17 +99,24 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   const camera = new PerspectiveCamera(CAMERA_FOV, window.innerWidth / window.innerHeight, 0.1, 80)
   const focus = new Vector3()
   const desired = new Vector3()
-  let distance = CAMERA_DISTANCE
-  let currentDistance = distance
+  // Wheel zoom; the real boom length also shortens as the view drops (see cameraRig).
+  let zoom = CAMERA_DISTANCE
+  let currentZoom = zoom
+  let colliders: CameraCollider[] = []
+  let boom = -1
   let lastFollow = 0
   let focusReady = false
   let leadX = 0
   let leadZ = 0
   const view = createOrbit(CAMERA_YAW, CAMERA_PITCH_DEG)
   let shakeT = 0
-  bindZoom(canvas, (delta) => {
-    distance = clampCameraDistance(distance + delta)
-  }, (dx) => orbitDrag(view, dx, 0, ORBIT.touchYawPerPx))
+  bindZoom(canvas, (dir) => {
+    const next = wheelStep({ zoom, pitch: view.pitchTarget }, dir)
+    zoom = next.zoom
+    view.pitchTarget = next.pitch
+  }, (delta) => {
+    zoom = clampCameraDistance(zoom + delta)
+  }, (dx, dy) => orbitDrag(view, dx, dy, ORBIT.touchYawPerPx, ORBIT.touchPitchPerPx))
 
   let composer: EffectComposer | null = null
   if (!mobile) {
@@ -134,7 +147,13 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     get yaw() {
       return view.yaw
     },
-    orbit: (dx, dy, touch) => orbitDrag(view, dx, dy, touch ? ORBIT.touchYawPerPx : ORBIT.yawPerPx),
+    get pitch() {
+      return view.pitch
+    },
+    orbit: (dx, dy, touch) => orbitDrag(view, dx, dy, touch ? ORBIT.touchYawPerPx : ORBIT.yawPerPx, touch ? ORBIT.touchPitchPerPx : ORBIT.pitchPerPx),
+    setColliders: (places) => {
+      colliders = cameraColliders(places)
+    },
     scene,
     camera,
     renderer,
@@ -158,7 +177,9 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       leadX += (lead.x - leadX) * kl
       leadZ += (lead.z - leadZ) * kl
       const lookX = px + leadX
-      const lookY = py + lead.y
+      // Low views look a little higher on her, so she isn't tiny and the horizon shows.
+      const rig = cameraRig(view.pitch, currentZoom)
+      const lookY = py + rig.lookY
       const lookZ = pz + leadZ
       // Frame-rate independent follow on her body.
       const k = 1 - Math.exp(-10 * dt)
@@ -167,11 +188,18 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       focus.x += (lookX - focus.x) * k
       focus.y += (lookY - focus.y) * k
       focus.z += (lookZ - focus.z) * k
-      currentDistance += (distance - currentDistance) * (1 - Math.exp(-10 * dt))
+      currentZoom += (zoom - currentZoom) * (1 - Math.exp(-10 * dt))
       orbitStep(view, dt)
-      const offset = cameraOffset(view.yaw, view.pitch, currentDistance)
+      const length = cameraRig(view.pitch, currentZoom).distance
+      const offset = cameraOffset(view.yaw, view.pitch, length)
       desired.set(focus.x + offset.x, focus.y + offset.y, focus.z + offset.z)
-      camera.position.copy(desired)
+      // Pull the camera in front of a house, tree or the portal behind her: in fast so the lens
+      // never shows the inside of a wall, back out slowly so it doesn't pump.
+      const allowed = boomLength(focus.x, focus.y, focus.z, desired.x, desired.y, desired.z, colliders)
+      if (boom < 0) boom = allowed
+      boom += (allowed - boom) * (1 - Math.exp(-(allowed < boom ? 30 : 4) * dt))
+      boom = Math.min(boom, length)
+      camera.position.copy(focus).addScaledVector(desired.sub(focus), boom / length)
       // Smooth shake (a few summed sines) instead of a fresh random offset each frame, which
       // looked like the picture skipping.
       shakeT += dt
@@ -182,18 +210,20 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
         camera.position.y += sy * shake * 0.22
       }
       camera.lookAt(focus)
+      FADE_FOCUS.value.copy(focus)
     },
   }
 }
 
-function bindZoom(canvas: HTMLCanvasElement, onDelta: (delta: number) => void, onTwist: (dx: number) => void): void {
+function bindZoom(canvas: HTMLCanvasElement, onWheel: (dir: number) => void, onDelta: (delta: number) => void, onTwist: (dx: number, dy: number) => void): void {
   canvas.addEventListener('wheel', (event) => {
     event.preventDefault()
-    onDelta(Math.sign(event.deltaY) * 0.28)
+    onWheel(Math.sign(event.deltaY))
   }, { passive: false })
   const pointers = new Map<number, { x: number; y: number }>()
   let pinch = 0
   let midX = 0
+  let midY = 0
   canvas.addEventListener('pointerdown', (event) => {
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
   })
@@ -204,13 +234,15 @@ function bindZoom(canvas: HTMLCanvasElement, onDelta: (delta: number) => void, o
     const [a, b] = [...pointers.values()]
     const dist = Math.hypot(a.x - b.x, a.y - b.y)
     const mid = (a.x + b.x) / 2
+    const midV = (a.y + b.y) / 2
     if (pinch > 0) {
       onDelta((pinch - dist) * 0.012)
-      // Two fingers sliding sideways together turn the view.
-      onTwist(mid - midX)
+      // Two fingers sliding together: sideways turns the view, up/down tilts it.
+      onTwist(mid - midX, midV - midY)
     }
     pinch = dist
     midX = mid
+    midY = midV
   })
   const end = (event: PointerEvent) => {
     pointers.delete(event.pointerId)
