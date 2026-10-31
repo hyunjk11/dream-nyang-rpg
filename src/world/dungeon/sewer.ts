@@ -9,7 +9,7 @@ import {
   MeshToonMaterial,
   Object3D,
 } from 'three'
-import { toonGradient } from '../materials'
+import { toonGradient } from '../../core/materials'
 import { DREAM, brickTexture, flagTexture, hash } from './dream'
 import { CEILING, TILE, Tile, tileCentre, type Maze } from './maze'
 import { wallFaces } from './walls'

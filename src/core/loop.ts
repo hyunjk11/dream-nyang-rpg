@@ -3,9 +3,9 @@ import { applyActions, freshSave, onDeath, type ActionOutcome } from '../sim/mut
 import { addMaterial, onEnter, onKill, onTalk, tracker } from '../sim/quests'
 import { gainGold } from '../sim/stats'
 import { emptyResult, mergeResult, type Action, type MutationResult, type SaveData } from '../sim/types'
-import type { FoeKind } from './foes'
-import type { ZoneId } from './zones3d'
-import { ZONE_IDS } from './zones3d'
+import type { FoeKind } from '../combat/foes'
+import type { ZoneId } from '../world/town/zones3d'
+import { ZONE_IDS } from '../world/town/zones3d'
 
 /** Save slot (kept from the 3D test build so existing saves still load). */
 export const SAVE_KEY_3D = 'dream-nyang-rpg-3d-save-v1'

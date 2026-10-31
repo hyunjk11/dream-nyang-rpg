@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CAT, catSlot, createCat, stepCat } from '../src/sim/companion'
-import { createView, pose } from '../src/3d/tps'
+import { createView, pose } from '../src/core/tps'
 
 // Where the shoulder camera sits relative to her (view yaw 0.62), as main.ts hands it to Mochi.
 const lens = pose(createView(0.62, 0.1), null, 0, 0, 0, 1 / 60)

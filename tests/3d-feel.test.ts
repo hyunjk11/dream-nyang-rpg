@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { AIM_PITCH_MIN, HOLD_POSES, MASTER_DEFAULT, UPPER_TWIST_LIMIT, aimPitchDeg, upperTwist } from '../src/3d/feel'
-import { ISLAND_RADIUS, WALK_RADIUS, islandBudget, islandPaths, pathEdgeDistance, rimRadius, scatterSpots } from '../src/3d/island'
+import { AIM_PITCH_MIN, HOLD_POSES, MASTER_DEFAULT, UPPER_TWIST_LIMIT, aimPitchDeg, upperTwist } from '../src/core/feel'
+import { ISLAND_RADIUS, WALK_RADIUS, islandBudget, islandPaths, pathEdgeDistance, rimRadius, scatterSpots } from '../src/world/town/island'
 
 describe('별하 총 잡기', () => {
   it('모든 클립에서 손이 가슴 앞에 있고 총구가 바닥을 향하지 않는다', () => {

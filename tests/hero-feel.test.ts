@@ -1,10 +1,10 @@
 import { PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { wrapAngle } from '../src/3d/feel'
+import { wrapAngle } from '../src/core/feel'
 import {
   GAIT, KNOCK, MOVE, gaitBlend, gaitRate, knockDecay, knockDistance, legYaw, turnToward,
-} from '../src/3d/motion'
-import { createView, pose, wishFrom } from '../src/3d/tps'
+} from '../src/core/motion'
+import { createView, pose, wishFrom } from '../src/core/tps'
 
 /** The shared shoulder camera at view yaw `yaw`, standing behind her at the origin. */
 function shoulderCamera(yaw: number): PerspectiveCamera {

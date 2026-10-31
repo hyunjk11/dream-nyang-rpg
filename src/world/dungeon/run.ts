@@ -11,25 +11,25 @@ import {
   type PerspectiveCamera,
   type Scene,
 } from 'three'
-import type { Hero } from '../hero'
-import type { Mochi } from '../mochi'
-import type { Vfx } from '../vfx'
-import { axis, consumeDash, consumeTalk, pad, runningHeld, shoulder } from '../input'
+import type { Hero } from '../../actors/hero'
+import type { Mochi } from '../../actors/mochi'
+import type { Vfx } from '../../core/vfx'
+import { axis, consumeDash, consumeTalk, pad, runningHeld, shoulder } from '../../core/input'
 import { Tile, generateMaze, tileCentre, type Maze } from './maze'
 import { Decor } from './dream'
 import { Minimap } from './minimap'
 import { Portal } from './portal'
 import { Sewer } from './sewer'
-import { TPS, type AimTarget, type RayFn, type TpsView } from '../tps'
-import { Shooter, type ShotWorld } from '../shooter'
+import { TPS, type AimTarget, type RayFn, type TpsView } from '../../core/tps'
+import { Shooter, type ShotWorld } from '../../combat/shooter'
 import { collideCircle, rayHit } from './walls'
 import { HORDE, Horde } from './horde'
 import { HordeView } from './horde-view'
 import { DRAIN, Director } from './waves'
 import { BOSS, Boss } from './boss'
-import { foePose, makeFoeBody } from '../foes'
-import { GUN, hitNormal } from './gunfeel'
-import type { GunCue } from './gunsound'
+import { foePose, makeFoeBody } from '../../combat/foes'
+import { hitNormal } from '../../combat/gunfeel'
+import type { GunCue } from '../../audio/gunsound'
 
 /** What the sewer borrows from the hub game each frame. */
 export interface RunHost {
@@ -61,8 +61,6 @@ export interface RunHost {
 /** Sewer fog: soft lavender haze that hides the far tunnels. */
 export const SEWER_FOG = { color: 0x55407e, near: 4, far: 25 }
 
-/** Water-gun damage per shot (elites take ~14 shots, the boss ~150). */
-export const SHOT_DAMAGE = GUN.damage
 /** Boss body is drawn at this multiple of its island size. */
 const BOSS_SCALE = 1.4
 

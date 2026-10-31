@@ -1,5 +1,5 @@
 import { Matrix4, Quaternion, Vector3, type Object3D } from 'three'
-import { wrapAngle } from './feel'
+import { wrapAngle } from '../core/feel'
 
 /** Standing height of the chibi Byeolha model in metres (the old realistic model was 1.62). */
 export const HERO_HEIGHT = 1.45

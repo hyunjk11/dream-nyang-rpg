@@ -1,6 +1,6 @@
 import { Box3, ConeGeometry, Group, Mesh, MeshToonMaterial, Object3D, SphereGeometry, Vector3 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { addOutline, applyToon, toon } from './materials'
+import { addOutline, applyToon, toon } from '../core/materials'
 
 export type FoeKind = 'slime' | 'bat' | 'bug' | 'rabbit' | 'bloom'
 

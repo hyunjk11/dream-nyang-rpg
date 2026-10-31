@@ -24,7 +24,7 @@ import {
   Vector3,
   type Camera,
 } from 'three'
-import { toonGradient } from '../materials'
+import { toonGradient } from '../core/materials'
 
 /** Soft radial star texture (procedural, no canvas so it also builds headless). */
 function starTexture(size = 64, points = 6): DataTexture {

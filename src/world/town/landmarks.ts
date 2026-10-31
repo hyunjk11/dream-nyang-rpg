@@ -18,7 +18,7 @@ import {
   Vector3,
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { addOutline, applyToon, toon } from './materials'
+import { addOutline, applyToon, toon } from '../../core/materials'
 import { PLACES, VILLAGE_ONLY, type Place, type PlaceKind } from './places'
 
 const loader = new GLTFLoader()

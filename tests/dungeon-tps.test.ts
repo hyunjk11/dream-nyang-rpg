@@ -1,13 +1,13 @@
 import { PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { Tile, distances, generateMaze, tileCentre, walkable, worldToTile } from '../src/3d/dungeon/maze'
-import { TPS, createView, forwardOf, kick, look, pose, recover, rightOf, wishFrom } from '../src/3d/tps'
-import { collideCircle, rayHit, solidAt } from '../src/3d/dungeon/walls'
-import type { Maze } from '../src/3d/dungeon/maze'
+import { Tile, distances, generateMaze, tileCentre, walkable, worldToTile } from '../src/world/dungeon/maze'
+import { TPS, createView, forwardOf, kick, look, pose, recover, rightOf, wishFrom } from '../src/core/tps'
+import { collideCircle, rayHit, solidAt } from '../src/world/dungeon/walls'
+import type { Maze } from '../src/world/dungeon/maze'
 
 const ray = (m: Maze) => (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, max: number) => rayHit(m, ox, oy, oz, dx, dy, dz, max)
-import { Sewer, wallFaces } from '../src/3d/dungeon/sewer'
-import { CEILING, TILE } from '../src/3d/dungeon/maze'
+import { Sewer, wallFaces } from '../src/world/dungeon/sewer'
+import { CEILING, TILE } from '../src/world/dungeon/maze'
 
 describe('꿈 하수도 미궁 생성', () => {
   it('같은 시드는 같은 미궁, 다른 시드는 다른 미궁', () => {

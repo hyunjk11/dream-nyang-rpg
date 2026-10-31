@@ -8,7 +8,7 @@ import {
   barrelYaw,
   calibrateGrip,
   handForGun,
-} from '../src/3d/grip'
+} from '../src/actors/grip'
 
 /** A-포즈 오른팔: 몸 중심(0,1,0)에서 +X 쪽으로 비스듬히 내려간 팔뚝과 손. */
 function armRig() {

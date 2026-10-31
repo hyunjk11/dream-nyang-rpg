@@ -2,7 +2,7 @@
  * Landmark shapes the shoulder camera and the aim ray treat as solid in town (houses, trees,
  * the portal pillars). No Three.js.
  */
-import type { Place } from './places'
+import type { Place } from '../world/town/places'
 
 /** Decor (crystals, mushrooms) closer than this to the lens dithers away (m). */
 export const CAMERA_FADE_NEAR = 1.7

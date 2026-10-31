@@ -2,7 +2,7 @@
  * The "두두두두" full-auto water gun: fire cadence, crosshair bloom and spread, a soft heat
  * gauge, crits, and how long the world freezes on a meaty hit. No Three.js, so it tests fast.
  */
-import { CEILING, TILE, Tile, type Maze } from './maze'
+import { CEILING, TILE, Tile, type Maze } from '../world/dungeon/maze'
 
 export const GUN = {
   /** Seconds between shots (~15 per second). */

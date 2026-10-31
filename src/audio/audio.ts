@@ -1,4 +1,4 @@
-import { MASTER_DEFAULT } from './feel'
+import { MASTER_DEFAULT } from '../core/feel'
 import { CUES, MUSIC, musicGains, pickVariant, stepMusic, type CueName, type MusicState } from './soundplan'
 
 const KEY = 'dream-nyang-3d-master'

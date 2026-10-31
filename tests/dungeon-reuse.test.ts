@@ -1,10 +1,10 @@
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, SphereGeometry } from 'three'
 import { describe, expect, it } from 'vitest'
-import { bakeSkinned, decimate, frameTimes } from '../src/3d/dungeon/bake'
-import { CHAMPIONS, HORDE, type HordeKind } from '../src/3d/dungeon/horde'
-import { HORDE_KINDS, KIND_ART, walkFrame } from '../src/3d/dungeon/horde-view'
-import { LORD_TINTS, LUCKY, LUCKY_KINDS, luckyFrames } from '../src/3d/dungeon/lucky'
-import { Director, waveFor } from '../src/3d/dungeon/waves'
+import { bakeSkinned, decimate, frameTimes } from '../src/world/dungeon/bake'
+import { CHAMPIONS, HORDE, type HordeKind } from '../src/world/dungeon/horde'
+import { HORDE_KINDS, KIND_ART, walkFrame } from '../src/world/dungeon/horde-view'
+import { LORD_TINTS, LUCKY, LUCKY_KINDS, luckyFrames } from '../src/world/dungeon/lucky'
+import { Director, waveFor } from '../src/world/dungeon/waves'
 
 const shipped = Object.keys(import.meta.glob('../public/models/3d/*_mobile.glb', { query: '?url' })).map((p) => p.split('/').pop())
 const credits = Object.values(import.meta.glob('../CREDITS.md', { query: '?raw', import: 'default', eager: true }))[0] as string

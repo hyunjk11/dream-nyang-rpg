@@ -28,7 +28,7 @@ import {
   Vector3,
   type Texture,
 } from 'three'
-import { toonGradient } from '../materials'
+import { toonGradient } from '../../core/materials'
 import { CEILING, TILE, Tile, distances, tileCentre, walkable, type Maze } from './maze'
 import { wallFaces } from './walls'
 

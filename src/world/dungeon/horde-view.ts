@@ -3,7 +3,7 @@
  * ink outline) and one vertex-coloured far LOD. Foes outside the view frustum are skipped, so the
  * GPU only sees what she can see. Poses reuse foePose (squash, hop, flap) per instance matrix.
  */
-import { DIFFICULTY } from '../difficulty'
+import { DIFFICULTY } from '../../combat/difficulty'
 import {
   Box3,
   BufferAttribute,
@@ -25,8 +25,8 @@ import {
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
-import { FOE_SPECS, foePose, type FoeKind } from '../foes'
-import { outlineInstanced, toonGradient } from '../materials'
+import { FOE_SPECS, foePose, type FoeKind } from '../../combat/foes'
+import { outlineInstanced, toonGradient } from '../../core/materials'
 import { bakeSkinned, decimate } from './bake'
 import { DIE_TIME, ELITE, HORDE, HORDE_CAP, SPAWN_TIME, type Horde, type HordeKind } from './horde'
 import { LORD_TINTS, luckyFrames, type LuckyKind } from './lucky'

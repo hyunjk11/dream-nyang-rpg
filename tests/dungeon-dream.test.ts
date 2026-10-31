@@ -1,11 +1,11 @@
 import { InstancedMesh, Mesh, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { generateMaze, tileCentre } from '../src/3d/dungeon/maze'
-import { Decor } from '../src/3d/dungeon/dream'
-import { Minimap } from '../src/3d/dungeon/minimap'
-import { Portal } from '../src/3d/dungeon/portal'
-import { VAULT, vaultGeometry } from '../src/3d/dungeon/sewer'
-import { CEILING, TILE } from '../src/3d/dungeon/maze'
+import { generateMaze, tileCentre } from '../src/world/dungeon/maze'
+import { Decor } from '../src/world/dungeon/dream'
+import { Minimap } from '../src/world/dungeon/minimap'
+import { Portal } from '../src/world/dungeon/portal'
+import { VAULT, vaultGeometry } from '../src/world/dungeon/sewer'
+import { CEILING, TILE } from '../src/world/dungeon/maze'
 
 const maze = generateMaze(20261030)
 

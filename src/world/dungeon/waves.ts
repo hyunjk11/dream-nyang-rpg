@@ -3,7 +3,7 @@
  * second wave on, and a pause once she reaches the boss chamber. Pure; the run feeds it her
  * BFS distances and turns its spawn orders into foes.
  */
-import { DIFFICULTY, waveSize } from '../difficulty'
+import { DIFFICULTY, waveSize } from '../../combat/difficulty'
 import type { HordeKind } from './horde'
 
 export interface Wave {

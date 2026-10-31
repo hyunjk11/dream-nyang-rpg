@@ -8,16 +8,16 @@
  * walls AND foes (`aimFrom`), 3. fire from the muzzle toward that point (`Shooter.update`).
  */
 import { AdditiveBlending, BoxGeometry, Color, InstancedMesh, MeshBasicMaterial, Object3D, Vector3, type PerspectiveCamera } from 'three'
-import type { Hero } from './hero'
-import type { Vfx } from './vfx'
+import type { Hero } from '../actors/hero'
+import type { Vfx } from '../core/vfx'
 import {
   ASSIST, TPS, anglesTo, assistPick, createView, kick, look, perPixel, pose, rayCapsule, recover, wishFrom,
   type AimTarget, type RayFn, type TpsView,
-} from './tps'
-import { GUN, Gun, hitStopFor, rollDamage, spreadDir } from './dungeon/gunfeel'
-import { GunFx } from './dungeon/gunfx'
-import { HudFx } from './dungeon/hudfx'
-import type { GunCue } from './dungeon/gunsound'
+} from '../core/tps'
+import { GUN, Gun, hitStopFor, rollDamage, spreadDir } from './gunfeel'
+import { GunFx } from './gunfx'
+import { HudFx } from '../ui/hudfx'
+import type { GunCue } from '../audio/gunsound'
 
 /** What a world tells the rig and the gun. */
 export interface AimWorld {

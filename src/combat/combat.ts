@@ -12,14 +12,14 @@ import {
   type Camera,
 } from 'three'
 import { FOE_SPECS, foePose, makeFoeBody, type FoeBody, type FoeKind } from './foes'
-import { toon } from './materials'
-import { PLACES, insidePlace, pushOutOfPlaces, type Place } from './places'
-import type { Loot } from './loop'
-import type { ZoneFoe } from './zones3d'
-import type { CueName } from './soundplan'
-import type { Vfx } from './vfx'
+import { toon } from '../core/materials'
+import { PLACES, insidePlace, pushOutOfPlaces, type Place } from '../world/town/places'
+import type { Loot } from '../core/loop'
+import type { ZoneFoe } from '../world/town/zones3d'
+import type { CueName } from '../audio/soundplan'
+import type { Vfx } from '../core/vfx'
 import { DIFFICULTY } from './difficulty'
-import { rayCapsule, type AimTarget } from './tps'
+import { rayCapsule, type AimTarget } from '../core/tps'
 
 const TOWN = DIFFICULTY.town
 const townDamage = (raw: number) => Math.max(1, Math.round(raw * TOWN.damage))

@@ -1,6 +1,6 @@
-import { ZONES } from '../data/zones'
-import type { SaveData } from '../sim/types'
-import type { FoeKind } from './foes'
+import { ZONES } from '../../data/zones'
+import type { SaveData } from '../../sim/types'
+import type { FoeKind } from '../../combat/foes'
 import { placesFor, pushOutOfPlaces } from './places'
 
 /**

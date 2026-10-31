@@ -25,8 +25,8 @@ import {
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { ISLAND_RADIUS, PATH_WIDTH, islandBudget, islandPaths, mulberry32, rimRadius, scatterSpots, type Spot } from './island'
-import { nearFade, outlineInstanced, toon, toonGradient } from './materials'
-import { CAMERA_FADE_NEAR } from './camera'
+import { nearFade, outlineInstanced, toon, toonGradient } from '../../core/materials'
+import { CAMERA_FADE_NEAR } from '../../core/camera'
 
 /**
  * Dreamy pastel toon island. Every decoration family is one InstancedMesh (or one Points),

@@ -20,11 +20,11 @@ import {
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
-import { HOLD_POSES, aimPitchDeg, damp, upperTwist, wrapAngle, type HoldPose, type HoldState } from './feel'
+import { HOLD_POSES, aimPitchDeg, damp, upperTwist, wrapAngle, type HoldPose, type HoldState } from '../core/feel'
 import { BARREL_CONE, CHARACTER_INK, GUN_SIZE, HERO_HEIGHT, REST_PITCH, barrelQuaternion, barrelYaw, calibrateGrip, handForGun, type Grip } from './grip'
-import { addOutline, applyToon, characterGradient, toon } from './materials'
-import { KNOCK, MOVE, gaitBlend, gaitRate, knockDecay, legYaw, turnToward } from './motion'
-import { DIFFICULTY } from './difficulty'
+import { addOutline, applyToon, characterGradient, toon } from '../core/materials'
+import { KNOCK, MOVE, gaitBlend, gaitRate, knockDecay, legYaw, turnToward } from '../core/motion'
+import { DIFFICULTY } from '../combat/difficulty'
 
 const loader = new GLTFLoader()
 loader.setMeshoptDecoder(MeshoptDecoder)

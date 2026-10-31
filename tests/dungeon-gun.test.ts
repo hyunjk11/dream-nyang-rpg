@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { GUN, Gun, hitNormal, hitStopFor, rollDamage, spreadDir } from '../src/3d/dungeon/gunfeel'
-import { VoicePool, synth } from '../src/3d/dungeon/gunsound'
-import { TILE, generateMaze, tileCentre, Tile } from '../src/3d/dungeon/maze'
+import { GUN, Gun, hitNormal, hitStopFor, rollDamage, spreadDir } from '../src/combat/gunfeel'
+import { VoicePool, synth } from '../src/audio/gunsound'
+import { TILE, generateMaze, tileCentre, Tile } from '../src/world/dungeon/maze'
 
 describe('두두두 연사 손맛', () => {
   it('방아쇠를 1초 당기면 초당 약 15발이 나가고 프레임이 느려도 연사 속도가 유지된다', () => {

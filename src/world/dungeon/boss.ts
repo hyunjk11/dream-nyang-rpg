@@ -3,11 +3,11 @@
  * she steps into the chamber, creeps after her, fires rings of slow dream orbs she can weave
  * through, and calls the horde at two-thirds and one-third health. Pure simulation.
  */
-import { DIFFICULTY } from '../difficulty'
+import { DIFFICULTY } from '../../combat/difficulty'
 import type { Maze, Rect } from './maze'
 import { TILE, tileCentre } from './maze'
 import { collideCircle, solidAt } from './walls'
-import { rayCapsule, type AimTarget } from '../tps'
+import { rayCapsule, type AimTarget } from '../../core/tps'
 
 export const BOSS = {
   hp: Math.round(1400 * DIFFICULTY.boss.hp),

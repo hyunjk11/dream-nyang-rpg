@@ -19,7 +19,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { LOOK } from './look'
-import { buildIsland } from './decor'
+import { buildIsland } from '../world/town/decor'
 import { toon } from './materials'
 import { TPS } from './tps'
 

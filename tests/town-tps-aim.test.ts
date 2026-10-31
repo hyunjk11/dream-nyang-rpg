@@ -1,18 +1,18 @@
 import { PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { ASSIST, SENS, TPS, assistPick, clampSens, createView, perPixel, pose, rayCapsule, type AimTarget } from '../src/3d/tps'
-import { ShoulderRig, type AimWorld } from '../src/3d/shooter'
-import { DIFFICULTY, waveSize } from '../src/3d/difficulty'
-import { clickAction } from '../src/3d/input'
-import { cameraColliders } from '../src/3d/camera'
-import { placesFor } from '../src/3d/places'
-import { waveFor, REST, LIVE_CAP } from '../src/3d/dungeon/waves'
-import { HORDE, Horde } from '../src/3d/dungeon/horde'
-import { BOSS } from '../src/3d/dungeon/boss'
-import { generateMaze, tileCentre } from '../src/3d/dungeon/maze'
+import { ASSIST, SENS, TPS, assistPick, clampSens, createView, perPixel, pose, rayCapsule, type AimTarget } from '../src/core/tps'
+import { ShoulderRig, type AimWorld } from '../src/combat/shooter'
+import { DIFFICULTY, waveSize } from '../src/combat/difficulty'
+import { clickAction } from '../src/core/input'
+import { cameraColliders } from '../src/core/camera'
+import { placesFor } from '../src/world/town/places'
+import { waveFor, REST, LIVE_CAP } from '../src/world/dungeon/waves'
+import { HORDE, Horde } from '../src/world/dungeon/horde'
+import { BOSS } from '../src/world/dungeon/boss'
+import { generateMaze, tileCentre } from '../src/world/dungeon/maze'
 
-const sources = import.meta.glob('../src/3d/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-const mainSrc = sources['../src/3d/main.ts']
+const sources = import.meta.glob('../src/main.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const mainSrc = sources['../src/main.ts']
 
 function rigAt(yaw: number, pitch: number): { rig: ShoulderRig; cam: PerspectiveCamera } {
   const cam = new PerspectiveCamera(TPS.fov, 16 / 9, 0.05, 80)

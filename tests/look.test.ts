@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { BoxGeometry } from 'three'
-import { LOOK, keyToFill } from '../src/3d/look'
-import { CLOUD_SEA_INNER, CLOUD_SEA_Y } from '../src/3d/decor'
-import { ISLAND_RADIUS } from '../src/3d/island'
-import { outlineGeometry } from '../src/3d/materials'
+import { LOOK, keyToFill } from '../src/core/look'
+import { CLOUD_SEA_INNER, CLOUD_SEA_Y } from '../src/world/town/decor'
+import { ISLAND_RADIUS } from '../src/world/town/island'
+import { outlineGeometry } from '../src/core/materials'
 
 describe('look pass', () => {
   it('keeps a readable key-to-fill contrast', () => {

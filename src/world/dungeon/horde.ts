@@ -7,10 +7,10 @@
  * at the centre of the next tile downhill, or straight at her when it shares her tile or the next.
  * Crowding: a uniform spatial hash pushes overlapping bodies apart; walls via collideCircle.
  */
-import { DIFFICULTY } from '../difficulty'
+import { DIFFICULTY } from '../../combat/difficulty'
 import { TILE, tileCentre, walkable, worldToTile, type Maze } from './maze'
 import { collideCircle } from './walls'
-import { rayCapsule, type AimTarget } from '../tps'
+import { rayCapsule, type AimTarget } from '../../core/tps'
 
 export type HordeKind =
   | 'slime'
