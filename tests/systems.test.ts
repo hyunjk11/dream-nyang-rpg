@@ -3,7 +3,7 @@ import { calcDamage, xpToNext } from '../src/sim/formulas'
 import { makeItem, rarityWeights, rollAffixes, rollDrops, rollRarity, sellValue } from '../src/sim/loot'
 import { freshSave, learnSkill, onDeath, rerollWeapon, sellOwned, usePotion } from '../src/sim/mutate'
 import { buyEntry } from '../src/sim/mutate'
-import { DEFAULT_SETTINGS } from '../src/sim/types'
+import { BAG_CAP, DEFAULT_SETTINGS } from '../src/sim/types'
 import { addMaterial, onEnter, onKill, onTalk, startQuest, turnIn } from '../src/sim/quests'
 import { mulberry32 } from '../src/sim/rng'
 import { computeStats, gainXp } from '../src/sim/stats'
@@ -104,7 +104,7 @@ describe('성장과 가방', () => {
     const hat = makeItem('hat_beret', 'common', () => 0, 1)
     addItem(save, hat, true)
     save.equipment.hat = hat.uid
-    expect(computeStats(save).maxHp).toBe(before + 22)
+    expect(computeStats(save).maxHp).toBe(before + 14)
     expect(learnSkill(save, 'shield').ok).toBe(true)
     expect(learnSkill(save, 'focus').ok).toBe(false)
     expect(learnSkill(save, 'sense').reason).toContain('먼저')
@@ -112,7 +112,7 @@ describe('성장과 가방', () => {
 
   it('가방이 가득 차면 거절하고 판매하면 골드가 는다', () => {
     const save = freshSave()
-    for (let i = 0; i < 24; i += 1) addItem(save, makeItem('acc_ring', 'common', () => 0.2, 1))
+    for (let i = 0; i < BAG_CAP; i += 1) addItem(save, makeItem('acc_ring', 'common', () => 0.2, 1))
     expect(addItem(save, makeItem('acc_ring', 'common', () => 0.2, 1))).toBe(false)
     const bag = save.items.filter((item) => item.uid !== save.equipment.weapon)
     const gold = save.gold

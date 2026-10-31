@@ -2,7 +2,8 @@ import { resolveDialogue, npcMarker } from '../data/dialogues'
 import { applyActions, freshSave, onDeath, type ActionOutcome } from '../sim/mutate'
 import { addMaterial, onEnter, onKill, onTalk, tracker } from '../sim/quests'
 import { gainGold } from '../sim/stats'
-import { delveOf } from '../sim/delve'
+import { migrateSave } from '../sim/migrate'
+import type { OpenRun } from '../sim/types'
 import { emptyResult, mergeResult, type Action, type MutationResult, type SaveData } from '../sim/types'
 import type { FoeKind } from '../combat/foes'
 import type { ZoneId } from '../world/town/zones3d'
@@ -35,6 +36,8 @@ export function killLoot(zone: ZoneId, tags: readonly string[], elite: string | 
  */
 export class GameState {
   save: SaveData
+  /** Set by load(): a trip a reload interrupted, its gold now banked (main.ts toasts it). */
+  banked: OpenRun | null = null
   constructor(save: SaveData = freshSave()) {
     this.save = save
   }
@@ -109,9 +112,10 @@ export class GameState {
     try {
       const save = JSON.parse(raw) as SaveData
       if (!save || save.version !== 1 || !save.quests || !Array.isArray(save.items)) return null
-      save.materials = { dream_dust: 0, toy_part: 0, ...save.materials }
-      delveOf(save)
-      return new GameState(save)
+      const { banked } = migrateSave(save)
+      const state = new GameState(save)
+      state.banked = banked
+      return state
     } catch {
       return null
     }

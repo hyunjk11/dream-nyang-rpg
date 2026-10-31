@@ -1,6 +1,6 @@
 import { ITEMS, SHOP } from '../data/items'
 import { SKILLS } from '../data/skills'
-import { makeItem, rerollCost, rollAffixes, sellValue } from './loot'
+import { dismantleYield, makeItem, rerollCost, rollAffixes, sellValue } from './loot'
 import { addItem, equipItem, findItem, removeItem, unequipItem } from './inventory'
 import { addMaterial, initialQuestState, onTalk, startQuest, turnIn } from './quests'
 import { computeStats, gainGold, healAmount, healFull, reclampHp, spendGold } from './stats'
@@ -45,7 +45,8 @@ export function freshSave(settings = DEFAULT_SETTINGS): SaveData {
     zoneId: 'meadow',
     spawn: 'default',
     settings: { ...settings },
-    delve: { unlocked: 1, cleared: 0, checkpoint: null, runs: 0 },
+    delve: { unlocked: 1, cleared: 0, checkpoint: null, runs: 0, open: null },
+    build: { points: 1, ranks: {} },
   }
   const gun = makeItem('gun_water', 'common', () => 0.2, 1)
   addItem(save, gun, true)
@@ -81,9 +82,9 @@ export function learnSkill(save: SaveData, id: string): { ok: boolean; reason?: 
   return { ok: true }
 }
 
-export function tryEquip(save: SaveData, id: string): { ok: boolean; reason?: string } {
+export function tryEquip(save: SaveData, id: string, prefer?: EquipSlot): { ok: boolean; reason?: string } {
   const before = computeStats(save).maxHp
-  const result = equipItem(save, id)
+  const result = equipItem(save, id, prefer)
   if (!result.ok) return result
   reclampHp(save, before)
   return result
@@ -100,12 +101,26 @@ export function tryUnequip(save: SaveData, slot: EquipSlot): { ok: boolean; reas
 export function sellOwned(save: SaveData, id: string): { ok: boolean; reason?: string; gold?: number } {
   const item = findItem(save, id)
   if (!item) return { ok: false, reason: '없는 물건이야.' }
+  if (save.equipment.weapon === id) return { ok: false, reason: '쓰고 있는 총은 팔 수 없어.' }
   const before = computeStats(save).maxHp
   const gold = sellValue(item)
   removeItem(save, id)
   gainGold(save, gold)
   reclampHp(save, before)
   return { ok: true, gold }
+}
+
+/** Break an item into workshop materials (dust, parts, star shards). */
+export function dismantleOwned(save: SaveData, id: string): { ok: boolean; reason?: string; got?: Record<string, number> } {
+  const item = findItem(save, id)
+  if (!item) return { ok: false, reason: '없는 물건이야.' }
+  if (save.equipment.weapon === id) return { ok: false, reason: '쓰고 있는 총은 분해할 수 없어.' }
+  const before = computeStats(save).maxHp
+  const got = dismantleYield(item)
+  removeItem(save, id)
+  for (const [mat, n] of Object.entries(got)) save.materials[mat] = (save.materials[mat] ?? 0) + n
+  reclampHp(save, before)
+  return { ok: true, got }
 }
 
 export function rerollWeapon(save: SaveData, rng: () => number = Math.random): { ok: boolean; reason?: string } {
@@ -115,7 +130,7 @@ export function rerollWeapon(save: SaveData, rng: () => number = Math.random): {
   const cost = rerollCost(item)
   if (!spendGold(save, cost)) return { ok: false, reason: `골드가 모자라. ${cost} 필요해.` }
   const slot = ITEMS[item.defId]?.slot ?? 'weapon'
-  item.affixes = rollAffixes(slot, item.rarity, rng)
+  item.affixes = rollAffixes(slot, item.rarity, rng, item.itemLevel)
   return { ok: true }
 }
 

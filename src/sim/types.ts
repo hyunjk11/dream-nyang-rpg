@@ -1,6 +1,10 @@
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
 
-export type EquipSlot = 'weapon' | 'hat' | 'outfit' | 'accessory' | 'collar'
+/** Equipment slots. A ring/charm (`accessory` item) fits either accessory slot; `collar` is Mochi's (old saves). */
+export type EquipSlot = 'weapon' | 'hat' | 'outfit' | 'shoes' | 'accessory' | 'accessory2' | 'collar'
+
+/** Slots shown in the equipment panel, in order. */
+export const EQUIP_SLOTS: EquipSlot[] = ['weapon', 'hat', 'outfit', 'shoes', 'accessory', 'accessory2']
 
 export type StatKey =
   | 'hp'
@@ -12,8 +16,23 @@ export type StatKey =
   | 'moveSpeed'
   | 'luck'
   | 'weaponDamage'
+  // 3D game stats (fractions unless noted)
+  | 'damage'
+  | 'fireRate'
+  | 'lifesteal'
+  /** Extra foes a droplet passes through (whole number). */
+  | 'pierce'
+  /** Share of incoming damage blocked. */
+  | 'armor'
+  /** Element proc chances on hit. */
+  | 'sparkle'
+  | 'ice'
+  | 'candy'
 
-export type WeaponKind = 'water' | 'bubble' | 'dart'
+/** Toy gun bases: full-auto water gun, bubble shotgun, star burst rifle, dream dart sniper. */
+export type WeaponKind = 'water' | 'bubble' | 'star' | 'dart'
+
+export type Element = 'sparkle' | 'ice' | 'candy'
 
 export interface Affix {
   id: string
@@ -28,6 +47,8 @@ export interface ItemInstance {
   rarity: Rarity
   itemLevel: number
   affixes: Affix[]
+  /** 2 = 3D affix scale. Items without it come from older saves and are converted on load. */
+  v?: 2
 }
 
 export type QuestStatus = 'inactive' | 'active' | 'completed' | 'turnedIn'
@@ -68,7 +89,26 @@ export interface SaveData {
   spawn: string
   settings: Settings
   /** Dream-sewer delve progress (see sim/delve.ts); old saves get it on load. */
-  delve?: { unlocked: number; cleared: number; checkpoint: { depth: number; floor: number } | null; runs: number }
+  delve?: {
+    unlocked: number
+    cleared: number
+    checkpoint: { depth: number; floor: number } | null
+    runs: number
+    /** The trip in progress (run gold etc.), so a reload mid-run banks it instead of losing it. */
+    open?: OpenRun | null
+  }
+  /** Skill tree (3D): unspent points and ranks per skill. Old saves get it on load. */
+  build?: { points: number; ranks: Record<string, number> }
+}
+
+export interface OpenRun {
+  depth: number
+  floor: number
+  gold: number
+  kills: number
+  elites: number
+  seconds: number
+  floorsCleared: number
 }
 
 export type Action =
@@ -100,26 +140,29 @@ export function mergeResult(a: MutationResult, b: MutationResult): MutationResul
 export const RARITIES: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary']
 
 export const RARITY_KO: Record<Rarity, string> = {
-  common: '일반',
-  uncommon: '고급',
+  common: '보통',
+  uncommon: '매직',
   rare: '희귀',
   epic: '영웅',
   legendary: '전설',
 }
 
+/** White → blue → yellow → violet → orange, the loot-game ladder in pastel. */
 export const RARITY_COLOR: Record<Rarity, string> = {
-  common: '#efe8df',
-  uncommon: '#7dcea0',
-  rare: '#7eb6ff',
+  common: '#f3ece4',
+  uncommon: '#7fb8ff',
+  rare: '#ffe066',
   epic: '#d59bff',
-  legendary: '#ffcf70',
+  legendary: '#ffa45c',
 }
 
 export const SLOT_KO: Record<EquipSlot, string> = {
-  weapon: '무기',
-  hat: '모자',
+  weapon: '총',
+  hat: '모자·머리핀',
   outfit: '옷',
+  shoes: '신발',
   accessory: '장신구',
+  accessory2: '장신구 2',
   collar: '모찌 목걸이',
 }
 
@@ -133,6 +176,14 @@ export const STAT_KO: Record<StatKey, string> = {
   moveSpeed: '이동 속도',
   luck: '행운',
   weaponDamage: '무기 공격력',
+  damage: '피해',
+  fireRate: '연사 속도',
+  lifesteal: '생명 흡수',
+  pierce: '관통',
+  armor: '피해 감소',
+  sparkle: '반짝 속성',
+  ice: '얼음 속성',
+  candy: '사탕 속성',
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -144,7 +195,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showTouch: false,
 }
 
-export const BAG_CAP = 24
+export const BAG_CAP = 30
 export const POTION_CAP = 20
 
 let seq = 0
