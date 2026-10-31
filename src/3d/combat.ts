@@ -18,6 +18,11 @@ import type { Loot } from './loop'
 import type { ZoneFoe } from './zones3d'
 import type { CueName } from './soundplan'
 import type { Vfx } from './vfx'
+import { DIFFICULTY } from './difficulty'
+import { rayCapsule, type AimTarget } from './tps'
+
+const TOWN = DIFFICULTY.town
+const townDamage = (raw: number) => Math.max(1, Math.round(raw * TOWN.damage))
 
 export interface Foe {
   kind: FoeKind
@@ -173,9 +178,60 @@ export class Combat {
     return out.copy(foe.object.position).setY(spec.hover + spec.height * 0.5)
   }
 
+  /** A foe's body as a crosshair capsule (elites are drawn 1.3x). */
+  capsule(foe: Foe): AimTarget {
+    const spec = FOE_SPECS[foe.kind]
+    const k = foe.elite ? 1.3 : 1
+    return { x: foe.object.position.x, z: foe.object.position.z, y0: spec.hover - 0.1, y1: spec.hover + spec.height * k + 0.1, r: spec.radius * k }
+  }
+
+  /** Foes that can be shot right now (for the shoulder crosshair). */
+  shootable(): Foe[] {
+    return this.foes.filter((f) => f.alive && f.dying === 0 && f.spawn > 0.3 && f.object.visible)
+  }
+
+  /** Nearest shootable foe along a unit ray before `max`. */
+  raycast(o: Vector3, d: Vector3, max: number): { foe: Foe; t: number } | null {
+    let best: Foe | null = null
+    let bt = max
+    for (const foe of this.shootable()) {
+      const t = rayCapsule(o.x, o.y, o.z, d.x, d.y, d.z, this.capsule(foe), bt)
+      if (t >= 0 && t < bt) {
+        bt = t
+        best = foe
+      }
+    }
+    return best ? { foe: best, t: bt } : null
+  }
+
+  /** A hitscan droplet from the shoulder gun landed: damage, flash, shove, and the kill. */
+  strikeFoe(foe: Foe, damage: number, dir: Vector3): boolean {
+    const spec = FOE_SPECS[foe.kind]
+    foe.hp -= damage
+    foe.flash = 0.1
+    foe.hurt = 1
+    const shove = foe.kind === 'bloom' ? 0.25 : 1.4
+    foe.knock.addScaledVector(new Vector3(dir.x, 0, dir.z).normalize(), shove)
+    if (foe.knock.length() > 3.2) foe.knock.setLength(3.2)
+    if (foe.kind === 'bloom') this.sound('boss_hit')
+    if (foe.hp > 0) return false
+    foe.alive = false
+    foe.dying = 0.001
+    foe.windup = 0
+    this.vfx?.endTelegraph(foe)
+    foe.respawn = spec.respawn
+    foe.bar.group.visible = false
+    foe.knock.multiplyScalar(1.6)
+    this.shake = Math.max(this.shake, foe.kind === 'bloom' ? 0.3 : 0.12)
+    this.hitStop = Math.max(this.hitStop, foe.kind === 'bloom' ? 0.12 : 0.05)
+    this.drop(foe.object.position, foe.elite ? spec.dust * 2 : spec.dust)
+    this.onKill(foe)
+    return true
+  }
+
   private spawn(kind: FoeKind, x: number, z: number, tags: string[] = [], elite?: string, once = false): void {
     const spec = FOE_SPECS[kind]
-    const hp = elite ? Math.round(spec.hp * 2.2) : spec.hp
+    const hp = Math.round(spec.hp * TOWN.hp * (elite ? 2.2 : 1))
     const object = new Group()
     const body = makeFoeBody(kind)
     object.add(body.rig)
@@ -320,11 +376,11 @@ export class Combat {
           // The bloom is rooted near its bed; it only shuffles a few steps out.
           if (foe.kind === 'bloom' && foe.object.position.clone().addScaledVector(step, 0.3).distanceTo(foe.home) > 3.5) step.set(0, 0, 0)
           if (step.lengthSq() > 0.01) {
-            foe.object.position.addScaledVector(step, spec.speed * dt)
+            foe.object.position.addScaledVector(step, spec.speed * TOWN.speed * dt)
             moving = true
           }
         } else if (dist > 1.15) {
-          foe.object.position.addScaledVector(to, spec.speed * foe.stride * dt)
+          foe.object.position.addScaledVector(to, spec.speed * TOWN.speed * foe.stride * dt)
           moving = true
         }
       }
@@ -344,7 +400,7 @@ export class Combat {
       if (foe.windup > 0) {
         // Ground warning that fills as the strike nears, so every attack can be read and dodged.
         const reach = foe.kind === 'bloom' ? 2.6 : spec.ranged ? 0.9 : heroRadius + 1.2
-        this.vfx?.telegraph(foe, foe.object.position.x, foe.object.position.z, reach, 1 - foe.windup / spec.windup, foe.kind === 'bloom' ? 0xff6fae : spec.ranged ? 0xb48cff : 0xff8aa8)
+        this.vfx?.telegraph(foe, foe.object.position.x, foe.object.position.z, reach, 1 - foe.windup / (spec.windup * TOWN.windup), foe.kind === 'bloom' ? 0xff6fae : spec.ranged ? 0xb48cff : 0xff8aa8)
         foe.windup -= dt
         if (foe.windup <= 0) {
           foe.windup = 0
@@ -355,7 +411,7 @@ export class Combat {
       } else if (foe.attack <= 0 && foe.spawn >= 1) {
         const inReach = spec.ranged ? dist < (foe.kind === 'bloom' ? 8 : 7.5) && dist > 1.4 : dist < heroRadius + 0.85
         if (inReach) {
-          foe.windup = spec.windup
+          foe.windup = spec.windup * TOWN.windup
           if (foe.kind === 'bloom') this.sound('windup')
         }
       }
@@ -483,14 +539,14 @@ export class Combat {
       const dir = heroPos.clone().setY(0.9).sub(origin)
       if (foe.kind === 'bloom') {
         // Five-petal fan the player can weave through.
-        for (let i = -2; i <= 2; i += 1) this.fire(origin, dir.clone().applyAxisAngle(UP, i * 0.24), spec.damage, false, 0xff9ad8, 5.2, 0.16)
+        for (let i = -2; i <= 2; i += 1) this.fire(origin, dir.clone().applyAxisAngle(UP, i * 0.24), townDamage(spec.damage), false, 0xff9ad8, 5.2, 0.16)
         this.shake = Math.max(this.shake, 0.06)
-      } else this.fire(origin, dir, spec.damage, false, 0xd7b6ff, 6.5)
+      } else this.fire(origin, dir, townDamage(spec.damage), false, 0xd7b6ff, 6.5)
       return
     }
     // Melee lunge: a short hop forward, hits only if she is still close.
     foe.knock.copy(to).multiplyScalar(foe.kind === 'bug' ? 4.5 : 3.6)
-    if (dist < heroRadius + 1.2) onHeroHit(spec.damage, foe.object.position)
+    if (dist < heroRadius + 1.2) onHeroHit(townDamage(spec.damage), foe.object.position)
   }
 
   /** Push overlapping foes apart so a crowd reads as separate bodies. */

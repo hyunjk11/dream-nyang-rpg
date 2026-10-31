@@ -3,22 +3,23 @@
  * she steps into the chamber, creeps after her, fires rings of slow dream orbs she can weave
  * through, and calls the horde at two-thirds and one-third health. Pure simulation.
  */
+import { DIFFICULTY } from '../difficulty'
 import type { Maze, Rect } from './maze'
 import { TILE, tileCentre } from './maze'
 import { collideCircle, solidAt } from './walls'
 
 export const BOSS = {
-  hp: 1400,
+  hp: Math.round(1400 * DIFFICULTY.boss.hp),
   radius: 1.25,
   /** Shot height of the body centre (m). */
   chest: 1.7,
   speed: 0.85,
-  contact: 12,
-  orbDamage: 8,
-  orbSpeed: 5.2,
+  contact: Math.round(12 * DIFFICULTY.boss.damage),
+  orbDamage: Math.round(8 * DIFFICULTY.boss.damage),
+  orbSpeed: 5.2 * DIFFICULTY.boss.orbSpeed,
   orbRadius: 0.32,
   ringEvery: 3.1,
-  ringCount: 14,
+  ringCount: Math.round(14 * DIFFICULTY.boss.ringCount),
   windup: 0.7,
 }
 

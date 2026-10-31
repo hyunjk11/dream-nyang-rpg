@@ -55,6 +55,8 @@ export interface RunHost {
   gun?: (cue: GunCue, gain?: number, pitch?: number) => void
   /** Freeze the world for a beat on a meaty hit. */
   hitStop?: (seconds: number) => void
+  /** The game's one shoulder rig + gun (shared with the town); the run makes its own if absent. */
+  shooter?: Shooter
 }
 
 /** Sewer fog: soft lavender haze that hides the far tunnels. */
@@ -80,6 +82,7 @@ export class DungeonRun {
   private readonly host: RunHost
   /** The shared shoulder camera + water gun (same as the island town). */
   readonly shooter: Shooter
+  private readonly ownShooter: boolean
   private readonly world: ShotWorld
   private readonly ray: RayFn
   private readonly aimTargets: AimTarget[] = []
@@ -118,7 +121,11 @@ export class DungeonRun {
     this.minimap.mark(this.maze.startRoom.x, this.maze.startRoom.y, '#7fd0ff')
     this.minimap.mark(b.x + 2, b.y + 2, '#ff6fb8')
     for (const n of this.maze.nests) this.minimap.mark(n.x, n.y, '#7a3a8a')
-    this.shooter = new Shooter(host, this.sewer.group, Math.PI / 4, 0.1)
+    this.ownShooter = !host.shooter
+    this.shooter = host.shooter ?? new Shooter(host, this.sewer.group, Math.PI / 4, 0.1)
+    this.shooter.reset()
+    this.shooter.view.yaw = Math.PI / 4
+    this.shooter.view.pitch = 0.1
     const maze = this.maze
     this.ray = (ox, oy, oz, dx, dy, dz, max) => rayHit(maze, ox, oy, oz, dx, dy, dz, max)
     this.world = {
@@ -175,14 +182,16 @@ export class DungeonRun {
   dispose(): void {
     shoulder.on = false
     shoulder.look = () => {}
-    if (document.pointerLockElement) document.exitPointerLock?.()
+    // The shared rig carries on in the town, pointer lock and all; a standalone run lets go.
+    if (this.ownShooter && document.pointerLockElement) document.exitPointerLock?.()
     this.host.hero.limit = 13.2
     this.host.hero.object.visible = true
     this.minimap.dispose()
     this.waveEl?.remove()
     this.bossBar?.remove()
     this.hordeView.dispose()
-    this.shooter.dispose()
+    if (this.ownShooter) this.shooter.dispose()
+    else this.shooter.reset()
     this.orbs.dispose()
     this.bossBody.removeFromParent()
     this.decor.dispose()

@@ -7,6 +7,7 @@
  * at the centre of the next tile downhill, or straight at her when it shares her tile or the next.
  * Crowding: a uniform spatial hash pushes overlapping bodies apart; walls via collideCircle.
  */
+import { DIFFICULTY } from '../difficulty'
 import { TILE, tileCentre, walkable, worldToTile, type Maze } from './maze'
 import { collideCircle } from './walls'
 
@@ -66,7 +67,7 @@ export const HORDE: Record<HordeKind, HordeSpec> = {
 export const CHAMPIONS: HordeKind[] = ['lord', 'lich']
 
 /** Elites: bigger, tougher, hit harder; a golden tint so they read in the crowd. */
-export const ELITE = { scale: 1.45, hp: 4.5, damage: 2, speed: 0.9 }
+export const ELITE = { scale: 1.45, hp: DIFFICULTY.elite.hp, damage: DIFFICULTY.elite.damage, speed: 0.9 }
 
 /** Seconds a foe spends popping out of a pipe / bursting apart. */
 export const SPAWN_TIME = 0.45
@@ -227,7 +228,7 @@ export class Horde {
   spawn(kind: HordeKind, x: number, z: number, elite = false, dx = 0, dz = 0): HordeFoe | null {
     if (this.foes.length >= HORDE_CAP) return null
     const s = HORDE[kind]
-    const hp = Math.round(s.hp * (elite ? ELITE.hp : 1))
+    const hp = Math.round(s.hp * DIFFICULTY.horde.hp * (elite ? ELITE.hp : 1))
     const foe: HordeFoe = {
       id: this.nextId++,
       kind,
@@ -240,8 +241,8 @@ export class Horde {
       hp,
       maxHp: hp,
       radius: s.radius * (elite ? ELITE.scale : 1),
-      speed: s.speed * (elite ? ELITE.speed : 1) * (0.88 + ((this.nextId * 0.618) % 1) * 0.24),
-      damage: s.damage * (elite ? ELITE.damage : 1),
+      speed: s.speed * DIFFICULTY.horde.speed * (elite ? ELITE.speed : 1) * (0.88 + ((this.nextId * 0.618) % 1) * 0.24),
+      damage: Math.max(1, Math.round(s.damage * DIFFICULTY.horde.damage * (elite ? ELITE.damage : 1))),
       age: 0,
       dying: 0,
       hurt: 0,
@@ -376,12 +377,12 @@ export class Horde {
       f.windup -= dt
       if (f.windup <= 0) {
         f.windup = 0
-        f.cooldown = 1.1
+        f.cooldown = DIFFICULTY.horde.cooldown
         if (d < reach + 0.35 && target.alive) strike(f.damage, f.x, f.z)
       }
       return
     }
-    if (f.cooldown <= 0 && d < reach && target.alive && f.age >= SPAWN_TIME) f.windup = 0.32
+    if (f.cooldown <= 0 && d < reach && target.alive && f.age >= SPAWN_TIME) f.windup = DIFFICULTY.horde.windup
   }
 
   private rebuildHash(): void {

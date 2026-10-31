@@ -3,6 +3,7 @@
  * ink outline) and one vertex-coloured far LOD. Foes outside the view frustum are skipped, so the
  * GPU only sees what she can see. Poses reuse foePose (squash, hop, flap) per instance matrix.
  */
+import { DIFFICULTY } from '../difficulty'
 import {
   Box3,
   BufferAttribute,
@@ -317,7 +318,7 @@ export class HordeView {
         t: time,
         phase: f.phase,
         moving,
-        windup: f.windup > 0 ? 1 - f.windup / 0.32 : 0,
+        windup: f.windup > 0 ? 1 - f.windup / DIFFICULTY.horde.windup : 0,
         hurt: f.hurt,
         spawn: Math.min(1, f.age / SPAWN_TIME),
         dying: f.dying > 0 ? Math.min(1, f.dying / DIE_TIME) : 0,

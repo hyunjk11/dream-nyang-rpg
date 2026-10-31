@@ -22,7 +22,7 @@
       <div id="toasts"></div>
       <div id="zone-banner"></div>
       <div id="markers"><span id="mk-kiki" class="marker hidden"></span><span id="mk-luna" class="marker hidden"></span></div>
-      <p id="hint">WASD 이동 · 마우스 조준 · 클릭 공격 · Space 대시 · 우클릭 시점 · 휠 확대</p>
+      <p id="hint">클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · Esc 시점 해제</p>
       <div class="stick" id="stick"><div id="knob"></div></div>
       <div class="actions">
         <button id="dash" type="button">대시</button>
@@ -33,6 +33,7 @@
         <button id="fps-toggle" type="button">FPS</button>
         <button id="mute" type="button">소리</button>
         <label>음량 <input id="vol" type="range" min="0" max="100" value="35" /></label>
+        <label title="마우스·터치 시점 감도 (저장됨)">감도 <input id="sens" type="range" min="0.3" max="2.5" step="0.05" value="1" /> <output id="sens-out">1.00</output></label>
       </div>
       <div id="crosshair" class="hidden"><i></i><i></i><i></i><i></i><b></b></div>
       <div id="hurt-flash"></div>
