@@ -49,6 +49,8 @@ export interface ItemInstance {
   affixes: Affix[]
   /** 2 = 3D affix scale. Items without it come from older saves and are converted on load. */
   v?: 2
+  /** Gun workshop upgrade level (+1..+10); absent = +0. */
+  plus?: number
 }
 
 export type QuestStatus = 'inactive' | 'active' | 'completed' | 'turnedIn'
@@ -99,6 +101,8 @@ export interface SaveData {
   }
   /** Skill tree (3D): unspent points and ranks per skill. Old saves get it on load. */
   build?: { points: number; ranks: Record<string, number> }
+  /** Stage 4 town services: shop stock, buy-back, stash, scrolls and the contract board. */
+  town?: import('./town').TownSave
 }
 
 export interface OpenRun {

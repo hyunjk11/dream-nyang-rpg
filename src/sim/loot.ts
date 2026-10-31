@@ -33,15 +33,29 @@ export function rarityWeights(luck: number, bias = 0): Record<Rarity, number> {
   }
 }
 
-export function rollRarity(luck: number, rng: () => number, bias = 0): Rarity {
+export function rollRarity(luck: number, rng: () => number, bias = 0, cap: Rarity = 'legendary'): Rarity {
   const weights = rarityWeights(luck, bias)
   const total = RARITIES.reduce((sum, key) => sum + weights[key], 0)
   let roll = rng() * total
   for (const key of RARITIES) {
     roll -= weights[key]
-    if (roll <= 0) return key
+    if (roll <= 0) return capRarity(key, cap)
   }
   return 'common'
+}
+
+/**
+ * Best rarity a drop can be at a depth: 깊이 1 tops out at 희귀 (its boss chest at 영웅),
+ * 깊이 2 at 영웅 (boss chest 전설), 깊이 3 and deeper anything. Keeps an epic dart gun from
+ * flattening depth 1.
+ */
+export function maxRarityFor(depth: number, boss = false): Rarity {
+  const d = Math.max(1, Math.floor(depth))
+  return RARITIES[Math.min(RARITIES.length - 1, d + 1 + (boss ? 1 : 0))]
+}
+
+export function capRarity(rarity: Rarity, cap: Rarity): Rarity {
+  return RARITIES.indexOf(rarity) > RARITIES.indexOf(cap) ? cap : rarity
 }
 
 /** Rarity multiplier on affix values (legendary rolls are fat). */
@@ -96,7 +110,17 @@ export function baseValue(defId: string, rarity: Rarity): number {
 }
 
 export function sellValue(item: ItemInstance): number {
-  return Math.max(1, Math.round(baseValue(item.defId, item.rarity) * 0.42))
+  return Math.max(1, Math.round(baseValue(item.defId, item.rarity) * 0.42 * (1 + 0.1 * plusOf(item))))
+}
+
+/** Gun damage multiplier from the workshop: +7% per upgrade level (+10 = ×1.7). */
+export function upgradeMul(plus: number): number {
+  return 1 + 0.07 * Math.max(0, Math.min(10, Math.floor(plus)))
+}
+
+/** Workshop upgrade level (+0..+10). */
+export function plusOf(item: ItemInstance): number {
+  return Math.max(0, Math.min(10, Math.floor(item.plus ?? 0)))
 }
 
 export function rerollCost(item: ItemInstance): number {
@@ -106,7 +130,8 @@ export function rerollCost(item: ItemInstance): number {
 export function itemName(item: ItemInstance): string {
   const def = ITEMS[item.defId]
   const prefix = item.affixes[0]?.name
-  return `${prefix ? `${prefix} ` : ''}${def?.name ?? item.defId}`
+  const plus = plusOf(item)
+  return `${prefix ? `${prefix} ` : ''}${def?.name ?? item.defId}${plus ? ` +${plus}` : ''}`
 }
 
 export function formatStat(stat: StatKey, value: number): string {
@@ -140,6 +165,8 @@ export function rollDrops(opts: {
   itemLevel: number
   /** Extra rarity bias (deeper depths). */
   bias?: number
+  /** Best rarity allowed (see maxRarityFor). */
+  cap?: Rarity
 }): Drop[] {
   const { rng } = opts
   const out: Drop[] = []
@@ -155,14 +182,14 @@ export function rollDrops(opts: {
     out.push({
       kind: 'item',
       amount: 1,
-      item: makeItem(pick(WEAPON_IDS, rng), rollRarity(opts.luck, rng, bias), rng, opts.itemLevel),
+      item: makeItem(pick(WEAPON_IDS, rng), rollRarity(opts.luck, rng, bias, opts.cap), rng, opts.itemLevel),
     })
   }
   if (rng() < gearChance) {
     out.push({
       kind: 'item',
       amount: 1,
-      item: makeItem(pick(GEAR_IDS, rng), rollRarity(opts.luck, rng, bias), rng, opts.itemLevel),
+      item: makeItem(pick(GEAR_IDS, rng), rollRarity(opts.luck, rng, bias, opts.cap), rng, opts.itemLevel),
     })
   }
   if (rng() < opts.table.dust) out.push({ kind: 'material', amount: rng() < 0.28 ? 2 : 1, matId: 'dream_dust' })

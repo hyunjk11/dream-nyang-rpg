@@ -14,7 +14,7 @@
 import { DIFFICULTY } from '../combat/difficulty'
 import { MATERIAL_KO } from '../data/items'
 import { addItem } from './inventory'
-import { itemName, rollDrops, sellValue, type Drop } from './loot'
+import { itemName, maxRarityFor, rollDrops, sellValue, type Drop } from './loot'
 import { addMaterial } from './quests'
 import type { OpenRun, ItemInstance, Rarity, SaveData } from './types'
 
@@ -212,7 +212,7 @@ export function delveDrops(depth: number, elite: boolean, boss: boolean, rng: ()
   const table = boss
     ? { gold: [40, 60] as [number, number], gear: 0.98, weapon: 0.6, dust: 1, part: 1, potion: 1 }
     : { ...DELVE_TABLE, gold: [DELVE_TABLE.gold[0], Math.round(DELVE_TABLE.gold[1] * s.gold)] as [number, number] }
-  const drops = rollDrops({ table, luck, elite, boss, rng, itemLevel: itemLevelFor(depth, floor, boss), bias: (depth - 1) * 5 })
+  const drops = rollDrops({ table, luck, elite, boss, rng, itemLevel: itemLevelFor(depth, floor, boss), bias: (depth - 1) * 5, cap: maxRarityFor(depth, boss) })
   if (boss) for (const d of drops) if (d.kind === 'gold') d.amount = Math.round(d.amount * s.gold)
   return drops
 }
