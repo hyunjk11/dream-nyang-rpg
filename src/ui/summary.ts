@@ -47,6 +47,7 @@ export function summaryLines(s: DelveSummary): { sub: string; stats: [string, st
     ['시간', formatTime(s.seconds)],
     ['골드', `+${s.gold}`],
   ]
+  if (s.xp) stats.push(['경험치', `+${s.xp}${s.level ? ` (Lv ${s.level})` : ''}`])
   if (s.lost) stats.push(['흘린 골드', `-${s.lost}`, 'lost'])
   return { sub, stats }
 }

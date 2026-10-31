@@ -12,6 +12,7 @@
  *    boss clears it and unlocks the next depth.
  */
 import { DIFFICULTY } from '../combat/difficulty'
+import { MATERIAL_KO } from '../data/items'
 import { addItem } from './inventory'
 import { itemName, rollDrops, sellValue, type Drop } from './loot'
 import { addMaterial } from './quests'
@@ -192,6 +193,9 @@ export interface DelveSummary {
   loot: LootLine[]
   /** Depth newly opened at the portal (0 = none). */
   unlocked: number
+  /** XP earned this trip and the level she came home at. */
+  xp?: number
+  level?: number
 }
 
 /** Dungeon drop table per foe (scaled by depth). Bosses roll it with boss=true. */
@@ -223,6 +227,8 @@ export class Delve {
   elites = 0
   seconds = 0
   gold = 0
+  /** XP earned this trip (summary card). */
+  xp = 0
   readonly loot: LootLine[] = []
   ended: DelveSummary | null = null
   /** This trip's boss is down (a fall afterwards keeps the checkpoint cleared). */
@@ -304,7 +310,7 @@ export class Delve {
     }
     if (drop.kind === 'material' && drop.matId) {
       addMaterial(save, drop.matId, drop.amount, rng)
-      const name = drop.matId === 'dream_dust' ? '꿈가루' : '장난감 부품'
+      const name = MATERIAL_KO[drop.matId] ?? drop.matId
       this.loot.push({ name: `${name} ×${drop.amount}`, rarity: 'material' })
       return { heal: 0, text: `+${drop.amount} ${name}` }
     }
@@ -356,6 +362,8 @@ export class Delve {
       lost,
       loot: [...this.loot],
       unlocked,
+      xp: this.xp,
+      level: save.level,
     }
     return this.ended
   }
