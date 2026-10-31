@@ -201,7 +201,7 @@ document.getElementById('retry')?.addEventListener('click', () => restart())
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, enterSewer, leaveSewer } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get places() { return zonePlaces }, enterSewer, leaveSewer } })
 
 void bootGame()
 
