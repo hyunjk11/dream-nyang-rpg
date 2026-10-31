@@ -107,7 +107,7 @@ button:disabled { opacity: 0.55; cursor: default; }
 #tracker b { font-family: "Jua", sans-serif; font-weight: 400; color: #8a4fb0; font-size: 15px; margin-top: 4px; }
 #tracker b:first-child { margin-top: 0; }
 /* Toasts sit low, above the hint and hotbar: up top they covered the HUD line (wave / explore). */
-#toasts { position: absolute; bottom: 132px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; max-width: min(560px, 80vw); pointer-events: none; }
+#toasts { position: absolute; bottom: 156px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; max-width: min(560px, 80vw); pointer-events: none; }
 body.touch #toasts { bottom: auto; top: 104px; }
 .toast { padding: 7px 16px; border-radius: 999px; background: rgba(255,248,252,0.95); color: #4a3358; font-family: "Jua", sans-serif; box-shadow: 0 3px 0 rgba(58,36,72,0.25); animation: toast-in 0.25s ease-out; transition: opacity 0.5s, transform 0.5s; }
 .toast.quest { background: linear-gradient(180deg, #fff2c8, #ffd98a); }
@@ -237,7 +237,7 @@ body.sewer #recall { display: inline-flex; }
 #hotbar kbd { position: absolute; left: 5px; top: 3px; font: 11px "Jua", sans-serif; color: #8a4fb0; }
 #hotbar i { font-style: normal; font-size: 22px; color: #6a3a8a; line-height: 1; margin-top: -6px; display: grid; place-items: center; }
 #hotbar i .skill-svg { width: 30px; height: 30px; display: block; }
-#hotbar b { position: absolute; bottom: 3px; left: 0; right: 0; font-size: 9px; font-weight: 400; color: #4a3358; white-space: nowrap; }
+#hotbar b { position: absolute; bottom: 3px; left: 0; right: 0; font-size: 10px; font-weight: 400; color: #4a3358; white-space: nowrap; }
 #hotbar s { position: absolute; left: 0; right: 0; top: 0; height: 0; background: rgba(58, 36, 72, 0.55); text-decoration: none; }
 #hotbar button.locked { opacity: 0.42; filter: grayscale(0.8); }
 #hotbar button.cooling i { opacity: 0.6; }
