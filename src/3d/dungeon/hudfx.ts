@@ -24,6 +24,7 @@ export class HudFx {
   private readonly tmp = new Vector3()
   private lastGap = -1
   private lastHeat = ''
+  private lastTarget = -1
 
   constructor(hud: HTMLElement | null) {
     this.cross = (hud?.querySelector('#crosshair') as HTMLElement | null) ?? null
@@ -60,6 +61,14 @@ export class HudFx {
         this.heat.classList.toggle('vent', overheated)
       }
     }
+  }
+
+  /** Crosshair state: 0 nothing, 1 a foe in the assist cone, 2 right on a foe (turns pink). */
+  target(level: 0 | 1 | 2): void {
+    if (!this.cross || level === this.lastTarget) return
+    this.lastTarget = level
+    this.cross.classList.toggle('near', level === 1)
+    this.cross.classList.toggle('on', level === 2)
   }
 
   /** A droplet connected; kill swaps the white tick for a bigger pink X. */
@@ -117,5 +126,6 @@ export class HudFx {
     this.heat?.remove()
     for (const n of this.nums) n.el.remove()
     this.cross?.style.setProperty('--spread', '7px')
+    this.cross?.classList.remove('near', 'on')
   }
 }

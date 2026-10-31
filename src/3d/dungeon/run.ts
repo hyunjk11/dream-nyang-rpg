@@ -1,6 +1,5 @@
 import {
   AdditiveBlending,
-  BoxGeometry,
   SphereGeometry,
   type Group,
   type MeshToonMaterial,
@@ -21,16 +20,16 @@ import { Decor } from './dream'
 import { Minimap } from './minimap'
 import { Portal } from './portal'
 import { Sewer } from './sewer'
-import { TPS, createView, kick, look, pose, recover, wishFrom, type TpsView } from './tps'
+import { TPS, type AimTarget, type RayFn, type TpsView } from '../tps'
+import { Shooter, type ShotWorld } from '../shooter'
 import { collideCircle, rayHit } from './walls'
 import { HORDE, Horde } from './horde'
 import { HordeView } from './horde-view'
 import { DRAIN, Director } from './waves'
 import { BOSS, Boss } from './boss'
 import { foePose, makeFoeBody } from '../foes'
-import { GUN, Gun, hitNormal, hitStopFor, rollDamage, spreadDir } from './gunfeel'
-import { GunFx } from './gunfx'
-import { HudFx } from './hudfx'
+import { GUN, hitNormal } from './gunfeel'
+import { ELITE } from './horde'
 import type { GunCue } from './gunsound'
 
 /** What the sewer borrows from the hub game each frame. */
@@ -72,29 +71,18 @@ const BOSS_SCALE = 1.4
  */
 export class DungeonRun {
   readonly maze: Maze
-  readonly view: TpsView
-  readonly aim = new Vector3()
   readonly sewer: Sewer
   readonly decor: Decor
   readonly minimap: Minimap
   /** Way home in the start room, and the exit beyond the boss. */
   readonly homePortal: Portal
   readonly exitPortal: Portal
-  /** Last crosshair ray hit distance from the camera (m). */
-  aimDistance = 0
   private readonly host: RunHost
-  readonly gun = new Gun()
-  readonly gunFx = new GunFx()
-  private readonly hudFx: HudFx
-  private fovKick = 0
-  private shake = 0
-  private readonly tip = new Vector3()
-  private readonly dir = new Vector3()
-  private readonly end = new Vector3()
-  private readonly tracers: InstancedMesh
-  private readonly tracerLife: number[] = []
-  private readonly tracerFrom: Vector3[] = []
-  private readonly tracerTo: Vector3[] = []
+  /** The shared shoulder camera + water gun (same as the island town). */
+  readonly shooter: Shooter
+  private readonly world: ShotWorld
+  private readonly ray: RayFn
+  private readonly aimTargets: AimTarget[] = []
   private readonly dummy = new Object3D()
   private lastHero = new Vector3()
   private time = 0
@@ -118,7 +106,6 @@ export class DungeonRun {
     this.sewer = new Sewer(this.maze)
     host.scene.add(this.sewer.group)
     const s = tileCentre(this.maze, this.maze.start.x, this.maze.start.y)
-    this.view = createView(Math.PI / 4, 0.1)
     this.decor = new Decor(this.maze, host.lights)
     this.sewer.group.add(this.decor.group)
     const home = tileCentre(this.maze, this.maze.startRoom.x, this.maze.startRoom.y)
@@ -131,16 +118,15 @@ export class DungeonRun {
     this.minimap.mark(this.maze.startRoom.x, this.maze.startRoom.y, '#7fd0ff')
     this.minimap.mark(b.x + 2, b.y + 2, '#ff6fb8')
     for (const n of this.maze.nests) this.minimap.mark(n.x, n.y, '#7a3a8a')
-    this.sewer.group.add(this.gunFx.group)
-    this.hudFx = new HudFx(host.hud)
-    this.tracers = new InstancedMesh(
-      new BoxGeometry(1, 1, 1).translate(0, 0, 0.5),
-      new MeshBasicMaterial({ color: new Color(0xbfeaff).multiplyScalar(2.4), transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false }),
-      24,
-    )
-    this.tracers.count = 0
-    this.tracers.frustumCulled = false
-    this.sewer.group.add(this.tracers)
+    this.shooter = new Shooter(host, this.sewer.group, Math.PI / 4, 0.1)
+    const maze = this.maze
+    this.ray = (ox, oy, oz, dx, dy, dz, max) => rayHit(maze, ox, oy, oz, dx, dy, dz, max)
+    this.world = {
+      solid: this.ray,
+      targets: () => this.targets(),
+      strike: (o, d, max, amount) => this.strike(o, d, max, amount),
+      normal: (end, d) => hitNormal(maze, end.x, end.y, end.z, d.x, d.z),
+    }
     this.horde = new Horde(this.maze)
     this.hordeView = new HordeView()
     this.sewer.group.add(this.hordeView.group)
@@ -180,6 +166,7 @@ export class DungeonRun {
     this.lastHero.copy(host.hero.object.position)
     host.camera.fov = TPS.fov
     host.camera.updateProjectionMatrix()
+    this.shooter.rig.place(1, s.x, 0, s.z, this.ray)
     shoulder.on = true
     shoulder.look = (dx, dy, touch) => this.look(dx, dy, touch)
   }
@@ -195,8 +182,7 @@ export class DungeonRun {
     this.waveEl?.remove()
     this.bossBar?.remove()
     this.hordeView.dispose()
-    this.gunFx.dispose()
-    this.hudFx.dispose()
+    this.shooter.dispose()
     this.orbs.dispose()
     this.bossBody.removeFromParent()
     this.decor.dispose()
@@ -206,17 +192,16 @@ export class DungeonRun {
   }
 
   update(dt: number): void {
-    const { hero, camera } = this.host
+    const { hero } = this.host
     this.time += dt
     const move = axis()
-    const wish = wishFrom(move.x, move.y, this.view.yaw)
+    const wish = this.shooter.rig.wish(move.x, move.y)
     const dash = consumeDash()
     if (dash && hero.alive) {
       this.host.sfx('dash')
       this.host.vfx.dust(hero.object.position, 2.4)
     }
-    // Crosshair ray from last frame's camera: she squares up to whatever it lands on.
-    this.aimRay(camera)
+    // She squares up to last frame's crosshair point; the shot itself uses this frame's.
     hero.update(dt, { wishX: wish.x, wishZ: wish.z, aim: this.aim, firing: pad.fire && hero.alive, dash, run: runningHeld(), face: true })
     const p = hero.object.position
     const out = collideCircle(this.maze, p.x, p.z, 0.34)
@@ -226,18 +211,12 @@ export class DungeonRun {
     const t0 = performance.now()
     this.fight(dt)
     this.hordeMs = performance.now() - t0
-    this.shoot(dt)
     this.host.steps(dt, p)
-    this.tickTracers(dt)
-    recover(this.view, dt)
-    const cam = pose(this.view, this.maze, p.x, p.y, p.z, dt)
-    camera.position.set(cam.x, cam.y, cam.z)
-    // Backed hard into a wall the lens would sit in her hair: let her vanish rather than fill the screen.
-    hero.object.visible = Math.hypot(cam.x - p.x, cam.y - p.y - TPS.height, cam.z - p.z) > 0.62
-    camera.lookAt(cam.x + cam.fx, cam.y + cam.fy, cam.z + cam.fz)
-    this.punch(dt)
-    this.gunFx.update(dt)
-    this.hudFx.update(dt, camera)
+    // Camera first, then the crosshair ray from it, then the gun: what you see is what you hit.
+    hero.object.visible = this.shooter.rig.place(dt, p.x, p.y, p.z, this.ray)
+    this.shooter.rig.aimFrom(this.world, dt)
+    this.shooter.update(dt, pad.fire, this.world)
+    const camera = this.host.camera
     const t1 = performance.now()
     this.hordeView.sync(this.horde, camera, this.time)
     this.hordeMs += performance.now() - t1
@@ -250,25 +229,36 @@ export class DungeonRun {
     if (consumeTalk() && this.nearPortal) this.host.leave()
   }
 
+  get view(): TpsView {
+    return this.shooter.rig.view
+  }
+
+  get aim(): Vector3 {
+    return this.shooter.rig.aim
+  }
+
+  /** Last crosshair ray hit distance from the camera (m). */
+  get aimDistance(): number {
+    return this.shooter.rig.aimDistance
+  }
+
+  get gun() {
+    return this.shooter.gun
+  }
+
+  get gunFx() {
+    return this.shooter.gunFx
+  }
+
   /** Mouse/touch look in pixels (pointer lock or the QA harness). */
   look(dx: number, dy: number, touch = false): void {
-    look(this.view, dx, dy, touch ? TPS.touch : TPS.mouse)
+    this.shooter.rig.look(dx, dy, touch)
   }
 
   /** True when she stands on the way home (for the hint). */
   get nearPortal(): boolean {
     const p = this.host.hero.object.position
     return this.homePortal.contains(p.x, p.z) || this.exitPortal.contains(p.x, p.z)
-  }
-
-  private aimRay(camera: PerspectiveCamera): void {
-    const f = new Vector3()
-    camera.getWorldDirection(f)
-    const o = camera.position
-    const hit = rayHit(this.maze, o.x, o.y, o.z, f.x, f.y, f.z, 60)
-    this.aimDistance = hit
-    // Too close (hugging a wall) and the parallax would spin her; keep the point a stride out.
-    this.aim.copy(o).addScaledVector(f, Math.max(hit, 2.2))
   }
 
   private follow(dt: number): void {
@@ -284,99 +274,32 @@ export class DungeonRun {
     m.z = out.z
   }
 
-  /** Full auto: the Gun decides how many droplets leave this frame; each is its own hitscan. */
-  private shoot(dt: number): void {
-    const { hero } = this.host
-    const wasHot = this.gun.overheated
-    const shots = this.gun.update(dt, pad.fire && hero.alive)
-    for (let i = 0; i < shots; i += 1) this.fireOne()
-    if (this.gun.overheated && !wasHot) {
-      // Tank boiled over: a hiss and a puff of steam, then a short vent.
-      this.host.gun?.('hiss', 1)
-      const t = hero.muzzle.getWorldPosition(this.tip)
-      this.host.vfx.burst(t, 0xf2f0ff, { count: 10, speed: 0.8, up: 1.4, life: 0.8, size: 0.4, grow: 0.8, gravity: -1.5, drag: 2, additive: false })
+  /** Horde bodies and the boss as crosshair capsules (index past the horde = the boss). */
+  private targets(): readonly AimTarget[] {
+    const out = this.aimTargets
+    out.length = 0
+    for (const f of this.horde.foes) {
+      if (f.dying > 0 || f.age < 0.2) continue
+      const chest = HORDE[f.kind].chest * (f.elite ? ELITE.scale : 1)
+      const r = f.radius * 1.15
+      out.push({ x: f.x, z: f.z, y0: Math.max(0, chest - r), y1: chest + r, r })
     }
-    this.hudFx.aim(this.gun.gapPx, this.gun.heat, this.gun.overheated)
+    if (this.boss.alive && this.boss.awake) out.push({ x: this.boss.x, z: this.boss.z, y0: BOSS.chest - BOSS.radius, y1: BOSS.chest + BOSS.radius, r: BOSS.radius })
+    return out
   }
 
-  private fireOne(): void {
-    const { hero, camera } = this.host
-    const gun = this.gun
-    const tip = hero.muzzle.getWorldPosition(this.tip)
-    // Converge on the crosshair point, jittered inside the bloom cone.
-    const aimDir = this.dir.copy(this.aim).sub(tip).normalize()
-    const d = spreadDir(aimDir.x, aimDir.y, aimDir.z, gun.spread, Math.random(), Math.random())
-    const dir = aimDir.set(d.x, d.y, d.z)
-    const reach = rayHit(this.maze, tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, 60)
-    let t = reach
-    const foe = this.horde.raycast(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, t)
-    const bossT = this.boss.raycast(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, t)
-    const end = this.end.copy(tip)
-    const roll = rollDamage(Math.random())
-    const sfx = this.host.gun
+  private strike(tip: Vector3, dir: Vector3, reach: number, amount: number) {
+    const foe = this.horde.raycast(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, reach)
+    const bossT = this.boss.raycast(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, reach)
     if (bossT >= 0 && (!foe || bossT < foe.t)) {
-      t = bossT
-      end.addScaledVector(dir, t)
-      const kill = this.boss.damage(roll.amount)
+      const kill = this.boss.damage(amount)
       if (kill) this.bossDown()
-      this.host.vfx.hit(end, 0xff9fd2, roll.crit)
-      this.hudFx.hit(kill, roll.crit)
-      this.hudFx.number(roll.amount, end, roll.crit ? 'crit' : 'boss')
-      sfx?.(roll.crit ? 'crit' : 'tick', 0.8)
-      this.stop(hitStopFor({ boss: true, kill, crit: roll.crit }))
-    } else if (foe) {
-      t = foe.t
-      end.addScaledVector(dir, t)
-      const f = foe.foe
-      const kill = this.horde.damage(f, roll.amount, dir.x, dir.z)
-      this.host.vfx.hit(end, 0xffc6e8, roll.crit || (kill && f.elite))
-      this.hudFx.hit(kill, roll.crit)
-      this.hudFx.number(roll.amount, end, roll.crit ? 'crit' : f.elite ? 'elite' : 'n')
-      if (kill) {
-        this.host.vfx.poof(end, f.elite ? 0xffe08a : 0xffb7e0, f.elite ? 1.6 : 1)
-        this.gunFx.splat(new Vector3(f.x, 0, f.z), { x: 0, y: 1, z: 0 }, f.elite ? 0xffd27a : 0xff9fd2, f.elite ? 1.5 : 0.9)
-        sfx?.('pop', f.elite ? 1 : 0.75, (Math.random() - 0.5) * 0.2)
-        if (f.elite) sfx?.('thunk', 1)
-      } else sfx?.(roll.crit ? 'crit' : 'tick', 0.7)
-      this.stop(hitStopFor({ elite: f.elite, kill, crit: roll.crit }))
-    } else {
-      end.addScaledVector(dir, t)
-      const n = hitNormal(this.maze, end.x, end.y, end.z, dir.x, dir.z)
-      this.gunFx.splat(end, n, 0x9ad7ff, 0.42)
-      // Sparks kick off the surface, not along the ray.
-      this.host.vfx.burst(end.clone().addScaledVector(new Vector3(n.x, n.y, n.z), 0.05), 0xd8f2ff, { count: 4, speed: 3.4, up: 1.2, life: 0.22, size: 0.09, gravity: 7, drag: 2 })
-      this.host.vfx.hit(end, 0x9ad7ff)
+      return { t: bossT, kill, tone: 'boss' as const, color: 0xff9fd2 }
     }
-    this.tracer(tip, end)
-    this.gunFx.shot(tip, dir, camera, gun.shots)
-    hero.recoil()
-    kick(this.view, GUN.kickUp * (1 + gun.bloom * 0.6), (Math.random() - 0.5) * 2 * GUN.kickSide)
-    this.fovKick = Math.min(2.2, this.fovKick + 0.45)
-    this.shake = Math.min(0.03, this.shake + 0.008)
-    if (sfx) {
-      sfx('shot', 1, gun.heat * 0.1)
-      if (gun.shots % 4 === 0) sfx('tail', 0.9)
-    } else this.host.sfx('shoot_water', 0.8)
-  }
-
-  private stop(seconds: number): void {
-    if (seconds > 0) this.host.hitStop?.(seconds)
-  }
-
-  /** FOV punch and a hair of lens shake per shot, both springing back. */
-  private punch(dt: number): void {
-    const cam = this.host.camera
-    this.fovKick *= Math.exp(-dt * 14)
-    this.shake *= Math.exp(-dt * 22)
-    const fov = TPS.fov + this.fovKick
-    if (Math.abs(cam.fov - fov) > 0.01) {
-      cam.fov = fov
-      cam.updateProjectionMatrix()
-    }
-    if (this.shake > 0.001) {
-      cam.position.x += (Math.random() - 0.5) * this.shake
-      cam.position.y += (Math.random() - 0.5) * this.shake
-    }
+    if (!foe) return null
+    const f = foe.foe
+    const kill = this.horde.damage(f, amount, dir.x, dir.z)
+    return { t: foe.t, kill, tone: f.elite ? ('elite' as const) : ('n' as const), color: 0xffc6e8, floor: new Vector3(f.x, 0, f.z) }
   }
 
   /** Waves out of the nest pipes, the crowd, and the boss once she reaches the chamber. */
@@ -503,41 +426,5 @@ export class DungeonRun {
       const fill = this.bossBar.querySelector('i') as HTMLElement | null
       if (fill && show) fill.style.width = `${(this.boss.hp / BOSS.hp) * 100}%`
     }
-  }
-
-  private tracer(from: Vector3, to: Vector3): void {
-    if (this.tracerLife.length >= 24) {
-      this.tracerLife.shift()
-      this.tracerFrom.shift()
-      this.tracerTo.shift()
-    }
-    this.tracerLife.push(0.05)
-    this.tracerFrom.push(from.clone())
-    this.tracerTo.push(to.clone())
-  }
-
-  private tickTracers(dt: number): void {
-    let n = 0
-    for (let i = this.tracerLife.length - 1; i >= 0; i -= 1) {
-      this.tracerLife[i] -= dt
-      if (this.tracerLife[i] <= 0) {
-        this.tracerLife.splice(i, 1)
-        this.tracerFrom.splice(i, 1)
-        this.tracerTo.splice(i, 1)
-      }
-    }
-    for (let i = 0; i < this.tracerLife.length; i += 1) {
-      const a = this.tracerFrom[i]
-      const b = this.tracerTo[i]
-      const len = a.distanceTo(b)
-      this.dummy.position.copy(a)
-      this.dummy.lookAt(b)
-      this.dummy.scale.set(0.04, 0.04, len)
-      this.dummy.updateMatrix()
-      this.tracers.setMatrixAt(n, this.dummy.matrix)
-      n += 1
-    }
-    this.tracers.count = n
-    this.tracers.instanceMatrix.needsUpdate = true
   }
 }
