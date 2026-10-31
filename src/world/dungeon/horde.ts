@@ -100,7 +100,15 @@ export interface HordeFoe {
   phase: number
   /** Simulated this frame (far foes tick every other frame). */
   far: boolean
+  /** Seconds of chill left (서늘: slowed). */
+  chill: number
+  /** Seconds of sticky candy left, and its damage per second (끈적). */
+  goo: number
+  gooDps: number
 }
+
+/** How much a chilled foe slows (share of speed kept). */
+export const CHILL_SLOW = 0.55
 
 /** BFS distances (in tiles) from one target tile, rebuilt when the target moves. */
 export class FlowField {
@@ -197,6 +205,8 @@ export class Horde {
   eliteKills = 0
   /** Depth/floor multipliers on hp and damage (1 = depth 1, floor 1). */
   scale = { hp: 1, damage: 1 }
+  /** Every killing blow, whatever dealt it (droplets, bombs, candy). */
+  onKill: ((f: HordeFoe) => void) | null = null
   private readonly maze: Maze
   private nextId = 1
   private frame = 0
@@ -253,6 +263,9 @@ export class Horde {
       cooldown: 0.6,
       phase: (this.nextId * 0.381) % 1,
       far: false,
+      chill: 0,
+      goo: 0,
+      gooDps: 0,
     }
     this.foes.push(foe)
     return foe
@@ -277,6 +290,11 @@ export class Horde {
         continue
       }
       f.age += dt
+      if (f.chill > 0) f.chill = Math.max(0, f.chill - dt)
+      if (f.goo > 0) {
+        f.goo = Math.max(0, f.goo - dt)
+        if (this.damage(f, f.gooDps * dt)) continue
+      }
       const dx = target.x - f.x
       const dz = target.z - f.z
       const d = Math.hypot(dx, dz)
@@ -339,7 +357,19 @@ export class Horde {
     f.dying = 1e-4
     this.kills += 1
     if (f.elite) this.eliteKills += 1
+    this.onKill?.(f)
     return true
+  }
+
+  /** Live, hittable foes within r of (x, z) (bombs, sparkle bursts, Mochi's rush). */
+  near(x: number, z: number, r: number): HordeFoe[] {
+    const out: HordeFoe[] = []
+    for (const f of this.foes) {
+      if (!this.hittable(f)) continue
+      const d = Math.hypot(f.x - x, f.z - z)
+      if (d <= r + f.radius) out.push(f)
+    }
+    return out
   }
 
   /** Drop everyone (leaving the sewer / boss cleared the room). */
@@ -364,6 +394,7 @@ export class Horde {
     if (d < f.radius + 0.75) want = 0
     if (f.windup > 0) want *= 0.15
     if (f.age < SPAWN_TIME) want *= 0.5
+    if (f.chill > 0) want *= CHILL_SLOW
     const wx = gl > 1e-4 ? (gx / gl) * want : 0
     const wz = gl > 1e-4 ? (gz / gl) * want : 0
     const k = Math.min(1, dt * 7)

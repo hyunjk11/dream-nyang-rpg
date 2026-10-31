@@ -21,9 +21,11 @@ import { Minimap } from './minimap'
 import { Portal } from './portal'
 import { Sewer } from './sewer'
 import { TPS, type AimTarget, type RayFn, type TpsView } from '../../core/tps'
-import { Shooter, type ShotWorld } from '../../combat/shooter'
+import { Shooter, type ShotProcs, type ShotWorld } from '../../combat/shooter'
+import { blast, type SkillBody, type SkillWorld } from '../../combat/skills'
+import { RARITY_COLOR } from '../../sim/types'
 import { collideCircle, rayHit } from './walls'
-import { HORDE, Horde } from './horde'
+import { HORDE, Horde, type HordeFoe } from './horde'
 import { HordeView } from './horde-view'
 import { DRAIN, Director } from './waves'
 import { BOSS, Boss } from './boss'
@@ -58,6 +60,15 @@ export interface RunHost {
   bossDown?: () => void
   /** Run gold so far (HUD readout). */
   runGold?: () => number
+  /** Kills this whole trip (HUD readout; floors add up). */
+  runKills?: () => number
+  /** A nest pipe was plugged / the floor objective was met (XP). */
+  nestDown?: () => void
+  objectiveDone?: () => void
+  /** Any foe died at (x, z), by droplet, bomb or candy (skills chain off it). */
+  foeDied?: (x: number, z: number) => void
+  /** Loot luck from gear and the tree. */
+  luck?: () => number
   /** Little rising text (gold, hearts). */
   float?: (text: string, at: Vector3, color: string) => void
   /** HUD layer for the minimap (null in tests). */
@@ -149,6 +160,8 @@ export class DungeonRun {
   private lastWave = 0
   /** Milliseconds the horde simulation + view took last frame (QA perf readout). */
   hordeMs = 0
+  /** What skills (bombs, Mochi's rush, sparkle bursts) can hurt down here. */
+  readonly skillWorld: SkillWorld
 
   constructor(host: RunHost, plan: FloorPlan | number) {
     this.host = host
@@ -189,11 +202,13 @@ export class DungeonRun {
     this.world = {
       solid: this.ray,
       targets: () => this.targets(),
-      strike: (o, d, max, amount) => this.strike(o, d, max, amount),
+      strike: (o, d, max, amount, procs) => this.strike(o, d, max, amount, procs),
       normal: (end, d) => hitNormal(maze, end.x, end.y, end.z, d.x, d.z),
     }
     this.horde = new Horde(this.maze)
     this.horde.scale = { hp: this.plan.scale.hp, damage: this.plan.scale.damage }
+    this.horde.onKill = (f) => this.foeDown(f)
+    this.skillWorld = { solid: this.ray, bodies: () => this.bodies() }
     this.hordeView = new HordeView()
     this.sewer.group.add(this.hordeView.group)
     this.loot = new LootView((x, z) => collideCircle(maze, x, z, 0.2))
@@ -390,6 +405,7 @@ export class DungeonRun {
       this.host.vfx.poof(new Vector3(at.x, 0.8, at.z), 0xffd36b, 1.6)
       this.host.sfx('splash', 0.8)
       this.host.banner(o === 'survive' ? '웨이브를 버텨 냈어!' : '둥지를 모두 막았어!', '가까이에 금빛 계단 포털이 열렸어')
+      this.host.objectiveDone?.()
     }
   }
 
@@ -424,7 +440,7 @@ export class DungeonRun {
       if (r.heal > 0) hero.hp = Math.min(hero.maxHp, hero.hp + Math.round(hero.maxHp * r.heal))
       this.host.gun?.('tick', 0.5, drop.kind === 'gold' ? 1.6 : 1.2)
       if (r.text) {
-        const color = drop.kind === 'gold' ? '#ffd35a' : drop.kind === 'potion' ? '#ff9ec8' : drop.kind === 'item' ? '#e3c6ff' : '#b8f0ff'
+        const color = drop.kind === 'gold' ? '#ffd35a' : drop.kind === 'potion' ? '#ff9ec8' : drop.kind === 'item' && drop.item ? RARITY_COLOR[drop.item.rarity] : '#b8f0ff'
         this.host.float?.(r.text, p.clone().setY(1.9), color)
       }
     }
@@ -437,7 +453,7 @@ export class DungeonRun {
     const at = c.group.position
     this.host.vfx.poof(at.clone().setY(1), 0xffd36b, 2.2)
     this.host.sfx('splash', 1)
-    this.loot.spill(delveDrops(this.plan.depth, false, true, Math.random), at.x, at.z + 0.6, 1.4)
+    this.loot.spill(this.drops(false, true), at.x, at.z + 0.6, 1.4)
     this.exitPortal.active = true
     this.host.banner('보물 상자를 열었어!', '선물을 챙기고 분홍 포털로 마을에 돌아가자')
   }
@@ -545,18 +561,103 @@ export class DungeonRun {
     const at = new Vector3(n.x, 1.25, n.z)
     this.host.vfx.poof(at, 0xd9a6ff, 1.4)
     this.host.sfx('splash', 0.9)
-    this.loot.spill(delveDrops(this.plan.depth, true, false, Math.random), n.x, n.z, 1)
+    this.loot.spill(this.drops(true, false), n.x, n.z, 1)
+    this.host.nestDown?.()
     const left = this.nests.filter((x) => x.hp > 0).length
     const plugged = this.nests.length - left
     if (plugged < this.plan.goal) this.host.banner('둥지 파이프를 막았어', `${plugged}/${this.plan.goal} · 남은 둥지를 찾아 보자`)
   }
 
-  private strike(tip: Vector3, dir: Vector3, reach: number, amount: number) {
+  private drops(elite: boolean, boss: boolean) {
+    return delveDrops(this.plan.depth, elite, boss, Math.random, this.host.luck?.() ?? 2, this.plan.floor)
+  }
+
+  /** A horde foe went down (any cause): count it, spill its drops, let skills chain. */
+  private foeDown(f: HordeFoe): void {
+    this.host.kill?.(f.elite)
+    this.loot.spill(this.drops(f.elite, false), f.x, f.z, f.elite ? 1.2 : 0.8)
+    this.host.foeDied?.(f.x, f.z)
+  }
+
+  /** Foes, the boss and live pipes as skill targets. */
+  private bodies(): SkillBody[] {
+    const out: SkillBody[] = []
+    for (const f of this.horde.foes) {
+      if (!this.horde.hittable(f)) continue
+      out.push({
+        id: `f${f.id}`,
+        x: f.x,
+        z: f.z,
+        r: f.radius,
+        tone: f.elite ? 'elite' : 'n',
+        hit: (amount, dx, dz, knock, slow) => {
+          if (slow > 0) f.chill = Math.max(f.chill, slow)
+          return this.horde.damage(f, amount, dx * (1 + knock), dz * (1 + knock))
+        },
+      })
+    }
+    const boss = this.boss
+    if (boss?.alive && boss.awake) {
+      out.push({
+        id: 'boss',
+        x: boss.x,
+        z: boss.z,
+        r: boss.capsule().r,
+        tone: 'boss',
+        hit: (amount) => {
+          const kill = boss.damage(amount)
+          if (kill) this.bossDown()
+          return kill
+        },
+      })
+    }
+    for (const n of this.nests) {
+      if (n.hp <= 0) continue
+      out.push({
+        id: `n${n.i}`,
+        x: n.x,
+        z: n.z,
+        r: 0.7,
+        tone: 'elite',
+        hit: (amount) => {
+          n.hp -= amount
+          n.hurt = 1
+          if (n.hp > 0) return false
+          this.plugNest(n)
+          return true
+        },
+      })
+    }
+    return out
+  }
+
+  /** Element procs where a droplet landed. */
+  private procs(at: Vector3, amount: number, procs: ShotProcs | undefined, f: HordeFoe | null): void {
+    if (!procs) return
+    if (f && procs.ice) {
+      f.chill = Math.max(f.chill, 1.6)
+      this.host.vfx.burst(at, 0xbfefff, { count: 4, speed: 1.2, up: 0.6, life: 0.4, size: 0.12, gravity: 1, drag: 2 })
+    }
+    if (f && procs.candy) {
+      f.goo = 3
+      f.gooDps = Math.max(f.gooDps, amount * 0.3)
+      this.host.vfx.burst(at, 0xff9fd2, { count: 3, speed: 0.8, up: 0.4, life: 0.5, size: 0.14, gravity: 3, drag: 2 })
+    }
+    if (procs.sparkle) {
+      this.host.vfx.burst(at, 0xfff2a0, { count: 8, speed: 3, up: 1.2, life: 0.35, size: 0.1, gravity: 2, drag: 2, additive: true })
+      const x = at.x
+      const z = at.z
+      queueMicrotask(() => blast(this.bodies(), x, z, 1.5, amount * 0.6, 0, 0, (n, p, tone) => this.shooter.hudFx.number(n, p, tone)))
+    }
+  }
+
+  private strike(tip: Vector3, dir: Vector3, reach: number, amount: number, procs?: ShotProcs) {
     const foe = this.horde.raycast(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, reach)
     const bossT = this.boss ? this.boss.raycast(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, reach) : -1
     if (this.boss && bossT >= 0 && (!foe || bossT < foe.t)) {
       const kill = this.boss.damage(amount)
       if (kill) this.bossDown()
+      else this.procs(tip.clone().addScaledVector(dir, bossT), amount, procs ? { sparkle: procs.sparkle } : undefined, null)
       return { t: bossT, kill, tone: 'boss' as const, color: 0xff9fd2 }
     }
     const nest = this.nests.length ? this.nestRay(tip, dir, reach) : null
@@ -570,10 +671,7 @@ export class DungeonRun {
     if (!foe) return null
     const f = foe.foe
     const kill = this.horde.damage(f, amount, dir.x, dir.z)
-    if (kill) {
-      this.host.kill?.(f.elite)
-      this.loot.spill(delveDrops(this.plan.depth, f.elite, false, Math.random), f.x, f.z, f.elite ? 1.2 : 0.8)
-    }
+    this.procs(tip.clone().addScaledVector(dir, foe.t), amount, procs, kill ? null : f)
     return { t: foe.t, kill, tone: f.elite ? ('elite' as const) : ('n' as const), color: 0xffc6e8, floor: new Vector3(f.x, 0, f.z) }
   }
 
@@ -693,15 +791,16 @@ export class DungeonRun {
     const boss = this.boss
     if (this.waveEl) {
       const w = this.director.active
+      const kills = this.host.runKills?.() ?? this.horde.kills
       const text = boss?.awake
         ? boss.alive
-          ? `보스전 · 처치 ${this.horde.kills}`
-          : `미궁 정화 · 처치 ${this.horde.kills}`
+          ? `보스전 · 총 처치 ${kills}`
+          : `미궁 정화 · 총 처치 ${kills}`
         : w
-          ? `웨이브 ${this.director.wave} · 남은 ${this.horde.alive} · 처치 ${this.horde.kills}`
+          ? `웨이브 ${this.director.wave} · 남은 ${this.horde.alive} · 총 처치 ${kills}`
           : this.director.quiet
-            ? `조용해졌어 · 처치 ${this.horde.kills}`
-            : `다음 웨이브 ${Math.ceil(Math.max(0, this.director.rest))}초 · 처치 ${this.horde.kills}`
+            ? `조용해졌어 · 총 처치 ${kills}`
+            : `다음 웨이브 ${Math.ceil(Math.max(0, this.director.rest))}초 · 총 처치 ${kills}`
       if (this.waveEl.textContent !== text) this.waveEl.textContent = text
     }
     if (this.delveEl) {
