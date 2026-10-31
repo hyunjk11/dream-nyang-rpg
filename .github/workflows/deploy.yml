@@ -34,6 +34,7 @@ jobs:
           test -f dist/index.html && test -f dist/3d/index.html
           grep -q 'id="view"' dist/index.html
           grep -q "location.replace" dist/3d/index.html
+          ls dist/assets/run-*.js dist/assets/three-*.js
           test -f dist/models/3d/byeolha_animated_mobile.glb
           test ! -f dist/models/3d/byeolha_animated.glb
       - name: Upload Pages artifact
