@@ -203,6 +203,8 @@ export class Delve {
   gold = 0
   readonly loot: LootLine[] = []
   ended: DelveSummary | null = null
+  /** This trip's boss is down (a fall afterwards keeps the checkpoint cleared). */
+  bossBeaten = false
 
   constructor(depth: number, floor = 1, salt = 0) {
     this.depth = Math.max(1, Math.floor(depth))
@@ -287,6 +289,7 @@ export class Delve {
   bossCleared(save: SaveData): number {
     const d = delveOf(save)
     this.floorsCleared += this.onBoss ? 1 : 0
+    this.bossBeaten = true
     d.cleared = Math.max(d.cleared, this.depth)
     const opened = d.unlocked < this.depth + 1 ? this.depth + 1 : 0
     d.unlocked = Math.max(d.unlocked, this.depth + 1)
@@ -301,7 +304,7 @@ export class Delve {
     const gold = this.gold - lost
     save.gold = Math.max(0, save.gold + gold)
     const d = delveOf(save)
-    if (end !== 'clear') d.checkpoint = { depth: this.depth, floor: this.floor }
+    if (end !== 'clear' && !this.bossBeaten) d.checkpoint = { depth: this.depth, floor: this.floor }
     this.ended = {
       end,
       depth: this.depth,
@@ -330,7 +333,8 @@ export function formatTime(seconds: number): string {
 export function portalChoices(save: SaveData): { label: string; depth: number; floor: number; resume: boolean }[] {
   const d = delveOf(save)
   const out: { label: string; depth: number; floor: number; resume: boolean }[] = []
-  if (d.checkpoint && !(d.checkpoint.floor === 1 && d.checkpoint.depth === d.unlocked)) {
+  // Floor 1 is the same as picking the depth itself, so only deeper checkpoints get a line.
+  if (d.checkpoint && d.checkpoint.floor > 1) {
     out.push({ label: `이어가기 · ${floorLabel(d.checkpoint.depth, d.checkpoint.floor)}`, depth: d.checkpoint.depth, floor: d.checkpoint.floor, resume: true })
   }
   for (let depth = d.unlocked; depth >= Math.max(1, d.unlocked - 2); depth -= 1) {

@@ -80,7 +80,7 @@ const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · �
 /** Same controls everywhere now, so one hint; it fades after a few seconds like the sewer's. */
 function showHint(): void {
   if (!hint) return
-  const sewer = run ? (stage.touch ? ' · 귀환 버튼: 마을로' : ' · T 귀환 주문서') : ''
+  const sewer = run ? (stage.touch ? ' · 귀환 버튼' : ' · T 귀환') : ''
   hint.textContent = (stage.touch ? TPS_HINT_TOUCH : TPS_HINT_MOUSE) + sewer
   hint.classList.remove('fade')
   void hint.offsetWidth

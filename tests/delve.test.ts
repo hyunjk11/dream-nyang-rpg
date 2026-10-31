@@ -81,6 +81,20 @@ describe('탐험 진행과 저장', () => {
     expect(portalChoices(save).map((c) => c.depth)).toEqual([2, 1])
   })
 
+  it('보스를 쓰러뜨린 뒤 쓰러져도 다음 깊이는 열린 채, 체크포인트는 비어 있다', () => {
+    const save = freshSave()
+    const run = Delve.start(save, 1, BOSS_FLOOR)!
+    run.bossCleared(save)
+    run.finish(save, 'down')
+    expect(delveOf(save)).toMatchObject({ unlocked: 2, checkpoint: null })
+  })
+
+  it('1층 체크포인트는 이어가기 줄을 따로 만들지 않는다', () => {
+    const save = freshSave()
+    Delve.start(save, 1)!.finish(save, 'recall')
+    expect(portalChoices(save).some((c) => c.resume)).toBe(false)
+  })
+
   it('쓰러지면 이번 탐험 골드 일부만 잃고, 아이템과 체크포인트는 남는다', () => {
     const save = freshSave()
     const before = save.gold
