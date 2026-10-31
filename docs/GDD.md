@@ -80,14 +80,14 @@
 ## 콘텐츠를 더하는 법
 
 - **아이템.** `src/data/items.ts`에 정의하고, 상점에 넣을 거면 `SHOP`에 한 줄.
-- **적.** `src/data/enemies.ts`에 스탯과 행동 키. 새 행동이 필요하면 `src/game/enemy.ts`의 분기에 추가.
+- **적.** 마을 구역의 적 모델과 행동은 `src/combat/foes.ts`·`src/combat/combat.ts`, 미궁의 무리는 `src/world/dungeon/horde.ts`·`waves.ts`.
 - **스킬.** `src/data/skills.ts`. 액티브면 `HOTBAR`와 `WorldScene.cast`에 효과를 연결.
 - **퀘스트.** `src/data/quests.ts`에 목표와 보상. 대사는 `src/data/dialogues.ts`의 `resolveDialogue`.
 - **구역.** `src/data/zones.ts`에 크기, 소품, 적, 출구, 시작 지점. 출구 좌표는 별문 발밑을 넉넉히 덮고, 시작 지점은 그 사각형 밖에 둔다.
-- **그림.** `tools/process_art.py`가 초록 배경을 지우고 `public/assets`로 넣는다. 키 이름은 `src/game/assets.ts`와 같아야 한다.
+- **그림.** `tools/process_art.py`가 초록 배경을 지우고 `public/assets`로 넣는다. 초상화 키는 대사의 `portrait` 이름과 같아야 한다.
 - **소리.** `tools/make_audio.py`가 `public/assets/audio`를 만든다.
 
-규칙은 `src/sim`에만 두고 Phaser를 부르지 않는다. 테스트는 `tests/systems.test.ts`.
+규칙은 `src/sim`에만 두고 DOM·three.js를 부르지 않는다. 테스트는 `tests/systems.test.ts`.
 
 ## 이번 슬라이스에서 일부러 뺀 것
 
