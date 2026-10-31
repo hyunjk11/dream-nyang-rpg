@@ -13,6 +13,16 @@ export const pad: Pad = { x: 0, y: 0, fire: false }
 let dashQueued = false
 let talkQueued = false
 let recallQueued = false
+/** Active skill slots pressed (keys 1–4 or the hotbar), oldest first. */
+const skillQueue: number[] = []
+/** I / Tab = bag, K = skill tree. */
+let menuQueued: 'bag' | 'skills' | null = null
+
+/** Key code → hotbar slot (0–3). E and T stay talk / recall. */
+export function skillSlotFor(code: string): number {
+  const m = /^(?:Digit|Numpad)([1-4])$/.exec(code)
+  return m ? Number(m[1]) - 1 : -1
+}
 
 /**
  * Shoulder-camera input, shared by the town and the dungeon. A click locks the pointer and
@@ -77,6 +87,12 @@ export function installInput(canvas: HTMLCanvasElement): void {
     if (event.code === 'Space' && !event.repeat) dashQueued = true
     if ((event.code === 'KeyE' || event.code === 'Enter') && !event.repeat) talkQueued = true
     if (event.code === 'KeyT' && !event.repeat) recallQueued = true
+    if (event.code === 'Tab') event.preventDefault()
+    if (event.repeat) return
+    const slot = skillSlotFor(event.code)
+    if (slot >= 0 && skillQueue.length < 4) skillQueue.push(slot)
+    if (event.code === 'KeyI' || event.code === 'Tab') menuQueued = 'bag'
+    if (event.code === 'KeyK') menuQueued = 'skills'
   })
   window.addEventListener('keyup', (event) => keys.delete(event.code))
   window.addEventListener('blur', () => {
@@ -155,6 +171,17 @@ export function installInput(canvas: HTMLCanvasElement): void {
     event.preventDefault()
     recallQueued = true
   })
+  document.querySelectorAll<HTMLElement>('#hotbar [data-slot]').forEach((el) => {
+    el.addEventListener('pointerdown', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      skillQueue.push(Number(el.dataset.slot))
+    })
+  })
+  document.getElementById('bag-btn')?.addEventListener('pointerdown', (event) => {
+    event.preventDefault()
+    menuQueued = 'bag'
+  })
   const stick = document.getElementById('stick')
   const knob = document.getElementById('knob')
   if (stick && knob) bindStick(stick, knob)
@@ -172,6 +199,24 @@ export function consumeRecall(): boolean {
   const had = recallQueued
   recallQueued = false
   return had
+}
+
+/** Next pressed active slot (0–3), or -1. */
+export function consumeSkill(): number {
+  return skillQueue.shift() ?? -1
+}
+
+/** I / Tab / K / the 가방 button since the last frame. */
+export function consumeMenu(): 'bag' | 'skills' | null {
+  const had = menuQueued
+  menuQueued = null
+  return had
+}
+
+/** Drop queued presses (menus closing, worlds swapping). */
+export function clearQueued(): void {
+  skillQueue.length = 0
+  menuQueued = null
 }
 
 export function consumeDash(): boolean {

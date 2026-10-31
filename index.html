@@ -14,6 +14,7 @@
       <div class="top">
         <div class="hp" aria-label="체력"><span id="hp-fill"></span></div>
         <span class="tag" id="lv">Lv 1</span>
+        <div class="xp" aria-label="경험치"><span id="xp-fill"></span><small id="xp-text"></small></div>
         <span class="tag" id="dust">골드 0</span>
         <span class="tag" id="mats">꿈가루 0 · 부품 0</span>
         <span id="fps">FPS</span>
@@ -21,9 +22,18 @@
       <div id="tracker" class="hidden"></div>
       <p id="note" class="hidden"></p>
       <div id="toasts"></div>
+      <div id="loot-toasts"></div>
+      <div id="levelup"></div>
       <div id="zone-banner"></div>
       <div id="markers"><span id="mk-kiki" class="marker hidden"></span><span id="mk-luna" class="marker hidden"></span></div>
-      <p id="hint">클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · Esc 해제</p>
+      <p id="hint">클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · 1–4 스킬 · I 가방 · K 스킬 · Esc 해제</p>
+      <div id="hotbar" class="hidden" aria-label="스킬">
+        <button type="button" data-slot="0"><kbd>1</kbd><i></i><b></b><s></s></button>
+        <button type="button" data-slot="1"><kbd>2</kbd><i></i><b></b><s></s></button>
+        <button type="button" data-slot="2"><kbd>3</kbd><i></i><b></b><s></s></button>
+        <button type="button" data-slot="3"><kbd>4</kbd><i></i><b></b><s></s></button>
+      </div>
+      <button id="bag-btn" type="button" title="가방 (I · Tab)">가방</button>
       <div class="stick" id="stick"><div id="knob"></div></div>
       <div class="actions">
         <button id="dash" type="button">대시</button>
@@ -68,6 +78,31 @@
     </div>
     <div id="quest-log" class="hidden">
       <div class="card wide"><h2>꿈의 게시판</h2><div id="quest-body"></div><button id="quest-close" type="button">닫기</button></div>
+    </div>
+    <div id="inv" class="hidden" role="dialog" aria-label="가방">
+      <div class="inv-card">
+        <header>
+          <div class="inv-tabs"><button type="button" data-tab="bag" class="on">가방 · 장비</button><button type="button" data-tab="skills">스킬 나무</button></div>
+          <span id="inv-gold"></span>
+          <button id="inv-close" type="button" title="닫기 (I · Tab · Esc)">닫기</button>
+        </header>
+        <div id="inv-bag" class="inv-page">
+          <section class="inv-left">
+            <div id="inv-slots"></div>
+            <div id="inv-stats"></div>
+          </section>
+          <section class="inv-mid">
+            <h3>가방 <small id="inv-count"></small></h3>
+            <div id="inv-grid"></div>
+            <p id="inv-mats"></p>
+          </section>
+          <section class="inv-right"><div id="inv-detail"></div></section>
+        </div>
+        <div id="inv-skills" class="inv-page hidden">
+          <div id="tree-head"></div>
+          <div id="tree"></div>
+        </div>
+      </div>
     </div>
     <div id="summary" class="hidden">
       <div class="card wide">

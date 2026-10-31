@@ -20,17 +20,32 @@ export function addItem(save: SaveData, item: ItemInstance, force = false): bool
   return true
 }
 
-export function equipItem(save: SaveData, id: string): { ok: boolean; reason?: string } {
+/** Which slot an item goes to: accessories fill the empty one of two (else the first). */
+export function slotFor(save: SaveData, item: ItemInstance, prefer?: EquipSlot): EquipSlot | undefined {
+  const slot = ITEMS[item.defId]?.slot
+  if (!slot) return undefined
+  if (slot !== 'accessory') return slot
+  if (prefer === 'accessory' || prefer === 'accessory2') return prefer
+  if (save.equipment.accessory === item.uid) return 'accessory'
+  if (save.equipment.accessory2 === item.uid) return 'accessory2'
+  if (!save.equipment.accessory) return 'accessory'
+  if (!save.equipment.accessory2) return 'accessory2'
+  return 'accessory'
+}
+
+export function equipItem(save: SaveData, id: string, prefer?: EquipSlot): { ok: boolean; reason?: string; slot?: EquipSlot } {
   const item = findItem(save, id)
   if (!item) return { ok: false, reason: '그 물건은 가방에 없어.' }
-  const def = ITEMS[item.defId]
-  if (!def?.slot) return { ok: false, reason: '장착할 수 없는 물건이야.' }
-  save.equipment[def.slot] = item.uid
-  return { ok: true }
+  const slot = slotFor(save, item, prefer)
+  if (!slot) return { ok: false, reason: '장착할 수 없는 물건이야.' }
+  for (const s of Object.keys(save.equipment) as EquipSlot[]) if (save.equipment[s] === id) delete save.equipment[s]
+  save.equipment[slot] = item.uid
+  return { ok: true, slot }
 }
 
 export function unequipItem(save: SaveData, slot: EquipSlot): { ok: boolean; reason?: string } {
   if (!save.equipment[slot]) return { ok: false, reason: '비어 있는 칸이야.' }
+  if (slot === 'weapon') return { ok: false, reason: '총은 다른 총으로 바꿔 끼워야 해.' }
   if (bagItems(save).length >= BAG_CAP) return { ok: false, reason: '가방이 가득 찼어.' }
   delete save.equipment[slot]
   return { ok: true }

@@ -4,7 +4,9 @@
  * for the look; what each pickup *is* comes from sim/loot (Drop).
  */
 import {
+  AdditiveBlending,
   BoxGeometry,
+  DoubleSide,
   Color,
   CylinderGeometry,
   Group,
@@ -32,7 +34,12 @@ interface Piece {
   age: number
   /** Flying to her. */
   pulled: boolean
+  /** Rarity light beam / glow ring under an item (null for coins and candy). */
+  beam: Mesh | null
 }
+
+/** Beam height per rarity: common gets only a soft ring, legendary a tall pillar. */
+export const BEAM_HEIGHT: Record<string, number> = { common: 0, uncommon: 1.4, rare: 2.4, epic: 3.4, legendary: 5 }
 
 /** Pickups beyond this are folded into the oldest coin pile (no runaway mesh count). */
 const CAP = 70
@@ -46,7 +53,7 @@ const LIFE = 40
 export class LootView {
   readonly group = new Group()
   private readonly pieces: Piece[] = []
-  private readonly geo: Record<'coin' | 'heart' | 'dust' | 'box', BufferGeometry>
+  private readonly geo: Record<'coin' | 'heart' | 'dust' | 'box' | 'beam' | 'ring', BufferGeometry>
   private readonly mats = new Map<string, Material>()
 
   private readonly collide: (x: number, z: number) => { x: number; z: number }
@@ -60,6 +67,8 @@ export class LootView {
       heart: new SphereGeometry(0.17, 12, 8),
       dust: new OctahedronGeometry(0.15),
       box: new BoxGeometry(0.34, 0.3, 0.34),
+      beam: new CylinderGeometry(0.11, 0.2, 1, 12, 1, true).translate(0, 0.5, 0),
+      ring: new CylinderGeometry(0.42, 0.42, 0.06, 20, 1, true),
     }
   }
 
@@ -81,9 +90,11 @@ export class LootView {
       const s = (0.6 + Math.random() * 1.2) * spread
       const mesh = new Mesh(this.shape(drop), this.material(drop))
       mesh.scale.setScalar(drop.kind === 'gold' ? 1 + Math.min(1, drop.amount / 20) : drop.kind === 'item' ? 1.15 : 1)
-      const piece: Piece = { drop, mesh, x, y: 0.6, z, vx: Math.cos(a) * s, vy: 3.2 + i * 0.25, vz: Math.sin(a) * s, age: 0, pulled: false }
+      const beam = drop.kind === 'item' ? this.beamFor(drop) : null
+      const piece: Piece = { drop, mesh, x, y: 0.6, z, vx: Math.cos(a) * s, vy: 3.2 + i * 0.25, vz: Math.sin(a) * s, age: 0, pulled: false, beam }
       mesh.position.set(x, 0.6, z)
       this.group.add(mesh)
+      if (beam) this.group.add(beam)
       this.pieces.push(piece)
     })
   }
@@ -131,6 +142,12 @@ export class LootView {
       p.mesh.position.set(p.x, p.y, p.z)
       p.mesh.rotation.y = time * 2.4 + i
       p.mesh.visible = p.age < LIFE - 4 || Math.sin(p.age * 18) > 0
+      if (p.beam) {
+        p.beam.position.set(p.x, 0.02, p.z)
+        p.beam.visible = p.mesh.visible && !p.pulled
+        const pulse = 0.85 + Math.sin(time * 4 + i) * 0.15
+        ;(p.beam.material as MeshBasicMaterial).opacity = (p.beam.userData.alpha as number) * pulse
+      }
     }
     return got
   }
@@ -146,7 +163,34 @@ export class LootView {
     this.group.removeFromParent()
   }
 
+  /** Item light pillars on the floor (rarities show from across the room). */
+  get beams(): { rarity: string; height: number }[] {
+    return this.pieces.filter((p) => p.beam).map((p) => ({ rarity: p.drop.item?.rarity ?? 'common', height: BEAM_HEIGHT[p.drop.item?.rarity ?? 'common'] }))
+  }
+
+  private beamFor(drop: Drop): Mesh {
+    const rarity = drop.item?.rarity ?? 'common'
+    const h = BEAM_HEIGHT[rarity]
+    const color = new Color(RARITY_COLOR[rarity]).multiplyScalar(1.4)
+    const mat = new MeshBasicMaterial({ color, transparent: true, opacity: h ? 0.5 : 0.6, blending: AdditiveBlending, depthWrite: false, side: DoubleSide })
+    const group = new Mesh(h ? this.geo.beam : this.geo.ring, mat)
+    group.userData.alpha = h ? 0.5 : 0.6
+    if (h) {
+      group.scale.set(1, h, 1)
+      const ring = new Mesh(this.geo.ring, mat)
+      ring.scale.set(1, 1 / h, 1)
+      group.add(ring)
+    }
+    group.name = `beam-${rarity}`
+    return group
+  }
+
   private remove(i: number): void {
+    const b = this.pieces[i].beam
+    if (b) {
+      b.removeFromParent()
+      ;(b.material as MeshBasicMaterial).dispose()
+    }
     this.pieces[i].mesh.removeFromParent()
     this.pieces.splice(i, 1)
   }

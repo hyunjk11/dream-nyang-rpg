@@ -211,3 +211,128 @@ body.sewer #recall { display: inline-flex; }
 #summary-loot li { padding: 3px 10px; border-radius: 999px; background: rgba(74, 51, 88, 0.85); font-size: 13px; }
 #summary-loot li.none { background: none; color: #8a6aa0; padding: 0; }
 #summary-close { display: block; margin: 0 auto; }
+
+/* ---- Stage 3: XP bar, skill hotbar, loot toasts, level-up card, bag & skill tree ---- */
+.xp { position: relative; width: min(180px, 26vw); height: 10px; border-radius: 99px; background: rgba(239, 228, 242, 0.85); overflow: hidden; }
+.xp span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffd66b, #fff2b0); transition: width 0.25s; }
+.xp small { position: absolute; inset: -2px 0 0; text-align: center; font-size: 9px; line-height: 14px; color: #5a3a2a; font-family: "Jua", sans-serif; }
+#hotbar { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 8px; }
+#hotbar button {
+  position: relative; width: 58px; height: 58px; border-radius: 16px; padding: 0; overflow: hidden;
+  background: rgba(255, 248, 252, 0.92); box-shadow: 0 3px 0 rgba(58, 36, 72, 0.35);
+  display: grid; place-items: center;
+}
+#hotbar kbd { position: absolute; left: 5px; top: 3px; font: 11px "Jua", sans-serif; color: #8a4fb0; }
+#hotbar i { font-style: normal; font-size: 22px; color: #6a3a8a; line-height: 1; margin-top: -6px; }
+#hotbar b { position: absolute; bottom: 3px; left: 0; right: 0; font-size: 9px; font-weight: 400; color: #4a3358; white-space: nowrap; }
+#hotbar s { position: absolute; left: 0; right: 0; top: 0; height: 0; background: rgba(58, 36, 72, 0.55); text-decoration: none; }
+#hotbar button.locked { opacity: 0.42; filter: grayscale(0.8); }
+#hotbar button.cooling i { opacity: 0.6; }
+body.touch #hotbar { bottom: auto; top: 96px; left: auto; right: 16px; transform: none; flex-direction: column; gap: 6px; }
+body.touch #hotbar button { width: 52px; height: 52px; }
+body.touch #hotbar kbd { display: none; }
+#bag-btn { position: absolute; right: 16px; bottom: 64px; display: inline-flex; }
+body.touch #bag-btn { display: inline-flex; top: 96px; bottom: auto; right: 78px; }
+#loot-toasts { position: absolute; left: 16px; bottom: 90px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.loot-toast {
+  min-width: 190px; padding: 7px 12px; border-radius: 14px; background: rgba(30, 18, 44, 0.82);
+  border-left: 4px solid var(--rar); color: #fff; animation: loot-in 0.25s ease-out, loot-out 0.6s ease-in 3.6s forwards;
+}
+.loot-toast b { display: block; font: 15px "Jua", sans-serif; color: var(--rar); }
+.loot-toast small { font-size: 11px; opacity: 0.85; }
+.loot-toast.r-epic, .loot-toast.r-legendary { box-shadow: 0 0 14px var(--rar); }
+@keyframes loot-in { from { transform: translateX(-20px); opacity: 0; } }
+@keyframes loot-out { to { opacity: 0; transform: translateY(6px); } }
+#levelup { position: absolute; left: 50%; top: 24%; transform: translate(-50%, 0) scale(0.6); opacity: 0; text-align: center; pointer-events: none; }
+#levelup.show { animation: lvl-pop 2.6s ease-out forwards; }
+#levelup b { display: block; font: 44px "Jua", sans-serif; color: #ffe27a; text-shadow: 0 3px 0 #a0527a, 0 0 18px rgba(255, 210, 120, 0.8); }
+#levelup span { display: block; font: 20px "Jua", sans-serif; color: #fff; text-shadow: 0 2px 0 #3a2448; }
+#levelup small { color: #ffe3f2; text-shadow: 0 1px 0 #3a2448; }
+@keyframes lvl-pop {
+  0% { opacity: 0; transform: translate(-50%, 10px) scale(0.6); }
+  12% { opacity: 1; transform: translate(-50%, 0) scale(1.12); }
+  22% { transform: translate(-50%, 0) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -14px) scale(1); }
+}
+
+#inv { position: fixed; inset: 0; z-index: 4; display: grid; place-items: center; background: rgba(20, 10, 30, 0.55); }
+.inv-card {
+  width: min(980px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow: auto; border-radius: 26px;
+  background: rgba(255, 248, 252, 0.97); color: #4a3358; padding: 14px 18px 18px;
+}
+.inv-card header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.inv-tabs { display: flex; gap: 6px; }
+.inv-tabs button { background: #efe4f2; }
+.inv-tabs button.on { background: #8a4fb0; color: #fff; }
+#inv-gold { margin-left: auto; font-family: "Jua", sans-serif; color: #b07a10; }
+#inv-close { background: #ffd0e4; }
+.inv-page { display: grid; grid-template-columns: 230px 1fr 270px; gap: 14px; }
+.inv-card h3 { margin: 0 0 6px; font: 18px "Jua", sans-serif; color: #8a4fb0; }
+.inv-card h3 small { font-size: 13px; color: #9a7aa8; }
+#inv-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+#inv-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+.inv-cell {
+  position: relative; aspect-ratio: 1; min-width: 0; padding: 0; border-radius: 12px; background: #f3e9f6;
+  border: 2px solid var(--rar, transparent); display: grid; place-items: center; cursor: pointer;
+}
+.inv-cell.empty { background: #f6f0f8; border: 2px dashed #e2d4ea; cursor: default; }
+.inv-cell .icon { font: normal 20px "Jua", sans-serif; color: var(--rar); text-shadow: 0 1px 0 rgba(58, 36, 72, 0.35); }
+.inv-cell[data-rarity="common"] .icon { color: #6a5a78; }
+.inv-cell .ilvl { position: absolute; right: 4px; bottom: 2px; font: normal 10px "Jua", sans-serif; color: #9a7aa8; }
+.inv-cell .slot-name { position: absolute; left: 0; right: 0; top: 2px; font-size: 9px; color: #9a7aa8; }
+.inv-cell.picked { box-shadow: 0 0 0 3px #8a4fb0; }
+.inv-cell[data-rarity="epic"], .inv-cell[data-rarity="legendary"] { box-shadow: inset 0 0 10px var(--rar); }
+#inv-mats { font-size: 12px; color: #7a5a88; margin: 8px 0 0; }
+#inv-stats { margin-top: 10px; font-size: 12px; }
+.inv-level { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; }
+.inv-level b { font: 20px "Jua", sans-serif; color: #8a4fb0; }
+.inv-xp { grid-column: 1 / -1; height: 8px; border-radius: 9px; background: #efe4f2; overflow: hidden; }
+.inv-xp span { display: block; height: 100%; background: linear-gradient(90deg, #ffd66b, #fff2b0); }
+.inv-gun { margin: 6px 0; font-family: "Jua", sans-serif; color: #6a3a8a; }
+#inv-stats dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 0; }
+#inv-stats dt { color: #7a5a88; }
+#inv-stats dd { margin: 0; text-align: right; font-weight: 700; }
+#inv-detail h3 { font-size: 19px; text-shadow: 0 1px 0 rgba(58, 36, 72, 0.25); }
+.inv-sub { margin: 0; font-size: 12px; color: #9a7aa8; }
+.inv-desc { font-size: 12px; margin: 6px 0; }
+.inv-lines { margin: 6px 0; padding-left: 18px; font-size: 13px; }
+#inv-detail h4 { margin: 10px 0 4px; font-size: 12px; color: #7a5a88; font-weight: 400; }
+.inv-compare { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.inv-compare li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 6px; border-radius: 6px; }
+.inv-compare li.up { background: #e6f8ea; color: #2a7a40; }
+.inv-compare li.down { background: #fde8ee; color: #b03a5a; }
+.inv-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.inv-actions button { background: #efe4f2; font-size: 13px; padding: 7px 11px; }
+.inv-actions button.primary { background: #8a4fb0; color: #fff; }
+.inv-actions button.warn { background: #ffe1c2; }
+.inv-actions button:disabled { opacity: 0.45; }
+.inv-empty { color: #9a7aa8; font-size: 13px; }
+#inv-skills { display: block; }
+#tree-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 13px; }
+.tree-points { font: 18px "Jua", sans-serif; color: #b07a10; }
+#tree-respec { margin-left: auto; background: #ffe1c2; }
+#tree-respec:disabled { opacity: 0.5; }
+#tree { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.branch { border-radius: 18px; padding: 10px; background: color-mix(in srgb, var(--br) 14%, white); }
+.branch h3 { color: var(--br); filter: brightness(0.7); }
+.branch .blurb { margin: 0 0 8px; font-size: 11px; color: #7a5a88; }
+.skill {
+  display: grid; grid-template-columns: 38px 1fr; gap: 8px; width: 100%; text-align: left; border-radius: 14px;
+  padding: 7px 9px; margin-bottom: 6px; background: rgba(255, 255, 255, 0.85); font-family: "Noto Sans KR", sans-serif; cursor: pointer;
+}
+.skill .glyph { font: normal 22px "Noto Sans KR", serif; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: #efe4f2; color: #6a3a8a; }
+.skill.active .glyph { background: var(--br); color: #fff; }
+.skill b { font: 15px "Jua", sans-serif; }
+.skill .rank { display: block; font-size: 10px; color: #9a7aa8; }
+.skill p { margin: 2px 0 0; font-size: 11px; }
+.skill em { display: block; font-size: 10px; font-style: normal; }
+.skill .why { color: #b03a5a; }
+.skill .next { color: #2a7a40; }
+.skill.owned { box-shadow: inset 0 0 0 2px var(--br); }
+.skill.locked { opacity: 0.6; }
+@media (max-width: 820px) {
+  .inv-page { grid-template-columns: 1fr; }
+  #tree { grid-template-columns: 1fr; }
+  #inv-grid { grid-template-columns: repeat(6, minmax(38px, 1fr)); }
+}

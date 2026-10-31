@@ -12,10 +12,11 @@
  *    boss clears it and unlocks the next depth.
  */
 import { DIFFICULTY } from '../combat/difficulty'
+import { MATERIAL_KO } from '../data/items'
 import { addItem } from './inventory'
 import { itemName, rollDrops, sellValue, type Drop } from './loot'
 import { addMaterial } from './quests'
-import type { ItemInstance, Rarity, SaveData } from './types'
+import type { OpenRun, ItemInstance, Rarity, SaveData } from './types'
 
 export type Objective = 'survive' | 'nests' | 'exit' | 'boss'
 
@@ -33,12 +34,16 @@ export interface DelveSave {
   checkpoint: DelveCheckpoint | null
   /** Trips started (for the maze salt). */
   runs: number
+  /** A trip still underway: snapshotted so a reload doesn't eat its gold. */
+  open: OpenRun | null
 }
+
+export type { OpenRun }
 
 export const BOSS_FLOOR = DIFFICULTY.delve.floors + 1
 
 export function freshDelve(): DelveSave {
-  return { unlocked: 1, cleared: 0, checkpoint: null, runs: 0 }
+  return { unlocked: 1, cleared: 0, checkpoint: null, runs: 0, open: null }
 }
 
 /** The save's delve block, made whole (old saves have none; bad values are clamped). */
@@ -51,7 +56,20 @@ export function delveOf(save: SaveData): DelveSave {
     cp && typeof cp === 'object' && int(cp.depth, 1, 0) >= 1 && int(cp.depth, 1, 0) <= unlocked
       ? { depth: int(cp.depth, 1, 1), floor: Math.min(BOSS_FLOOR, int(cp.floor, 1, 1)) }
       : null
-  const d: DelveSave = { unlocked, cleared: Math.min(unlocked, int(raw.cleared, 0, 0)), checkpoint, runs: int(raw.runs, 0, 0) }
+  const o = raw.open
+  const open: OpenRun | null =
+    o && typeof o === 'object'
+      ? {
+          depth: int(o.depth, 1, 1),
+          floor: Math.min(BOSS_FLOOR, int(o.floor, 1, 1)),
+          gold: int(o.gold, 0, 0),
+          kills: int(o.kills, 0, 0),
+          elites: int(o.elites, 0, 0),
+          seconds: int(o.seconds, 0, 0),
+          floorsCleared: int(o.floorsCleared, 0, 0),
+        }
+      : null
+  const d: DelveSave = { unlocked, cleared: Math.min(unlocked, int(raw.cleared, 0, 0)), checkpoint, runs: int(raw.runs, 0, 0), open }
   save.delve = d
   return d
 }
@@ -175,18 +193,26 @@ export interface DelveSummary {
   loot: LootLine[]
   /** Depth newly opened at the portal (0 = none). */
   unlocked: number
+  /** XP earned this trip and the level she came home at. */
+  xp?: number
+  level?: number
 }
 
 /** Dungeon drop table per foe (scaled by depth). Bosses roll it with boss=true. */
-export const DELVE_TABLE = { gold: [1, 3] as [number, number], gear: 0.012, weapon: 0.006, dust: 0.08, part: 0.02, potion: 0.03 }
+export const DELVE_TABLE = { gold: [1, 3] as [number, number], gear: 0.03, weapon: 0.014, dust: 0.08, part: 0.02, potion: 0.03 }
 
 /** What a single kill leaves on the floor. Potions come out as hearts (healing on touch). */
-export function delveDrops(depth: number, elite: boolean, boss: boolean, rng: () => number, luck = 2): Drop[] {
+/** Item level of drops: depth weighs most, floors nudge it, the boss adds one. */
+export function itemLevelFor(depth: number, floor = 1, boss = false): number {
+  return 1 + 4 * (Math.max(1, depth) - 1) + (Math.max(1, Math.min(floor, BOSS_FLOOR)) - 1) + (boss ? 1 : 0)
+}
+
+export function delveDrops(depth: number, elite: boolean, boss: boolean, rng: () => number, luck = 2, floor = 1): Drop[] {
   const s = floorScale(depth, 1)
   const table = boss
     ? { gold: [40, 60] as [number, number], gear: 0.98, weapon: 0.6, dust: 1, part: 1, potion: 1 }
     : { ...DELVE_TABLE, gold: [DELVE_TABLE.gold[0], Math.round(DELVE_TABLE.gold[1] * s.gold)] as [number, number] }
-  const drops = rollDrops({ table, luck, elite, boss, rng, itemLevel: depth + (boss ? 1 : 0) })
+  const drops = rollDrops({ table, luck, elite, boss, rng, itemLevel: itemLevelFor(depth, floor, boss), bias: (depth - 1) * 5 })
   if (boss) for (const d of drops) if (d.kind === 'gold') d.amount = Math.round(d.amount * s.gold)
   return drops
 }
@@ -201,6 +227,8 @@ export class Delve {
   elites = 0
   seconds = 0
   gold = 0
+  /** XP earned this trip (summary card). */
+  xp = 0
   readonly loot: LootLine[] = []
   ended: DelveSummary | null = null
   /** This trip's boss is down (a fall afterwards keeps the checkpoint cleared). */
@@ -219,6 +247,7 @@ export class Delve {
     d.runs += 1
     const run = new Delve(depth, floor, d.runs)
     d.checkpoint = { depth: run.depth, floor: run.floor }
+    run.sync(save)
     return run
   }
 
@@ -242,7 +271,22 @@ export class Delve {
     this.floor += 1
     this.floorsCleared += 1
     delveOf(save).checkpoint = { depth: this.depth, floor: this.floor }
+    this.sync(save)
     return this.plan
+  }
+
+  /** Snapshot the trip into the save (run gold survives a reload; see settleOpenRun). */
+  sync(save: SaveData): void {
+    if (this.ended) return
+    delveOf(save).open = {
+      depth: this.depth,
+      floor: this.floor,
+      gold: this.gold,
+      kills: this.kills,
+      elites: this.elites,
+      seconds: Math.round(this.seconds),
+      floorsCleared: this.floorsCleared,
+    }
   }
 
   /** A kill down there (floor-level counts are folded in here). */
@@ -266,7 +310,7 @@ export class Delve {
     }
     if (drop.kind === 'material' && drop.matId) {
       addMaterial(save, drop.matId, drop.amount, rng)
-      const name = drop.matId === 'dream_dust' ? '꿈가루' : '장난감 부품'
+      const name = MATERIAL_KO[drop.matId] ?? drop.matId
       this.loot.push({ name: `${name} ×${drop.amount}`, rarity: 'material' })
       return { heal: 0, text: `+${drop.amount} ${name}` }
     }
@@ -304,6 +348,7 @@ export class Delve {
     const gold = this.gold - lost
     save.gold = Math.max(0, save.gold + gold)
     const d = delveOf(save)
+    d.open = null
     if (end !== 'clear' && !this.bossBeaten) d.checkpoint = { depth: this.depth, floor: this.floor }
     this.ended = {
       end,
@@ -317,9 +362,25 @@ export class Delve {
       lost,
       loot: [...this.loot],
       unlocked,
+      xp: this.xp,
+      level: save.level,
     }
     return this.ended
   }
+}
+
+/**
+ * A save loaded with a trip still open (the tab closed or reloaded mid-run): bank its run gold
+ * as if she had recalled, keep the checkpoint, and say how much came home. Null = nothing open.
+ */
+export function settleOpenRun(save: SaveData): OpenRun | null {
+  const d = delveOf(save)
+  const open = d.open
+  if (!open) return null
+  d.open = null
+  save.gold = Math.max(0, save.gold + open.gold)
+  if (!d.checkpoint && open.depth <= d.unlocked && open.depth > d.cleared) d.checkpoint = { depth: open.depth, floor: open.floor }
+  return open
 }
 
 /** "3분 07초". */

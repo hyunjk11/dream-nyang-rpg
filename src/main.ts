@@ -13,7 +13,7 @@ import { Shooter, type ShotWorld } from './combat/shooter'
 import { TPS, loadSens, rayCapsule, setSens, SENS, type AimTarget } from './core/tps'
 import { WALK_RADIUS } from './world/town/island'
 import { Hero } from './actors/hero'
-import { axis, consumeDash, consumeTalk, installInput, pad, runningHeld, shoulder } from './core/input'
+import { axis, clearQueued, consumeDash, consumeMenu, consumeSkill, consumeTalk, installInput, pad, runningHeld, shoulder } from './core/input'
 import { Landmarks } from './world/town/landmarks'
 import { Mochi } from './actors/mochi'
 import { killLoot, GameState, type Storageish } from './core/loop'
@@ -27,6 +27,18 @@ import { Vfx } from './core/vfx'
 import type { DungeonRun } from './world/dungeon/run'
 import { Delve, portalChoices, type DelveEnd, type DelveSummary, type FloorPlan } from './sim/delve'
 import { showSummary } from './ui/summary'
+import { playChime, type Chime } from './audio/chime'
+import { SkillRunner, type SkillBody, type SkillWorld } from './combat/skills'
+import { ACTIVES, TREE_BY_ID } from './data/tree'
+import { GUN_PROFILES } from './data/guns'
+import { rank } from './sim/skilltree'
+import { computeStats, gainXp, type ComputedStats } from './sim/stats'
+import { bossXp, killXp, nestXp, objectiveXp, townKillXp } from './sim/xp'
+import { xpToNext } from './sim/formulas'
+import { findItem } from './sim/inventory'
+import { itemName, makeItem } from './sim/loot'
+import { RARITY_COLOR, type ItemInstance } from './sim/types'
+import { InventoryUI, dpsOf } from './ui/inventory'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -75,7 +87,7 @@ function loadDungeon(): Promise<typeof import('./world/dungeon/run')> {
 }
 const crosshair = document.getElementById('crosshair')
 const hint = document.getElementById('hint')
-const TPS_HINT_MOUSE = '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · Esc 해제'
+const TPS_HINT_MOUSE = '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · 1–4 스킬 · I 가방 · K 스킬 · Esc 해제'
 const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · 공격 길게 눌러 연사 · 대시'
 /** Same controls everywhere now, so one hint; it fades after a few seconds like the sewer's. */
 function showHint(): void {
@@ -105,6 +117,9 @@ const shooter = new Shooter(
     gun: (cue, gain, pitch) => gunSfx(cue, gain, pitch),
     hitStop: (seconds) => {
       combat.hitStop = Math.max(combat.hitStop, seconds)
+    },
+    heal: (hp) => {
+      if (hero.alive) hero.hp = Math.min(hero.maxHp, hero.hp + hp)
     },
   },
   stage.scene,
@@ -139,10 +154,15 @@ const townWorld: ShotWorld = {
     for (const f of townFoes) townTargets.push(combat.capsule(f))
     return townTargets
   },
-  strike: (o, d, max, amount) => {
+  strike: (o, d, max, amount, procs) => {
     const hit = combat.raycast(o, d, max)
     if (!hit) return null
-    const kill = combat.strikeFoe(hit.foe, amount, d)
+    let kill = combat.strikeFoe(hit.foe, amount, d)
+    if (!kill && procs?.sparkle) {
+      // Town foes are few and simple: a sparkle proc is a little bonus pop on the same foe.
+      vfx.burst(hit.foe.object.position.clone().setY(1), 0xfff2a0, { count: 8, speed: 3, up: 1.2, life: 0.35, size: 0.1, gravity: 2, drag: 2, additive: true })
+      kill = combat.strikeFoe(hit.foe, amount * 0.6, d)
+    }
     const tone = hit.foe.kind === 'bloom' ? 'boss' : hit.foe.elite ? 'elite' : 'n'
     return { t: hit.t, kill, tone, color: 0xffc6e8, floor: hit.foe.object.position.clone().setY(0.02) }
   },
@@ -176,6 +196,183 @@ function armTown(): void {
 function releaseLook(): void {
   if (document.pointerLockElement) document.exitPointerLock?.()
 }
+/** Her stats from level, gear and the tree; applyBuild() pushes them into the live hero and gun. */
+let stats: ComputedStats = computeStats(game.save)
+const skills = new SkillRunner({
+  hero,
+  mochi,
+  vfx,
+  shooter,
+  parent: stage.scene,
+  sfx: (cue, gain) => audio.sfx(cue, gain),
+  gun: (cue, gain, pitch) => gunSfx(cue, gain, pitch),
+  rank: (id) => rank(game.save, id),
+  damageMul: () => stats.damageMul,
+  armor: () => stats.armor,
+  say: (text) => toast(text, 'info'),
+})
+const townBodies: SkillBody[] = []
+/** Skill targets on the island: the awake foes of this zone. */
+const townSkillWorld: SkillWorld = {
+  solid: (ox, oy, oz, dx, dy, dz, max) => townRay(ox, oy, oz, dx, dy, dz, max),
+  bodies: () => {
+    townBodies.length = 0
+    for (const foe of combat.foes) {
+      if (!foe.alive) continue
+      const p = foe.object.position
+      townBodies.push({
+        id: foe.object.uuid,
+        x: p.x,
+        z: p.z,
+        r: foe.kind === 'bloom' ? 1.4 : 0.55,
+        tone: foe.kind === 'bloom' ? 'boss' : foe.elite ? 'elite' : 'n',
+        hit: (amount, dx, dz) => combat.strikeFoe(foe, amount, new Vector3(dx, 0, dz)),
+      })
+    }
+    return townBodies
+  },
+}
+const skillWorld = (): SkillWorld | null => (run ? run.skillWorld : townSkillWorld)
+
+function hexOf(css: string): number {
+  return parseInt(css.replace('#', ''), 16)
+}
+
+/** Level, gear and tree → hero hp/speed/regen/armour, the gun's feel, model and tracer colour. */
+function applyBuild(): void {
+  const prevMax = hero.maxHp
+  stats = computeStats(game.save)
+  hero.maxHp = stats.maxHp
+  if (stats.maxHp > prevMax && hero.alive) hero.hp = Math.min(stats.maxHp, hero.hp + (stats.maxHp - prevMax))
+  hero.hp = Math.min(hero.hp, hero.maxHp)
+  hero.speedMul = stats.moveMul
+  hero.regenMul = stats.regenMul
+  hero.regenDelay = stats.regenDelay
+  hero.guard = stats.armor
+  const look = GUN_PROFILES[stats.weaponKind].look
+  const gunItem: ItemInstance | undefined = findItem(game.save, game.save.equipment.weapon)
+  const gem = gunItem && gunItem.rarity !== 'common' ? hexOf(RARITY_COLOR[gunItem.rarity]) : null
+  shooter.setLoadout({
+    profile: stats.gun,
+    damage: stats.shotDamage,
+    critChance: stats.critChance,
+    critMul: stats.critMul,
+    pierce: stats.pierce,
+    lifesteal: stats.lifesteal,
+    sparkle: stats.sparkle,
+    ice: stats.ice,
+    candy: stats.candy,
+    fireRate: stats.fireRate,
+    tint: gem && gunItem && (gunItem.rarity === 'epic' || gunItem.rarity === 'legendary') ? gem : look.tracer,
+  })
+  hero.setGunLook(stats.weaponKind, look, gem)
+  paintStats(game.save)
+  paintXp()
+}
+
+const xpFill = document.getElementById('xp-fill')
+const xpText = document.getElementById('xp-text')
+function paintXp(): void {
+  const s = game.save
+  const cap = s.level >= 30
+  const need = cap ? 1 : xpToNext(s.level)
+  if (xpFill) xpFill.style.width = `${cap ? 100 : Math.min(100, (s.xp / need) * 100)}%`
+  if (xpText) xpText.textContent = cap ? 'MAX' : `${s.xp}/${need}`
+}
+
+function chime(c: Chime): void {
+  if (audio.master <= 0.001) return
+  const a = audio.context()
+  if (a) playChime(a.ctx, a.bus, c)
+}
+
+/** XP from a kill, nest, objective or boss (the trip's tally too); level-ups light her up. */
+function giveXp(amount: number): void {
+  if (amount <= 0) return
+  if (delve) delve.xp += amount
+  showResult(gainXp(game.save, amount))
+  paintXp()
+}
+
+const levelEl = document.getElementById('levelup')
+/** Ding! ring, sparkles, a jingle, a cute card and full health. */
+function levelUpFx(): void {
+  applyBuild()
+  hero.hp = hero.maxHp
+  const at = hero.object.position
+  vfx.ring(at.clone().setY(0.06), 0xffe27a, 0.3, 3.2, 0.7, 0.9)
+  vfx.ring(at.clone().setY(0.9), 0xffb8e6, 0.2, 2.2, 0.55, 0.7)
+  vfx.poof(at.clone().setY(1.3), 0xfff0a8, 1.8)
+  vfx.burst(at.clone().setY(1.2), 0xffe27a, { count: 26, speed: 4, up: 3.5, life: 0.9, size: 0.16, gravity: 3, drag: 1.6, additive: true })
+  chime('levelup')
+  if (levelEl) {
+    levelEl.innerHTML = `<b>레벨 업!</b><span>Lv ${game.save.level} · 스킬 포인트 +1</span><small>K 키로 스킬 나무를 열어 봐</small>`
+    levelEl.classList.remove('show')
+    void levelEl.offsetWidth
+    levelEl.classList.add('show')
+  }
+}
+
+const inventory = new InventoryUI({
+  save: () => game.save,
+  inTown: () => !run,
+  changed: () => {
+    applyBuild()
+    game.persist(store)
+  },
+  toast: (text) => toast(text, 'info'),
+  sfx: (cue) => audio.sfx(cue),
+  opened: () => {
+    mode = 'menu'
+    pad.fire = false
+    releaseLook()
+    document.body.classList.add('bag-open')
+  },
+  closed: () => {
+    mode = 'play'
+    clearQueued()
+    document.body.classList.remove('bag-open')
+    paintHotbar()
+  },
+})
+
+const hotbar = document.getElementById('hotbar')
+const hotSlots = hotbar ? [...hotbar.querySelectorAll<HTMLElement>('[data-slot]')] : []
+/** Keys 1–4: glyph, name, and a cooldown veil sliding down. */
+function paintHotbar(): void {
+  ACTIVES.forEach((id, i) => {
+    const el = hotSlots[i]
+    if (!el) return
+    const def = TREE_BY_ID[id]
+    const r = rank(game.save, id)
+    el.classList.toggle('locked', r <= 0)
+    const ready = skills.readiness(id)
+    el.classList.toggle('cooling', ready > 0)
+    const glyph = el.querySelector('i')
+    if (glyph && glyph.textContent !== def.glyph) glyph.textContent = def.glyph
+    const name = el.querySelector('b')
+    if (name && name.textContent !== def.name) name.textContent = def.name
+    const veil = el.querySelector('s') as HTMLElement | null
+    if (veil) veil.style.height = `${Math.round(ready * 100)}%`
+    el.title = r > 0 ? `${def.name} (${i + 1})` : `${def.name}: 아직 안 배웠어 (K)`
+  })
+}
+
+/** 1–4 and I / Tab / K while playing. */
+function handleKeys(): void {
+  const menu = consumeMenu()
+  if (menu && (mode === 'play' || inventory.isOpen) && !talk.open && !travelling) inventory.toggle(menu)
+  if (mode !== 'play') {
+    clearQueued()
+    return
+  }
+  for (let slot = consumeSkill(); slot >= 0; slot = consumeSkill()) {
+    if (talk.open || travelling) continue
+    const id = ACTIVES[slot]
+    if (id && skills.use(id, skillWorld())) chime('skill')
+  }
+}
+
 let mochiCd = 1
 let frames = 0
 let fpsTime = 0
@@ -213,7 +410,7 @@ document.getElementById('retry')?.addEventListener('click', () => restart())
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk } })
 
 void bootGame()
 
@@ -242,6 +439,8 @@ async function bootGame(): Promise<void> {
   combat.onKill = (foe) => {
     const zone = game.zone
     showResult(game.kill(foe.kind, foe.tags))
+    giveXp(townKillXp(Boolean(foe.elite)) * (foe.kind === 'bloom' ? 10 : 1))
+    skills.onKill(foe.object.position.x, foe.object.position.z, townSkillWorld)
     for (const loot of killLoot(zone, foe.tags, foe.elite, Math.random())) combat.dropLoot(foe.object.position, loot)
     if (zone === 'meadow' && foe.tags.includes('tutorial')) toast('서쪽 별문이 반짝인다. 마을로 가 보자!', 'quest')
     if (foe.kind === 'bloom') toast('별문의 봉인이 풀렸다. 루나에게 돌아가자.', 'quest')
@@ -274,11 +473,19 @@ function resumeGame(): void {
   hideTitle()
   document.body.classList.remove('menu')
   beginPlay()
+  const banked = game.banked
+  if (banked && banked.gold > 0) window.setTimeout(() => toast(`지난번 탐험(깊이 ${banked.depth}·${banked.floor}층)의 골드 ${banked.gold}을 챙겨 왔어!`, 'reward'), 900)
+  game.banked = null
 }
 
 function beginPlay(): void {
   mode = 'play'
   armTown()
+  applyBuild()
+  hero.hp = hero.maxHp
+  skills.reset()
+  hotbar?.classList.remove('hidden')
+  paintHotbar()
   crosshair?.classList.remove('hidden')
   showHint()
   enterZone(game.zone, game.zone === 'meadow' || game.zone === 'village' ? PLAZA : PORTAL_ARRIVAL)
@@ -307,6 +514,7 @@ function enterZone(id: ZoneId, at: { x: number; z: number } = PORTAL_ARRIVAL): v
   rig.view.pitch = 0.12
   rig.view.boom = 1
   shooter.reset()
+  skills.reset()
   heroTracked = false
   stepTracked = false
   mochi.place(at.x + 0.8, at.z - 0.8)
@@ -368,15 +576,24 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
       steps: footsteps,
       leave: (why) => leaveSewer(why),
       stairs: () => nextFloor(),
-      kill: (elite) => delve?.kill(elite),
+      kill: (elite) => {
+        delve?.kill(elite)
+        giveXp(killXp(plan.depth, elite))
+      },
+      nestDown: () => giveXp(nestXp(plan.depth)),
+      objectiveDone: () => giveXp(objectiveXp(plan.depth)),
+      runKills: () => delve?.kills ?? 0,
+      luck: () => stats.luck,
+      foeDied: (x, z) => skills.onKill(x, z, run?.skillWorld ?? null),
       pickup: (drop) => {
         const r = delve ? delve.pickup(game.save, drop) : { heal: 0, text: '' }
-        if (drop.kind === 'item') audio.sfx('quest')
+        if (drop.kind === 'item' && drop.item) lootPing(drop.item)
         return r
       },
       bossDown: () => {
         if (!delve) return
         delveUnlocked = delve.bossCleared(game.save)
+        giveXp(bossXp(plan.depth))
         game.persist(store)
       },
       runGold: () => delve?.gold ?? 0,
@@ -393,6 +610,31 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
     },
     plan,
   )
+  skills.reset()
+}
+
+/** A gear pickup: a jingle by rarity and a coloured toast with its name. */
+function lootPing(item: ItemInstance): void {
+  if (item.rarity === 'legendary') chime('loot_legendary')
+  else if (item.rarity === 'epic') chime('loot_epic')
+  else if (item.rarity === 'rare') chime('loot_rare')
+  else audio.sfx('quest')
+  lootToast(item)
+}
+
+/** Pickup toast in the item's rarity colour (bottom-left stack, fades by itself). */
+function lootToast(item: ItemInstance): void {
+  const box = document.getElementById('loot-toasts')
+  if (!box) return
+  const el = document.createElement('div')
+  el.className = `loot-toast r-${item.rarity}`
+  el.style.setProperty('--rar', RARITY_COLOR[item.rarity])
+  el.innerHTML = `<b></b><small></small>`
+  ;(el.firstChild as HTMLElement).textContent = itemName(item)
+  ;(el.lastChild as HTMLElement).textContent = `아이템 레벨 ${item.itemLevel} · I 가방에서 비교`
+  box.prepend(el)
+  while (box.children.length > 4) box.lastElementChild?.remove()
+  window.setTimeout(() => el.remove(), 4200)
 }
 
 /** Stairs portal: on to the next floor (checkpoint saved there). */
@@ -401,6 +643,7 @@ function nextFloor(): void {
   travelling = true
   audio.sfx('windup', 0.8)
   const trip = delve
+  if (trip.plan.objective === 'exit') giveXp(objectiveXp(trip.depth))
   void loadDungeon().then((mod) => fadeThrough(() => {
     run?.dispose()
     run = null
@@ -477,6 +720,7 @@ function showResult(result: MutationResult): void {
     toast(text, quest ? 'quest' : /\+|획득/.test(text) ? 'reward' : 'info')
   }
   if (result.questPop) audio.sfx('quest')
+  if (result.leveled) levelUpFx()
   paintTracker(game.tracker())
   paintStats(game.save)
 }
@@ -536,6 +780,7 @@ function frame(): void {
     combat.hitStop -= raw
     dt *= 0.08
   }
+  handleKeys()
   if (mode !== 'play') {
     stage.render()
     return
@@ -579,7 +824,7 @@ function frame(): void {
   }
   if (hero.dashing) ghost()
   const heroPos = hero.object.position
-  mochiFollow(dt, heroPos)
+  if (!skills.rushing) mochiFollow(dt, heroPos)
   landmarks.update(dt, heroPos)
   const notes = combat.update(dt, heroPos, 0.7, (amount, from) => {
     const hurt = hero.hurt(amount, from)
@@ -588,7 +833,7 @@ function frame(): void {
     hurtFlash()
     vfx.hit(heroPos.clone().setY(1.0), 0xff9eb8, true)
     combat.shake = Math.max(combat.shake, 0.07)
-    float(`-${amount}`, heroPos.clone().setY(1.6), '#ff9eb8')
+    float(`-${hero.lastDamage}`, heroPos.clone().setY(1.6), '#ff9eb8')
     if (!hero.alive) {
       audio.sfx('down')
       releaseLook()
@@ -614,6 +859,8 @@ function frame(): void {
   FADE_FOCUS.value.set(heroPos.x, heroPos.y + 1.0, heroPos.z)
   rig.aimFrom(townWorld, dt)
   shooter.update(dt, firing, townWorld)
+  skills.update(dt, townSkillWorld)
+  paintHotbar()
   if (import.meta.env.DEV && view.on) inspectCamera(heroPos)
   // Tags are projected after the camera moved this frame, so they sit on the heads instead of trailing.
   stage.camera.updateMatrixWorld()
@@ -633,7 +880,16 @@ function sewerFrame(dt: number, raw: number): void {
     return
   }
   run.update(dt)
+  skills.update(dt, run.skillWorld)
+  paintHotbar()
   if (delve && hero.alive) delve.seconds += raw
+  saveClock += raw
+  if (saveClock > 10 && delve) {
+    // Keep the open trip (run gold, kills) on disk so a reload mid-run banks it.
+    saveClock = 0
+    delve.sync(game.save)
+    game.persist(store)
+  }
   vfx.update(dt)
   audio.update(dt, false)
   if (hpFill) hpFill.style.width = `${Math.max(0, (hero.hp / hero.maxHp) * 100)}%`
@@ -852,7 +1108,7 @@ function sewerHurt(amount: number, from: Vector3): void {
   hurtFlash()
   vfx.hit(at.clone().setY(1.0), 0xff9eb8, true)
   combat.shake = Math.max(combat.shake, 0.05)
-  float(`-${amount}`, at.clone().setY(1.6), '#ff9eb8')
+  float(`-${hero.lastDamage}`, at.clone().setY(1.6), '#ff9eb8')
   if (hero.alive) return
   audio.sfx('down')
   if (document.pointerLockElement) document.exitPointerLock?.()
@@ -882,4 +1138,11 @@ function restart(): void {
 window.addEventListener('resize', () => {
   stage.resize()
   vfx.resize(window.innerHeight)
+})
+
+/** Closing or reloading the tab mid-trip: write the open run so its gold comes home next load. */
+window.addEventListener('pagehide', () => {
+  if (mode === 'title') return
+  if (delve) delve.sync(game.save)
+  game.persist(store)
 })

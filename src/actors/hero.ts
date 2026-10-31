@@ -23,6 +23,8 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { HOLD_POSES, aimPitchDeg, damp, upperTwist, wrapAngle, type HoldPose, type HoldState } from '../core/feel'
 import { BARREL_CONE, CHARACTER_INK, GUN_SIZE, HERO_HEIGHT, REST_PITCH, barrelQuaternion, barrelYaw, calibrateGrip, handForGun, type Grip } from './grip'
 import { addOutline, applyToon, characterGradient, toon } from '../core/materials'
+import { WATER_LOOK, buildToyGun, createToyGun, type GunLook } from './toygun'
+import type { WeaponKind } from '../sim/types'
 import { KNOCK, MOVE, gaitBlend, gaitRate, knockDecay, legYaw, turnToward } from '../core/motion'
 import { DIFFICULTY } from '../combat/difficulty'
 
@@ -44,8 +46,21 @@ export class Hero {
   readonly object = new Group()
   readonly muzzle = new Object3D()
   readonly aimPoint = new Vector3()
-  readonly maxHp: number = DIFFICULTY.hero.maxHp
+  /** From level, tree and gear (applyBuild); 150 at level 1 with no gear. */
+  maxHp: number = DIFFICULTY.hero.maxHp
   hp: number = DIFFICULTY.hero.maxHp
+  /** Walk/run speed multiplier (shoes, capes). */
+  speedMul = 1
+  /** Regen multiplier and delay (골골 회복). */
+  regenMul = 1
+  regenDelay: number = DIFFICULTY.hero.regenDelay
+  /** Share of each hit blocked (armour + the candy aura), 0..0.8. */
+  guard = 0
+  /** Damage the last landed hit actually did (after guard), for the float text. */
+  lastDamage = 0
+  /** Gun size multiplier from the equipped base (the rig scale is multiplied by it). */
+  private gunSize = 1
+  private gunLook: [WeaponKind, GunLook, number | null] = ['water', WATER_LOOK, null]
   /** Seconds since the last hit (health regen waits for a lull). */
   sinceHit = 99
   alive = true
@@ -177,7 +192,7 @@ export class Hero {
   /** Placeholder path: the gun floats with the puppet hand and is aimed every frame (pointGun). */
   private attachGun(hand: Object3D): void {
     this.rightHand = hand
-    this.gun = createWaterGun(this.muzzle)
+    this.gun = createToyGun(this.muzzle, ...this.gunLook)
     this.object.add(this.gun)
   }
 
@@ -188,10 +203,10 @@ export class Hero {
    */
   private holdGun(hand: Object3D, grip: Grip): void {
     this.rightHand = hand
-    const gun = createWaterGun(this.muzzle)
+    const gun = createToyGun(this.muzzle, ...this.gunLook)
     gun.position.copy(grip.offset)
     gun.quaternion.copy(grip.rotation)
-    gun.scale.setScalar(GUN_SIZE / grip.handScale)
+    gun.scale.setScalar((GUN_SIZE / grip.handScale) * this.gunSize)
     hand.add(gun)
     this.gun = gun
     this.grip = grip
@@ -202,7 +217,7 @@ export class Hero {
     this.dashCd = Math.max(0, this.dashCd - dt)
     this.iframes = Math.max(0, this.iframes - dt)
     this.sinceHit += dt
-    if (this.alive && this.sinceHit > DIFFICULTY.hero.regenDelay && this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + DIFFICULTY.hero.regenRate * dt)
+    if (this.alive && this.sinceHit > this.regenDelay && this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + DIFFICULTY.hero.regenRate * this.regenMul * dt)
     this.hitT = Math.max(0, this.hitT - dt)
     this.shootT = Math.max(0, this.shootT - dt)
     if (!this.alive) {
@@ -232,7 +247,7 @@ export class Hero {
     }
     // Steering velocity eases toward the wish, so starts and stops have a little weight instead of
     // popping between 0 and full speed (which also made the feet slide on every stop).
-    const top = this.dashing ? MOVE.dash : this.running ? MOVE.run : wants ? MOVE.walk : 0
+    const top = this.dashing ? MOVE.dash : this.running ? MOVE.run * this.speedMul : wants ? MOVE.walk * this.speedMul : 0
     // A strong push takes some steering away, so holding a key into the enemy can't fight it.
     const pushed = Math.min(1, this.knock.length() / KNOCK.speed)
     const control = 1 - pushed * KNOCK.controlLoss
@@ -332,7 +347,9 @@ export class Hero {
 
   hurt(amount: number, from: Vector3): boolean {
     if (!this.alive || this.iframes > 0 || amount <= 0) return false
-    this.hp = Math.max(0, this.hp - amount)
+    const taken = Math.max(1, Math.round(amount * (1 - Math.min(0.8, this.guard))))
+    this.lastDamage = taken
+    this.hp = Math.max(0, this.hp - taken)
     this.iframes = DIFFICULTY.hero.iframes
     this.sinceHit = 0
     this.hitT = 0.55
@@ -368,6 +385,24 @@ export class Hero {
     death?.fadeOut(0.2)
     this.current = ''
     this.startLocomotion()
+  }
+
+  /**
+   * Swap the toy gun in her hand: rebuild its parts for this base and look (rarity gem on top)
+   * and resize it; the muzzle moves with the barrel so shots leave the new tip.
+   */
+  setGunLook(kind: WeaponKind, look: GunLook, gem: number | null): void {
+    this.gunSize = look.size
+    this.gunLook = [kind, look, gem]
+    const gun = this.gun
+    if (!gun) return
+    buildToyGun(gun, this.muzzle, kind, look, gem)
+    if (this.grip) gun.scale.setScalar((GUN_SIZE / this.grip.handScale) * look.size)
+  }
+
+  /** Which base the gun in her hand is (QA). */
+  get gunKind(): string {
+    return (this.gun?.userData.kind as string) ?? 'water'
   }
 
   /** Kick the gun back a touch on every shot. */
@@ -463,7 +498,7 @@ export class Hero {
     }
     const local = this.object.worldToLocal(place.clone())
     gun.position.copy(local)
-    gun.scale.setScalar(1.12)
+    gun.scale.setScalar(1.12 * this.gunSize)
     const aimDir = this.aimPoint.clone().sub(place)
     const flat = Math.hypot(aimDir.x, aimDir.z)
     let yaw = flat > 0.25 ? Math.atan2(aimDir.x, aimDir.z) : this.yaw
@@ -616,37 +651,6 @@ function maskUpper(clip: AnimationClip): AnimationClip {
   return new AnimationClip(`${clip.name}_upper`, clip.duration, tracks.length ? tracks : clip.tracks)
 }
 
-/** Cute water pistol. Origin is the grip (sits in the palm); the barrel points along +Z so lookAt aims it. */
-function createWaterGun(muzzle: Object3D): Group {
-  const gun = new Group()
-  gun.name = 'water-gun'
-  const pink = toon(0xffa9cd)
-  const body = new Mesh(new BoxGeometry(0.06, 0.075, 0.17), pink)
-  body.position.set(0, 0.055, 0.045)
-  const grip = new Mesh(new BoxGeometry(0.036, 0.085, 0.045), toon(0xff8fbf))
-  grip.position.set(0, 0.0, 0.0)
-  grip.rotation.x = -0.25
-  const tank = new Mesh(new SphereGeometry(0.042, 12, 8), toon(0x8fd0ff, 0x8fd0ff, 0.45))
-  tank.scale.set(0.9, 0.8, 1.1)
-  tank.position.set(0, 0.112, 0.02)
-  const barrel = new Mesh(new CylinderGeometry(0.016, 0.02, 0.12, 10), toon(0x7ec8ff, 0x7ec8ff, 0.15))
-  barrel.rotation.x = Math.PI / 2
-  barrel.position.set(0, 0.06, 0.18)
-  const nose = new Mesh(new SphereGeometry(0.022, 10, 8), toon(0xe8f8ff, 0xffffff, 0.5))
-  nose.position.set(0, 0.06, 0.245)
-  const star = new Mesh(new ConeGeometry(0.018, 0.03, 5), toon(0xffe08a, 0xffe08a, 0.35))
-  star.position.set(0, 0.097, 0.09)
-  const guard = new Mesh(new BoxGeometry(0.012, 0.03, 0.05), toon(0xff8fbf))
-  guard.position.set(0, 0.006, 0.045)
-  muzzle.position.set(0, 0.06, 0.27)
-  gun.add(body, grip, tank, barrel, nose, star, guard, muzzle)
-  for (const child of gun.children) {
-    const mesh = child as Mesh
-    if (mesh.isMesh) mesh.castShadow = true
-  }
-  addOutline(gun, 0.01)
-  return gun
-}
 
 class Puppet {
   readonly root = new Group()

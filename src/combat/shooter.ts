@@ -14,7 +14,8 @@ import {
   ASSIST, TPS, anglesTo, assistPick, createView, kick, look, perPixel, pose, rayCapsule, recover, wishFrom,
   type AimTarget, type RayFn, type TpsView,
 } from '../core/tps'
-import { GUN, Gun, hitStopFor, rollDamage, spreadDir } from './gunfeel'
+import { Gun, hitStopFor, rollDamage, spreadDir } from './gunfeel'
+import { GUN_PROFILES, type GunProfile } from '../data/guns'
 import { GunFx } from './gunfx'
 import { HudFx } from '../ui/hudfx'
 import type { GunCue } from '../audio/gunsound'
@@ -152,9 +153,19 @@ export interface ShotHit {
   floor?: Vector3
 }
 
+/** Element procs riding on one droplet (rolled by the shooter from gear chances). */
+export interface ShotProcs {
+  /** 반짝: a little burst of bonus damage around the hit. */
+  sparkle?: boolean
+  /** 서늘: the foe slows for a moment. */
+  ice?: boolean
+  /** 끈적: sticky candy that hurts over time. */
+  candy?: boolean
+}
+
 export interface ShotWorld extends AimWorld {
   /** Nearest shootable along the shot before `max`: land `amount` on it, or null. */
-  strike: (o: Vector3, d: Vector3, max: number, amount: number) => ShotHit | null
+  strike: (o: Vector3, d: Vector3, max: number, amount: number, procs?: ShotProcs) => ShotHit | null
   /** Surface normal where a droplet splashed on something solid. */
   normal: (end: Vector3, d: Vector3) => { x: number; y: number; z: number }
 }
@@ -167,6 +178,30 @@ export interface ShooterHost {
   sfx: (cue: 'shoot_water', gain?: number) => void
   gun?: (cue: GunCue, gain?: number, pitch?: number) => void
   hitStop?: (seconds: number) => void
+  /** Lifesteal: heal her by this many hp. */
+  heal?: (hp: number) => void
+}
+
+/** What the equipped gun and her stats make of each droplet (from sim computeStats). */
+export interface Loadout {
+  profile: GunProfile
+  /** Damage per droplet before crits. */
+  damage: number
+  critChance: number
+  critMul: number
+  pierce: number
+  lifesteal: number
+  sparkle: number
+  ice: number
+  candy: number
+  fireRate: number
+  /** Tracer / splash colour. */
+  tint: number
+}
+
+export function defaultLoadout(): Loadout {
+  const p = GUN_PROFILES.water
+  return { profile: p, damage: p.damage, critChance: p.critChance, critMul: p.critMul, pierce: 0, lifesteal: 0, sparkle: 0, ice: 0, candy: 0, fireRate: 1, tint: p.look.tracer }
 }
 
 /** Last droplet for QA: muzzle, end point and whether it landed on a foe. */
@@ -191,6 +226,10 @@ export class Shooter {
   /** Droplets fired / landed on a foe since the last reset (QA readout). */
   fired = 0
   landed = 0
+  /** The equipped gun and her stats (setLoadout). */
+  loadout: Loadout = defaultLoadout()
+  /** Bonus crit chance while overdrive runs. */
+  overdriveCrit = 0
   private readonly host: ShooterHost
   private readonly tip = new Vector3()
   private readonly dir = new Vector3()
@@ -208,7 +247,7 @@ export class Shooter {
     this.tracers = new InstancedMesh(
       new BoxGeometry(1, 1, 1).translate(0, 0, 0.5),
       new MeshBasicMaterial({ color: new Color(0xbfeaff).multiplyScalar(2.4), transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false }),
-      24,
+      40,
     )
     this.tracers.count = 0
     this.tracers.frustumCulled = false
@@ -217,6 +256,13 @@ export class Shooter {
 
   get view(): TpsView {
     return this.rig.view
+  }
+
+  /** Swap in a gun / stat set: cadence, droplet damage, procs and tracer colour. */
+  setLoadout(l: Loadout): void {
+    this.loadout = l
+    this.gun.setFeel(l.profile, l.fireRate)
+    ;(this.tracers.material as MeshBasicMaterial).color.set(l.tint).multiplyScalar(2.4)
   }
 
   /** Trigger, gun heat and every droplet that leaves this frame. Call after `rig.aimFrom`. */
@@ -240,55 +286,93 @@ export class Shooter {
   private fireOne(world: ShotWorld): void {
     const { hero, camera } = this.host
     const gun = this.gun
+    const l = this.loadout
+    const p = l.profile
     const tip = hero.muzzle.getWorldPosition(this.tip)
-    // Converge on the crosshair point, jittered inside the bloom cone.
-    const aimDir = this.dir.copy(this.rig.aim).sub(tip).normalize()
-    const d = spreadDir(aimDir.x, aimDir.y, aimDir.z, gun.spread, Math.random(), Math.random())
-    const dir = aimDir.set(d.x, d.y, d.z)
-    const reach = world.solid(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, 60)
-    const roll = rollDamage(Math.random())
-    const hit = world.strike(tip, dir, reach, roll.amount)
-    const end = this.end.copy(tip)
+    const aim = new Vector3().copy(this.rig.aim).sub(tip).normalize()
     const sfx = this.host.gun
-    if (hit) {
-      end.addScaledVector(dir, hit.t)
-      this.host.vfx.hit(end, hit.color, roll.crit || (hit.kill && hit.tone !== 'n'))
-      this.hudFx.hit(hit.kill, roll.crit)
-      this.hudFx.number(roll.amount, end, roll.crit ? 'crit' : hit.tone)
-      if (hit.kill && hit.tone !== 'boss') {
-        this.host.vfx.poof(end, hit.tone === 'elite' ? 0xffe08a : 0xffb7e0, hit.tone === 'elite' ? 1.6 : 1)
-        if (hit.floor) this.gunFx.splat(hit.floor, { x: 0, y: 1, z: 0 }, hit.tone === 'elite' ? 0xffd27a : 0xff9fd2, hit.tone === 'elite' ? 1.5 : 0.9)
-        sfx?.('pop', hit.tone === 'elite' ? 1 : 0.75, (Math.random() - 0.5) * 0.2)
-        if (hit.tone === 'elite') sfx?.('thunk', 1)
-      } else sfx?.(roll.crit ? 'crit' : 'tick', hit.tone === 'boss' ? 0.8 : 0.7)
-      const stop = hitStopFor({ boss: hit.tone === 'boss', elite: hit.tone === 'elite', kill: hit.kill, crit: roll.crit })
-      if (stop > 0) this.host.hitStop?.(stop)
-    } else {
-      end.addScaledVector(dir, reach)
-      const n = world.normal(end, dir)
-      this.gunFx.splat(end, n, 0x9ad7ff, 0.42)
-      // Sparks kick off the surface, not along the ray.
-      this.host.vfx.burst(end.clone().addScaledVector(new Vector3(n.x, n.y, n.z), 0.05), 0xd8f2ff, { count: 4, speed: 3.4, up: 1.2, life: 0.22, size: 0.09, gravity: 7, drag: 2 })
-      this.host.vfx.hit(end, 0x9ad7ff)
+    let anyHit = false
+    let lastEnd = tip
+    let firstDir = aim
+    let stolen = 0
+    for (let k = 0; k < Math.max(1, p.pellets); k += 1) {
+      // Converge on the crosshair point, jittered inside the bloom cone (pellets fan wider).
+      const cone = p.pellets > 1 ? Math.max(gun.spread, p.spreadMin) : gun.spread
+      const d = spreadDir(aim.x, aim.y, aim.z, cone, Math.random(), Math.random())
+      const dir = this.dir.set(d.x, d.y, d.z)
+      if (k === 0) firstDir = dir.clone()
+      const reach = world.solid(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, 60)
+      const roll = rollDamage(Math.random(), l.damage, l.critChance + (gun.overdrive > 0 ? this.overdriveCrit : 0), l.critMul)
+      const procs: ShotProcs = {
+        sparkle: l.sparkle > 0 && Math.random() < l.sparkle,
+        ice: l.ice > 0 && Math.random() < l.ice,
+        candy: l.candy > 0 && Math.random() < l.candy,
+      }
+      // Pierce: after a hit, the droplet carries on past that foe.
+      let from = tip.clone()
+      let travelled = 0
+      let end = this.end.copy(tip)
+      let hit: ShotHit | null = null
+      let first: ShotHit | null = null
+      for (let pass = 0; pass <= l.pierce; pass += 1) {
+        hit = world.strike(from, dir, reach - travelled, pass ? Math.round(roll.amount * 0.8) : roll.amount, procs)
+        if (!hit) break
+        first ??= hit
+        anyHit = true
+        end = this.end.copy(from).addScaledVector(dir, hit.t)
+        this.landedHit(end, hit, roll, pass > 0, sfx)
+        stolen += roll.amount * l.lifesteal
+        const step = hit.t + 1.1
+        travelled += step
+        from = from.addScaledVector(dir, step)
+        if (travelled >= reach) break
+      }
+      if (!first) {
+        end = this.end.copy(tip).addScaledVector(dir, reach)
+        const n = world.normal(end, dir)
+        this.gunFx.splat(end, n, l.tint, p.pellets > 1 ? 0.3 : 0.42)
+        if (k === 0) this.host.vfx.burst(end.clone().addScaledVector(new Vector3(n.x, n.y, n.z), 0.05), 0xd8f2ff, { count: 4, speed: 3.4, up: 1.2, life: 0.22, size: 0.09, gravity: 7, drag: 2 })
+        this.host.vfx.hit(end, l.tint)
+      } else if (l.pierce > 0 && hit === null) {
+        end = this.end.copy(tip).addScaledVector(dir, Math.min(reach, travelled + 4))
+      }
+      this.tracer(tip, end)
+      lastEnd = end.clone()
     }
-    const ndc = end.clone().project(camera)
-    this.last = { from: tip.clone(), to: end.clone(), aim: this.rig.aim.clone(), hit: !!hit, ndcX: ndc.x, ndcY: ndc.y }
+    if (stolen > 0) this.host.heal?.(stolen)
+    const ndc = lastEnd.clone().project(camera)
+    this.last = { from: tip.clone(), to: lastEnd.clone(), aim: this.rig.aim.clone(), hit: anyHit, ndcX: ndc.x, ndcY: ndc.y }
     this.fired += 1
-    if (hit) this.landed += 1
-    this.tracer(tip, end)
-    this.gunFx.shot(tip, dir, camera, gun.shots)
+    if (anyHit) this.landed += 1
+    this.gunFx.shot(tip, firstDir, camera, gun.shots)
     hero.recoil()
-    kick(this.rig.view, GUN.kickUp * (1 + gun.bloom * 0.6), (Math.random() - 0.5) * 2 * GUN.kickSide)
-    this.rig.fovKick = Math.min(1.4, this.rig.fovKick + 0.3)
-    this.rig.shake = Math.min(0.02, this.rig.shake + 0.005)
+    const heavy = p.pellets > 1 || p.gap > 0.3
+    kick(this.rig.view, p.kickUp * (1 + gun.bloom * 0.6), (Math.random() - 0.5) * 2 * p.kickSide)
+    this.rig.fovKick = Math.min(heavy ? 2.4 : 1.4, this.rig.fovKick + (heavy ? 1.1 : 0.3))
+    this.rig.shake = Math.min(heavy ? 0.04 : 0.02, this.rig.shake + (heavy ? 0.02 : 0.005))
     if (sfx) {
-      sfx('shot', 1, gun.heat * 0.1)
-      if (gun.shots % 4 === 0) sfx('tail', 0.9)
+      sfx('shot', heavy ? 1.3 : 1, heavy ? -0.35 : p.kind === 'star' ? 0.12 + gun.heat * 0.1 : gun.heat * 0.1)
+      if (heavy) sfx('thunk', 0.6)
+      else if (gun.shots % 4 === 0) sfx('tail', 0.9)
     } else this.host.sfx('shoot_water', 0.8)
   }
 
+  private landedHit(end: Vector3, hit: ShotHit, roll: { amount: number; crit: boolean }, pierced: boolean, sfx: ShooterHost['gun']): void {
+    this.host.vfx.hit(end, hit.color, roll.crit || (hit.kill && hit.tone !== 'n'))
+    this.hudFx.hit(hit.kill, roll.crit)
+    this.hudFx.number(pierced ? Math.round(roll.amount * 0.8) : roll.amount, end, roll.crit ? 'crit' : hit.tone)
+    if (hit.kill && hit.tone !== 'boss') {
+      this.host.vfx.poof(end, hit.tone === 'elite' ? 0xffe08a : 0xffb7e0, hit.tone === 'elite' ? 1.6 : 1)
+      if (hit.floor) this.gunFx.splat(hit.floor, { x: 0, y: 1, z: 0 }, hit.tone === 'elite' ? 0xffd27a : 0xff9fd2, hit.tone === 'elite' ? 1.5 : 0.9)
+      sfx?.('pop', hit.tone === 'elite' ? 1 : 0.75, (Math.random() - 0.5) * 0.2)
+      if (hit.tone === 'elite') sfx?.('thunk', 1)
+    } else sfx?.(roll.crit ? 'crit' : 'tick', hit.tone === 'boss' ? 0.8 : 0.7)
+    const stop = hitStopFor({ boss: hit.tone === 'boss', elite: hit.tone === 'elite', kill: hit.kill, crit: roll.crit })
+    if (stop > 0) this.host.hitStop?.(stop)
+  }
+
   private tracer(from: Vector3, to: Vector3): void {
-    if (this.tracerLife.length >= 24) {
+    if (this.tracerLife.length >= 40) {
       this.tracerLife.shift()
       this.tracerFrom.shift()
       this.tracerTo.shift()

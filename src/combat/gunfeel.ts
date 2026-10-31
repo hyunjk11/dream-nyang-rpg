@@ -32,35 +32,85 @@ export const GUN = {
   spreadPx: 15,
 } as const
 
+/** The cadence part of a gun base (data/guns.ts GunProfile fits it). */
+export interface GunFeel {
+  gap: number
+  burst: number
+  burstRest: number
+  bloomPerShot: number
+  heatPerShot: number
+  spreadMin: number
+  spreadMax: number
+}
+
+const WATER_FEEL: GunFeel = {
+  gap: GUN.gap,
+  burst: 0,
+  burstRest: 0,
+  bloomPerShot: GUN.bloomPerShot,
+  heatPerShot: GUN.heatPerShot,
+  spreadMin: GUN.spreadMin,
+  spreadMax: GUN.spreadMax,
+}
+
+/** Overdrive (과열 폭주): cadence ×1.6 and no heat while it lasts. */
+export const OVERDRIVE_RATE = 1.6
+
 export class Gun {
   cooldown = 0
   bloom = 0
   heat = 0
   overheated = false
   shots = 0
+  /** Base cadence/bloom/heat (the equipped gun). */
+  feel: GunFeel = WATER_FEEL
+  /** Fire-rate multiplier from level, gear and passives. */
+  rate = 1
+  /** Seconds of overdrive left (skill). */
+  overdrive = 0
   private rest = 1
+  private burstLeft = 0
+
+  /** Swap the gun base (keeps heat; a fresh burst). */
+  setFeel(feel: GunFeel, rate = 1): void {
+    this.feel = feel
+    this.rate = Math.max(0.25, rate)
+    this.burstLeft = 0
+  }
 
   /**
    * Advance by dt with the trigger held or not; returns how many shots leave the barrel this
-   * frame (0, 1 or 2 on a long frame, so cadence holds at low fps).
+   * frame (0, 1 or 2 on a long frame, so cadence holds at low fps). Burst guns fire `burst`
+   * shots `gap` apart, then rest `burstRest`.
    */
   update(dt: number, trigger: boolean): number {
+    const f = this.feel
     this.cooldown -= dt
     this.rest += dt
+    if (this.overdrive > 0) this.overdrive = Math.max(0, this.overdrive - dt)
+    const rate = this.rate * (this.overdrive > 0 ? OVERDRIVE_RATE : 1)
+    const heatPer = this.overdrive > 0 ? 0 : f.heatPerShot
     let fired = 0
     if (trigger && !this.overheated) {
       while (this.cooldown <= 0 && fired < 2) {
-        this.cooldown += GUN.gap
         fired += 1
         this.shots += 1
-        this.bloom = Math.min(1, this.bloom + GUN.bloomPerShot)
-        this.heat = Math.min(1, this.heat + GUN.heatPerShot)
+        if (f.burst > 0) {
+          if (this.burstLeft <= 0) this.burstLeft = f.burst
+          this.burstLeft -= 1
+          this.cooldown += this.burstLeft > 0 ? f.gap / rate : (f.gap + f.burstRest) / rate
+        } else this.cooldown += f.gap / rate
+        this.bloom = Math.min(1, this.bloom + f.bloomPerShot)
+        this.heat = Math.min(1, this.heat + heatPer)
         this.rest = 0
         if (this.heat >= 1) {
           this.overheated = true
           break
         }
       }
+    } else if (!trigger && f.burst > 0 && this.burstLeft > 0 && this.rest > f.gap * 2) {
+      // Let go mid-burst: the next pull starts a fresh burst after the rest.
+      this.burstLeft = 0
     }
     if (this.cooldown < 0) this.cooldown = 0
     if (this.rest > GUN.bloomHold) this.bloom = Math.max(0, this.bloom - dt * GUN.bloomDecay)
@@ -73,19 +123,20 @@ export class Gun {
 
   /** Current cone half-angle in radians. */
   get spread(): number {
-    return GUN.spreadMin + (GUN.spreadMax - GUN.spreadMin) * this.bloom * this.bloom
+    const f = this.feel
+    return f.spreadMin + (f.spreadMax - f.spreadMin) * this.bloom * this.bloom
   }
 
   /** Crosshair tick gap in px. */
   get gapPx(): number {
-    return GUN.gapPx + GUN.spreadPx * this.bloom
+    return GUN.gapPx + GUN.spreadPx * this.bloom + (this.feel.spreadMin > 0.02 ? 10 : 0)
   }
 }
 
 /** Damage for one droplet: a few crits so the numbers dance. */
-export function rollDamage(r: number): { amount: number; crit: boolean } {
-  const crit = r < GUN.critChance
-  return { amount: Math.round(GUN.damage * (crit ? GUN.critMul : 1)), crit }
+export function rollDamage(r: number, damage: number = GUN.damage, critChance: number = GUN.critChance, critMul: number = GUN.critMul): { amount: number; crit: boolean } {
+  const crit = r < critChance
+  return { amount: Math.max(1, Math.round(damage * (crit ? critMul : 1))), crit }
 }
 
 /** World freeze (seconds) for a hit: only elites, kills of elites and the boss get weight. */

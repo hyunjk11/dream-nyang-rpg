@@ -1,3 +1,4 @@
+import { buildOf } from './skilltree'
 import { ITEMS } from '../data/items'
 import { QUESTS, QUEST_ORDER, type ObjectiveDef, type QuestDef, type QuestRewards } from '../data/quests'
 import { makeItem } from './loot'
@@ -61,6 +62,7 @@ export function grantRewards(save: SaveData, rewards: QuestRewards, rng: () => n
   }
   if (rewards.byeolhaPoints) {
     save.byeolhaPoints += rewards.byeolhaPoints
+    buildOf(save).points += rewards.byeolhaPoints
     result.toasts.push(`별하 스킬 포인트 +${rewards.byeolhaPoints}`)
   }
   if (rewards.mochiPoints) {

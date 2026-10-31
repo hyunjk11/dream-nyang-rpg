@@ -145,13 +145,13 @@ describe('탐험 진행과 저장', () => {
     delete old.delve
     store.setItem(SAVE_KEY_3D, JSON.stringify(old))
     const back = GameState.load(store)!
-    expect(back.save.delve).toEqual({ unlocked: 1, cleared: 0, checkpoint: null, runs: 0 })
+    expect(back.save.delve).toEqual({ unlocked: 1, cleared: 0, checkpoint: null, runs: 0, open: null })
   })
 
   it('망가진 탐험 값은 안전하게 고친다', () => {
     const save = freshSave()
     save.delve = { unlocked: -3, cleared: 9, checkpoint: { depth: 7, floor: 99 }, runs: Number.NaN }
-    expect(delveOf(save)).toEqual({ unlocked: 1, cleared: 1, checkpoint: null, runs: 0 })
+    expect(delveOf(save)).toEqual({ unlocked: 1, cleared: 1, checkpoint: null, runs: 0, open: null })
   })
 
   it('가방이 가득이면 주운 아이템은 골드로 바뀐다', () => {
