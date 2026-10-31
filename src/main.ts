@@ -293,6 +293,11 @@ function applyBuild(): void {
     tint: gem && gunItem && (gunItem.rarity === 'epic' || gunItem.rarity === 'legendary') ? gem : look.tracer,
   })
   hero.setGunLook(stats.weaponKind, look, gem)
+  const worn = (slot: 'hat' | 'outfit' | 'shoes') => {
+    const item = findItem(game.save, game.save.equipment[slot])
+    return item ? { id: item.defId, rarity: item.rarity } : undefined
+  }
+  hero.setWear({ hat: worn('hat'), outfit: worn('outfit'), shoes: worn('shoes') })
   paintStats(game.save)
   paintXp()
 }
