@@ -1,6 +1,7 @@
 import { INTRO } from '../data/story'
 import { questLog } from '../sim/quests'
 import type { SaveData } from '../sim/types'
+import { MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 
 const $ = (id: string) => document.getElementById(id)
 
@@ -99,13 +100,18 @@ export function paintTracker(rows: { title: string; lines: string[] }[]): void {
   el.classList.toggle('hidden', rows.length === 0)
 }
 
+const MAT_IDS = ['dream_dust', 'toy_part', 'star_shard']
+const MAT_SHORT: Record<string, string> = { dream_dust: '꿈가루', toy_part: '부품', star_shard: '별조각' }
+
 export function paintStats(save: SaveData): void {
   const gold = $('dust')
   if (gold) gold.textContent = `골드 ${save.gold}`
   const lv = $('lv')
   if (lv) lv.textContent = `Lv ${save.level}`
   const mats = $('mats')
-  if (mats) mats.textContent = `꿈가루 ${save.materials.dream_dust ?? 0} · 부품 ${save.materials.toy_part ?? 0}`
+  if (mats) {
+    mats.innerHTML = MAT_IDS.map((id) => `<span title="${MATERIAL_KO[id]}: ${MATERIAL_HELP[id]}">${MAT_SHORT[id]} ${save.materials[id] ?? 0}</span>`).join(' · ')
+  }
 }
 
 export function zoneBanner(name: string, sub: string): void {

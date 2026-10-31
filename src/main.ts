@@ -38,6 +38,8 @@ import { bossXp, killXp, nestXp, objectiveXp, townKillXp } from './sim/xp'
 import { xpToNext } from './sim/formulas'
 import { findItem } from './sim/inventory'
 import { itemName, makeItem } from './sim/loot'
+import { skillSvg } from './ui/skillicons'
+import { Help } from './ui/help'
 import { RARITY_COLOR, type ItemInstance } from './sim/types'
 import { InventoryUI, compareEquip, dpsOf } from './ui/inventory'
 import { TownUI, type TownPanel, type TownSuccess } from './ui/town'
@@ -92,13 +94,14 @@ function loadDungeon(): Promise<typeof import('./world/dungeon/run')> {
   return dungeonModule
 }
 const crosshair = document.getElementById('crosshair')
+const help = new Help(document.getElementById('ui') ?? document.body)
 const hint = document.getElementById('hint')
-const TPS_HINT_MOUSE = '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · 1–4 스킬 · Q 사탕 · G 새 장비 장착 · I 가방 · K 스킬 · Esc 해제'
+const TPS_HINT_MOUSE = '클릭: 시점 고정 · WASD 이동 · 클릭 사격 · Space 대시 · 1–4 스킬 · I 가방 · H 도움말'
 const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · 공격 길게 눌러 연사 · 대시 · 사탕 버튼으로 회복'
 /** Same controls everywhere now, so one hint; it fades after a few seconds like the sewer's. */
 function showHint(): void {
   if (!hint) return
-  const sewer = run ? (stage.touch ? ' · 귀환 버튼' : ' · T 귀환') : ''
+  const sewer = run ? (stage.touch ? ' · 귀환 버튼' : ' · M 지도 · T 귀환') : ''
   hint.textContent = (stage.touch ? TPS_HINT_TOUCH : TPS_HINT_MOUSE) + sewer
   hint.classList.remove('fade')
   void hint.offsetWidth
@@ -409,7 +412,7 @@ const townUI = new TownUI({
 
 /** Any town panel or the bag is up (she stands still; the island keeps living). */
 function menuUp(): boolean {
-  return inventory.isOpen || townUI.isOpen
+  return inventory.isOpen || townUI.isOpen || help.isOpen
 }
 
 function openTown(panel: TownPanel): void {
@@ -532,7 +535,10 @@ function paintHotbar(): void {
     const ready = skills.readiness(id)
     el.classList.toggle('cooling', ready > 0)
     const glyph = el.querySelector('i')
-    if (glyph && glyph.textContent !== def.glyph) glyph.textContent = def.glyph
+    if (glyph && glyph.dataset.skill !== id) {
+      glyph.dataset.skill = id
+      glyph.innerHTML = skillSvg(id)
+    }
     const name = el.querySelector('b')
     if (name && name.textContent !== def.name) name.textContent = def.name
     const veil = el.querySelector('s') as HTMLElement | null
@@ -595,7 +601,7 @@ document.getElementById('retry')?.addEventListener('click', () => restart())
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, get lastPickup() { return lastPickup } } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, get lastPickup() { return lastPickup } } })
 
 void bootGame()
 

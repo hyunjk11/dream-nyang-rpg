@@ -31,7 +31,7 @@ import { RARITY_COLOR } from '../../sim/types'
 import { collideCircle, rayHit } from './walls'
 import { HORDE, Horde, type HordeFoe } from './horde'
 import { HordeView } from './horde-view'
-import { DRAIN, Director } from './waves'
+import { DRAIN, Director, LIVE_CAP } from './waves'
 import { BOSS, Boss } from './boss'
 import { foePose, makeFoeBody } from '../../combat/foes'
 import { hitNormal } from '../../combat/gunfeel'
@@ -787,7 +787,7 @@ export class DungeonRun {
           .filter((n) => n.d >= 0)
           .sort((a, b) => a.d - b.d)
           .slice(0, 3)
-        for (let i = 0; i < 12; i += 1) {
+        for (let i = 0; i < 12 && this.horde.alive < LIVE_CAP; i += 1) {
           const n = near[i % near.length]
           if (n) this.pour(n.i, i % 3 === 0 ? 'bug' : 'slime', i === 0)
         }
