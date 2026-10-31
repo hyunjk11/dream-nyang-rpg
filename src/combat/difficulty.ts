@@ -41,8 +41,8 @@ export const DIFFICULTY = {
     firstElite: 3,
     /** Breather between waves (s, was 4). */
     rest: 6,
-    /** Live cap on foes (was 200). */
-    liveCap: 140,
+    /** Live cap on foes on the boss floor (was 200, then 140: 100+ at once dropped frames on weak PCs). */
+    liveCap: 70,
   },
   /** The sewer boss (multipliers on BOSS). */
   boss: { hp: 0.7, damage: 0.55, orbSpeed: 0.85, ringCount: 0.72 },

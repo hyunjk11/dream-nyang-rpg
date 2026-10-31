@@ -6,7 +6,7 @@
  *  - 보관함: the chest by the house.
  * Every change goes through sim/ (town, workshop, contracts); the host re-applies the build.
  */
-import { ITEMS, MATERIAL_KO } from '../data/items'
+import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { boardOf, claimContract, contractTitle, dropContract, rewardText, takeContract, type Contract } from '../sim/contracts'
 import { addItem, bagItems, findItem, isEquipped } from '../sim/inventory'
 import { itemLines, itemName, itemPower, plusOf, sellValue, upgradeMul } from '../sim/loot'
@@ -126,8 +126,12 @@ export class TownUI {
     head.append(h, el('small', 'town-sub', SUB[this.panel]))
     const wallet = el('span', 'town-wallet')
     wallet.id = 'town-gold'
-    const mats = ['dream_dust', 'toy_part', 'star_shard'].map((m) => `${MATERIAL_KO[m]} ${save.materials[m] ?? 0}`).join(' · ')
-    wallet.textContent = `골드 ${save.gold} · ${mats}`
+    wallet.append(`골드 ${save.gold}`)
+    for (const m of ['dream_dust', 'toy_part', 'star_shard']) {
+      const tag = el('span', 'mat', `${MATERIAL_KO[m]} ${save.materials[m] ?? 0}`)
+      tag.title = MATERIAL_HELP[m] ?? ''
+      wallet.append(' · ', tag)
+    }
     const close = el('button', 'town-close', '닫기')
     close.type = 'button'
     close.id = 'town-close'

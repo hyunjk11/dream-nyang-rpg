@@ -58,6 +58,13 @@ export const MATERIAL_KO: Record<string, string> = {
   star_shard: '별조각',
 }
 
+/** What each material is for (tooltips and the H help card). */
+export const MATERIAL_HELP: Record<string, string> = {
+  dream_dust: '괴물과 장비 분해에서 나와. 공방에서 강화하거나 옵션을 다시 굴릴 때 써.',
+  toy_part: '정예 괴물과 희귀 장비 분해에서 나와. 공방에서 속성(얼음·사탕·별빛)을 붙일 때 써.',
+  star_shard: '영웅·전설 장비 분해와 보스 의뢰에서 나와. +8부터 강화할 때 필요해.',
+}
+
 export interface ShopEntry {
   kind: 'potion' | 'item'
   price: number

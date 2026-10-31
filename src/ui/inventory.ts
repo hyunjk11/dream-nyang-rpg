@@ -5,7 +5,7 @@
  * re-applies the build to the live hero.
  */
 import { GUN_KO, gunDps } from '../data/guns'
-import { ITEMS, MATERIAL_KO } from '../data/items'
+import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { BRANCH_KO, TIER_LEVEL, TREE, type Branch, type TreeSkill } from '../data/tree'
 import { xpToNext } from '../sim/formulas'
 import { bagItems, findItem, isEquipped, slotFor, equipItem } from '../sim/inventory'
@@ -16,6 +16,7 @@ import { buildOf, learn, learnBlock, rank, respec, respecCost } from '../sim/ski
 import { computeStats, type ComputedStats } from '../sim/stats'
 import { BAG_CAP, EQUIP_SLOTS, RARITY_KO, SLOT_KO, type EquipSlot, type ItemInstance, type SaveData } from '../sim/types'
 import { LEVEL_CAP } from '../data/tree'
+import { skillSvg } from './skillicons'
 
 export type InvTab = 'bag' | 'skills'
 
@@ -190,7 +191,15 @@ export class InventoryUI {
     const bag = bagItems(save)
     for (let i = 0; i < BAG_CAP; i += 1) grid.append(this.cell(bag[i]))
     if (count) count.textContent = `${bag.length}/${BAG_CAP}`
-    if (mats) mats.textContent = Object.entries(MATERIAL_KO).map(([id, name]) => `${name} ${save.materials[id] ?? 0}`).join(' · ')
+    if (mats) {
+      mats.replaceChildren()
+      Object.entries(MATERIAL_KO).forEach(([id, name], i) => {
+        if (i) mats.append(' · ')
+        const tag = el('span', 'mat', `${name} ${save.materials[id] ?? 0}`)
+        tag.title = MATERIAL_HELP[id] ?? ''
+        mats.append(tag)
+      })
+    }
     this.renderStats(save, stats)
     this.renderDetail(save, detail)
   }
@@ -367,7 +376,9 @@ export class InventoryUI {
     b.dataset.skill = skill.id
     if (r > 0) b.classList.add('owned')
     if (block) b.classList.add('locked')
-    b.append(el('i', 'glyph', skill.glyph))
+    const glyph = el('i', 'glyph')
+    glyph.innerHTML = skillSvg(skill.id, 28)
+    b.append(glyph)
     const body = el('div')
     body.append(el('b', '', `${skill.name}${skill.key ? ` [${skill.key}]` : ''}`))
     body.append(el('small', 'rank', `${r}/${skill.max} · ${skill.kind === 'active' ? '액티브' : '패시브'} · Lv ${TIER_LEVEL[skill.tier]}`))

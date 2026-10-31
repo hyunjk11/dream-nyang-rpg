@@ -106,7 +106,9 @@ button:disabled { opacity: 0.55; cursor: default; }
 #tracker { position: absolute; left: 16px; top: 56px; max-width: min(300px, 60vw); padding: 10px 14px; border-radius: 16px; background: rgba(255,248,252,0.88); color: #4a3358; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 #tracker b { font-family: "Jua", sans-serif; font-weight: 400; color: #8a4fb0; font-size: 15px; margin-top: 4px; }
 #tracker b:first-child { margin-top: 0; }
-#toasts { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+/* Toasts sit low, above the hint and hotbar: up top they covered the HUD line (wave / explore). */
+#toasts { position: absolute; bottom: 156px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; max-width: min(560px, 80vw); pointer-events: none; }
+body.touch #toasts { bottom: auto; top: 104px; }
 .toast { padding: 7px 16px; border-radius: 999px; background: rgba(255,248,252,0.95); color: #4a3358; font-family: "Jua", sans-serif; box-shadow: 0 3px 0 rgba(58,36,72,0.25); animation: toast-in 0.25s ease-out; transition: opacity 0.5s, transform 0.5s; }
 .toast.quest { background: linear-gradient(180deg, #fff2c8, #ffd98a); }
 .toast.reward { background: linear-gradient(180deg, #e8ffef, #bff0d2); }
@@ -233,8 +235,9 @@ body.sewer #recall { display: inline-flex; }
   display: grid; place-items: center;
 }
 #hotbar kbd { position: absolute; left: 5px; top: 3px; font: 11px "Jua", sans-serif; color: #8a4fb0; }
-#hotbar i { font-style: normal; font-size: 22px; color: #6a3a8a; line-height: 1; margin-top: -6px; }
-#hotbar b { position: absolute; bottom: 3px; left: 0; right: 0; font-size: 9px; font-weight: 400; color: #4a3358; white-space: nowrap; }
+#hotbar i { font-style: normal; font-size: 22px; color: #6a3a8a; line-height: 1; margin-top: -6px; display: grid; place-items: center; }
+#hotbar i .skill-svg { width: 30px; height: 30px; display: block; }
+#hotbar b { position: absolute; bottom: 3px; left: 0; right: 0; font-size: 10px; font-weight: 400; color: #4a3358; white-space: nowrap; }
 #hotbar s { position: absolute; left: 0; right: 0; top: 0; height: 0; background: rgba(58, 36, 72, 0.55); text-decoration: none; }
 #hotbar button.locked { opacity: 0.42; filter: grayscale(0.8); }
 #hotbar button.cooling i { opacity: 0.6; }
@@ -438,3 +441,25 @@ body.touch #candy { top: 96px; bottom: auto; right: 140px; }
 body.touch #contract-hud { top: 150px; }
 .inv-cell .slot-name ~ .power { top: 13px; }
 .town-grid .inv-cell .plus { bottom: auto; top: 14px; left: auto; right: 3px; }
+
+/* Skill picture icons (no hanja). */
+.skill .glyph .skill-svg { width: 30px; height: 30px; display: block; }
+
+/* Material names: hover for what they are for. */
+#mats { pointer-events: auto; cursor: help; }
+#mats span, .mat { cursor: help; text-decoration: underline dotted rgba(74, 51, 88, 0.35); text-underline-offset: 3px; }
+
+/* H help card. */
+#help { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(40, 24, 60, 0.45); pointer-events: auto; z-index: 40; }
+#help.hidden { display: none; }
+#help .help-card { width: min(760px, 92vw); max-height: 86vh; overflow: auto; background: #fff8fc; border-radius: 22px; padding: 18px 22px; color: #4a3358; box-shadow: 0 6px 0 rgba(58, 36, 72, 0.25); font-family: "Jua", sans-serif; }
+#help h2 { margin: 0 0 8px; color: #8a4fb0; }
+#help h3 { margin: 10px 0 6px; font-size: 15px; color: #8a4fb0; }
+#help .help-cols { display: grid; grid-template-columns: 1fr 1.2fr; gap: 18px; }
+#help dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; margin: 0; font-size: 14px; }
+#help dd { margin: 0; }
+#help kbd { display: inline-block; min-width: 22px; padding: 1px 7px; border-radius: 7px; background: #efe4f2; border-bottom: 2px solid #c9b0d8; font: inherit; text-align: center; }
+#help .help-mats dd { font-size: 13px; line-height: 1.35; }
+#help p { font-size: 13px; line-height: 1.45; margin: 0; }
+#help .help-close { margin-top: 12px; float: right; border: 0; border-radius: 999px; padding: 6px 16px; background: #ffd6ea; color: #4a3358; font: inherit; cursor: pointer; }
+body.touch #help .help-cols { grid-template-columns: 1fr; }
