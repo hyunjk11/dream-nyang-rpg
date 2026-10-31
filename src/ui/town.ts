@@ -223,9 +223,9 @@ export class TownUI {
       return
     }
     this.host.toast(ok)
-    this.host.success(kind, item)
     this.host.changed()
     this.render()
+    this.host.success(kind, item)
   }
 
   // ---- 포포 상점 ----

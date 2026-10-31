@@ -1119,6 +1119,7 @@ function sewerFrame(dt: number, raw: number): void {
     talkTip.textContent = stage.touch ? run.portalHint : `E ${run.portalHint}`
   }
   talkBtn?.classList.toggle('hidden', !run.nearPortal)
+  if (talkBtn && run.nearPortal) talkBtn.textContent = '포털'
   stage.camera.updateMatrixWorld()
   tickFloats(dt)
   stage.render()
@@ -1185,7 +1186,8 @@ function updateTalk(): void {
   }
   const showTip = Boolean(near && !talk.open)
   talkTip?.classList.toggle('hidden', !showTip)
-  talkBtn?.classList.toggle('hidden', !near)
+  talkBtn?.classList.toggle('hidden', !near || menuUp())
+  if (talkBtn && near) talkBtn.textContent = VERB[near.talk ?? ''] ?? '대화'
   if (!showTip || !near || !talkTip) return
   tipAt.set(near.x, TIP_HEIGHT[near.kind] ?? 2.2, near.z).project(stage.camera)
   talkTip.style.left = `${(tipAt.x * 0.5 + 0.5) * window.innerWidth}px`

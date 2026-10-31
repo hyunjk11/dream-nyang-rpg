@@ -132,7 +132,7 @@ export const DIALOGUES: Record<string, DialogueDef> = {
     ],
     choices: [
       { text: '부품을 모아 올게', actions: [{ type: 'quest-start', id: 'q_parts' }] },
-      { text: '지금 총을 재조정해 줘', actions: [{ type: 'open-tinker' }] },
+      { text: '공방 열어 줘 (강화·옵션·속성)', actions: [{ type: 'open-tinker' }] },
       { text: '나중에 올게' },
     ],
   },
@@ -142,7 +142,7 @@ export const DIALOGUES: Record<string, DialogueDef> = {
       { speaker: '키키', portrait: 'npc_kiki', text: '부품은 정예가 잘 쥐고 있어. 버섯 골짜기에 덩치 큰 애가 둘 있던데.' },
     ],
     choices: [
-      { text: '총 재조정', actions: [{ type: 'open-tinker' }] },
+      { text: '공방 열어 줘', actions: [{ type: 'open-tinker' }] },
       { text: '계속 찾을게' },
     ],
   },
@@ -153,17 +153,17 @@ export const DIALOGUES: Record<string, DialogueDef> = {
     ],
     actions: [{ type: 'quest-turnin', id: 'q_parts' }],
     choices: [
-      { text: '재조정도 부탁해', actions: [{ type: 'open-tinker' }] },
+      { text: '공방도 부탁해', actions: [{ type: 'open-tinker' }] },
       { text: '고마워, 키키' },
     ],
   },
   kiki_after: {
     id: 'kiki_after',
     lines: [
-      { speaker: '키키', portrait: 'npc_kiki', text: '총은 잘 쓰고 있어? 골드만 있으면 능력치를 다시 굴려 줄게. 일반 등급은 손댈 데가 없고.' },
+      { speaker: '키키', portrait: 'npc_kiki', text: '총은 잘 쓰고 있어? 골드랑 꿈가루만 있으면 강화도, 옵션 다시 굴리기도 해 줄게. 실패는 없어!' },
     ],
     choices: [
-      { text: '재조정해 줘', actions: [{ type: 'open-tinker' }] },
+      { text: '공방 열어 줘', actions: [{ type: 'open-tinker' }] },
       { text: '괜찮아' },
     ],
   },
