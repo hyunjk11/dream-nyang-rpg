@@ -7,8 +7,10 @@
  * at the centre of the next tile downhill, or straight at her when it shares her tile or the next.
  * Crowding: a uniform spatial hash pushes overlapping bodies apart; walls via collideCircle.
  */
+import { DIFFICULTY } from '../difficulty'
 import { TILE, tileCentre, walkable, worldToTile, type Maze } from './maze'
 import { collideCircle } from './walls'
+import { rayCapsule, type AimTarget } from '../tps'
 
 export type HordeKind =
   | 'slime'
@@ -66,7 +68,7 @@ export const HORDE: Record<HordeKind, HordeSpec> = {
 export const CHAMPIONS: HordeKind[] = ['lord', 'lich']
 
 /** Elites: bigger, tougher, hit harder; a golden tint so they read in the crowd. */
-export const ELITE = { scale: 1.45, hp: 4.5, damage: 2, speed: 0.9 }
+export const ELITE = { scale: 1.45, hp: DIFFICULTY.elite.hp, damage: DIFFICULTY.elite.damage, speed: 0.9 }
 
 /** Seconds a foe spends popping out of a pipe / bursting apart. */
 export const SPAWN_TIME = 0.45
@@ -227,7 +229,7 @@ export class Horde {
   spawn(kind: HordeKind, x: number, z: number, elite = false, dx = 0, dz = 0): HordeFoe | null {
     if (this.foes.length >= HORDE_CAP) return null
     const s = HORDE[kind]
-    const hp = Math.round(s.hp * (elite ? ELITE.hp : 1))
+    const hp = Math.round(s.hp * DIFFICULTY.horde.hp * (elite ? ELITE.hp : 1))
     const foe: HordeFoe = {
       id: this.nextId++,
       kind,
@@ -240,8 +242,8 @@ export class Horde {
       hp,
       maxHp: hp,
       radius: s.radius * (elite ? ELITE.scale : 1),
-      speed: s.speed * (elite ? ELITE.speed : 1) * (0.88 + ((this.nextId * 0.618) % 1) * 0.24),
-      damage: s.damage * (elite ? ELITE.damage : 1),
+      speed: s.speed * DIFFICULTY.horde.speed * (elite ? ELITE.speed : 1) * (0.88 + ((this.nextId * 0.618) % 1) * 0.24),
+      damage: Math.max(1, Math.round(s.damage * DIFFICULTY.horde.damage * (elite ? ELITE.damage : 1))),
       age: 0,
       dying: 0,
       hurt: 0,
@@ -292,27 +294,31 @@ export class Horde {
     }
   }
 
+  /** The upright body the crosshair and droplets test against (same shape for both). */
+  capsule(f: HordeFoe): AimTarget {
+    const chest = HORDE[f.kind].chest * (f.elite ? ELITE.scale : 1)
+    const r = f.radius * 1.15
+    return { x: f.x, z: f.z, y0: Math.max(0, chest - r), y1: chest + r, r }
+  }
+
+  /** Can this foe be aimed at / hit yet (not dying, mostly out of the floor)? */
+  hittable(f: HordeFoe): boolean {
+    return f.dying === 0 && f.age >= SPAWN_TIME * 0.4
+  }
+
   /**
    * First foe a ray (origin o, unit direction d) touches within `max` metres.
-   * Bodies are spheres at their chest height; dying ones are skipped.
+   * Bodies are the same upright capsules the aim ray uses, so a droplet sent at
+   * the crosshair point always lands on what the crosshair is over.
    */
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, max: number): { foe: HordeFoe; t: number } | null {
     let best: HordeFoe | null = null
     let bt = max
     for (const f of this.foes) {
-      if (f.dying > 0 || f.age < SPAWN_TIME * 0.4) continue
-      const r = f.radius * 1.15
-      const cy = HORDE[f.kind].chest * (f.elite ? ELITE.scale : 1)
-      const lx = f.x - ox
-      const ly = cy - oy
-      const lz = f.z - oz
-      const along = lx * dx + ly * dy + lz * dz
-      if (along < 0 || along - r > bt) continue
-      const perp2 = lx * lx + ly * ly + lz * lz - along * along
-      if (perp2 > r * r) continue
-      const t = along - Math.sqrt(r * r - perp2)
-      if (t < bt) {
-        bt = Math.max(0, t)
+      if (!this.hittable(f)) continue
+      const t = rayCapsule(ox, oy, oz, dx, dy, dz, this.capsule(f), bt)
+      if (t >= 0 && t < bt) {
+        bt = t
         best = f
       }
     }
@@ -376,12 +382,12 @@ export class Horde {
       f.windup -= dt
       if (f.windup <= 0) {
         f.windup = 0
-        f.cooldown = 1.1
+        f.cooldown = DIFFICULTY.horde.cooldown
         if (d < reach + 0.35 && target.alive) strike(f.damage, f.x, f.z)
       }
       return
     }
-    if (f.cooldown <= 0 && d < reach && target.alive && f.age >= SPAWN_TIME) f.windup = 0.32
+    if (f.cooldown <= 0 && d < reach && target.alive && f.age >= SPAWN_TIME) f.windup = DIFFICULTY.horde.windup
   }
 
   private rebuildHash(): void {

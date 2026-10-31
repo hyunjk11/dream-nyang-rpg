@@ -1,8 +1,11 @@
 import { PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 import { Tile, distances, generateMaze, tileCentre, walkable, worldToTile } from '../src/3d/dungeon/maze'
-import { TPS, createView, forwardOf, kick, look, pose, recover, rightOf, wishFrom } from '../src/3d/dungeon/tps'
+import { TPS, createView, forwardOf, kick, look, pose, recover, rightOf, wishFrom } from '../src/3d/tps'
 import { collideCircle, rayHit, solidAt } from '../src/3d/dungeon/walls'
+import type { Maze } from '../src/3d/dungeon/maze'
+
+const ray = (m: Maze) => (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, max: number) => rayHit(m, ox, oy, oz, dx, dy, dz, max)
 import { Sewer, wallFaces } from '../src/3d/dungeon/sewer'
 import { CEILING, TILE } from '../src/3d/dungeon/maze'
 
@@ -132,8 +135,8 @@ describe('어깨 너머 3인칭 카메라', () => {
     const room = m.bossRoom
     const c = tileCentre(m, room.x + 2, room.y + 2)
     const v = createView(0.3, 0.05)
-    let p = pose(v, m, c.x, 0, c.z, 1)
-    for (let i = 0; i < 60; i += 1) p = pose(v, m, c.x, 0, c.z, 1 / 30)
+    let p = pose(v, ray(m), c.x, 0, c.z, 1)
+    for (let i = 0; i < 60; i += 1) p = pose(v, ray(m), c.x, 0, c.z, 1 / 30)
     const cam = new PerspectiveCamera(TPS.fov, 16 / 9, 0.05, 80)
     cam.position.set(p.x, p.y, p.z)
     cam.lookAt(p.x + p.fx, p.y + p.fy, p.z + p.fz)
@@ -151,11 +154,11 @@ describe('어깨 너머 3인칭 카메라', () => {
     const s = tileCentre(m, m.start.x, m.start.y)
     // Start room sits in the corner: looking away from the corner puts the corner wall behind her.
     const v = createView(Math.PI / 4, 0)
-    for (let i = 0; i < 60; i += 1) pose(v, m, s.x, 0, s.z, i ? 1 / 30 : 1)
+    for (let i = 0; i < 60; i += 1) pose(v, ray(m), s.x, 0, s.z, i ? 1 / 30 : 1)
     const back = tileCentre(m, 1, 1)
     const v2 = createView(Math.PI / 4, 0)
-    let tight = pose(v2, m, back.x - TILE * 0.35, 0, back.z - TILE * 0.35, 1)
-    for (let i = 0; i < 60; i += 1) tight = pose(v2, m, back.x - TILE * 0.35, 0, back.z - TILE * 0.35, 1 / 30)
+    let tight = pose(v2, ray(m), back.x - TILE * 0.35, 0, back.z - TILE * 0.35, 1)
+    for (let i = 0; i < 60; i += 1) tight = pose(v2, ray(m), back.x - TILE * 0.35, 0, back.z - TILE * 0.35, 1 / 30)
     expect(solidAt(m, tight.x, tight.z)).toBe(false)
     expect(v2.boom).toBeLessThan(v.boom)
   })

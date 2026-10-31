@@ -24,6 +24,7 @@ import { HOLD_POSES, aimPitchDeg, damp, upperTwist, wrapAngle, type HoldPose, ty
 import { BARREL_CONE, CHARACTER_INK, GUN_SIZE, HERO_HEIGHT, REST_PITCH, barrelQuaternion, barrelYaw, calibrateGrip, handForGun, type Grip } from './grip'
 import { addOutline, applyToon, characterGradient, toon } from './materials'
 import { KNOCK, MOVE, gaitBlend, gaitRate, knockDecay, legYaw, turnToward } from './motion'
+import { DIFFICULTY } from './difficulty'
 
 const loader = new GLTFLoader()
 loader.setMeshoptDecoder(MeshoptDecoder)
@@ -43,8 +44,10 @@ export class Hero {
   readonly object = new Group()
   readonly muzzle = new Object3D()
   readonly aimPoint = new Vector3()
-  hp = 100
-  readonly maxHp = 100
+  readonly maxHp: number = DIFFICULTY.hero.maxHp
+  hp: number = DIFFICULTY.hero.maxHp
+  /** Seconds since the last hit (health regen waits for a lull). */
+  sinceHit = 99
   alive = true
   iframes = 0
   yaw = 0
@@ -198,6 +201,8 @@ export class Hero {
     this.aimPoint.copy(input.aim)
     this.dashCd = Math.max(0, this.dashCd - dt)
     this.iframes = Math.max(0, this.iframes - dt)
+    this.sinceHit += dt
+    if (this.alive && this.sinceHit > DIFFICULTY.hero.regenDelay && this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + DIFFICULTY.hero.regenRate * dt)
     this.hitT = Math.max(0, this.hitT - dt)
     this.shootT = Math.max(0, this.shootT - dt)
     if (!this.alive) {
@@ -328,7 +333,8 @@ export class Hero {
   hurt(amount: number, from: Vector3): boolean {
     if (!this.alive || this.iframes > 0 || amount <= 0) return false
     this.hp = Math.max(0, this.hp - amount)
-    this.iframes = 0.45
+    this.iframes = DIFFICULTY.hero.iframes
+    this.sinceHit = 0
     this.hitT = 0.55
     this.squash = 1
     if (this.hitAction && this.hp > 0) {

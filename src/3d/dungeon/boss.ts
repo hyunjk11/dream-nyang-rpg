@@ -3,22 +3,24 @@
  * she steps into the chamber, creeps after her, fires rings of slow dream orbs she can weave
  * through, and calls the horde at two-thirds and one-third health. Pure simulation.
  */
+import { DIFFICULTY } from '../difficulty'
 import type { Maze, Rect } from './maze'
 import { TILE, tileCentre } from './maze'
 import { collideCircle, solidAt } from './walls'
+import { rayCapsule, type AimTarget } from '../tps'
 
 export const BOSS = {
-  hp: 1400,
+  hp: Math.round(1400 * DIFFICULTY.boss.hp),
   radius: 1.25,
   /** Shot height of the body centre (m). */
   chest: 1.7,
   speed: 0.85,
-  contact: 12,
-  orbDamage: 8,
-  orbSpeed: 5.2,
+  contact: Math.round(12 * DIFFICULTY.boss.damage),
+  orbDamage: Math.round(8 * DIFFICULTY.boss.damage),
+  orbSpeed: 5.2 * DIFFICULTY.boss.orbSpeed,
   orbRadius: 0.32,
   ringEvery: 3.1,
-  ringCount: 14,
+  ringCount: Math.round(14 * DIFFICULTY.boss.ringCount),
   windup: 0.7,
 }
 
@@ -139,17 +141,14 @@ export class Boss {
   }
 
   /** Ray (unit direction) against the body sphere; distance or -1. */
+  /** Upright body shared by the crosshair and the droplets. */
+  capsule(): AimTarget {
+    return { x: this.x, z: this.z, y0: BOSS.chest - BOSS.radius, y1: BOSS.chest + BOSS.radius, r: BOSS.radius }
+  }
+
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, max: number): number {
     if (!this.alive || !this.awake) return -1
-    const lx = this.x - ox
-    const ly = BOSS.chest - oy
-    const lz = this.z - oz
-    const along = lx * dx + ly * dy + lz * dz
-    const r = BOSS.radius
-    if (along < 0 || along - r > max) return -1
-    const perp2 = lx * lx + ly * ly + lz * lz - along * along
-    if (perp2 > r * r) return -1
-    return Math.max(0, along - Math.sqrt(r * r - perp2))
+    return rayCapsule(ox, oy, oz, dx, dy, dz, this.capsule(), max)
   }
 
   private ring(): void {

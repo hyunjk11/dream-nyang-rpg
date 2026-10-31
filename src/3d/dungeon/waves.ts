@@ -3,6 +3,7 @@
  * second wave on, and a pause once she reaches the boss chamber. Pure; the run feeds it her
  * BFS distances and turns its spawn orders into foes.
  */
+import { DIFFICULTY, waveSize } from '../difficulty'
 import type { HordeKind } from './horde'
 
 export interface Wave {
@@ -39,8 +40,8 @@ export function waveFor(n: number): Wave {
   const champions: HordeKind[] = []
   if (n >= 3) champions.push('lord')
   if (n >= 5) champions.push('lich')
-  const elites = n < 2 ? 0 : Math.max(champions.length, Math.min(8, Math.floor(n / 2) + 1))
-  return { n, total: Math.min(150, 14 + 10 * (n - 1) + 2 * (n - 1) * (n - 1)), elites, kinds, champions }
+  const elites = n < DIFFICULTY.waves.firstElite ? 0 : Math.max(champions.length, Math.min(6, Math.floor((n - 1) / 2)))
+  return { n, total: waveSize(n), elites, kinds, champions }
 }
 
 export interface SpawnOrder {
@@ -64,11 +65,11 @@ export interface DirectorView {
   inBoss: boolean
 }
 
-export const REST = 4
-const POUR_RATE = 9 // foes per second across all pipes
+export const REST = DIFFICULTY.waves.rest
+const POUR_RATE = DIFFICULTY.waves.pour // foes per second across all pipes
 const WAVE_MAX_TIME = 28
 /** Live cap; the view holds a few more for the dying. */
-export const LIVE_CAP = 200
+export const LIVE_CAP = DIFFICULTY.waves.liveCap
 
 export class Director {
   wave = 0
@@ -98,7 +99,7 @@ export class Director {
     if (!w) return out
     this.clock += dt
     if (this.left > 0) {
-      this.pour += dt * POUR_RATE * (1 + w.n * 0.12)
+      this.pour += dt * POUR_RATE * (1 + w.n * DIFFICULTY.waves.rampPerWave)
       const nests = this.pick(v.nestDistance)
       while (this.pour >= 1 && this.left > 0 && v.alive + out.length < LIVE_CAP && nests.length) {
         this.pour -= 1

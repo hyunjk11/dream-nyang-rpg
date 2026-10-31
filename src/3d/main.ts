@@ -2,17 +2,19 @@ import { GunSound, type GunCue } from './dungeon/gunsound'
 import '@fontsource/jua/400.css'
 import '@fontsource/noto-sans-kr/400.css'
 import './style.css'
-import { Clock, Mesh, MeshBasicMaterial, Raycaster, SphereGeometry, Vector2, Vector3 } from 'three'
+import { Clock, Mesh, MeshBasicMaterial, SphereGeometry, Vector3 } from 'three'
 import { createStage } from './arena'
 import { audio } from './audio'
 import { Combat } from './combat'
 import { loadFoeModels } from './foes'
 import { loadHordeArt } from './dungeon/horde-view'
-import { cameraRelativeWish } from './feel'
-import { groundAim } from './camera'
+import { cameraColliders, type CameraCollider } from './camera'
+import { FADE_FOCUS } from './materials'
+import { Shooter, type ShotWorld } from './shooter'
+import { TPS, loadSens, rayCapsule, setSens, SENS, type AimTarget } from './tps'
 import { WALK_RADIUS } from './island'
 import { Hero } from './hero'
-import { axis, consumeDash, consumeTalk, installInput, pad, runningHeld } from './input'
+import { axis, consumeDash, consumeTalk, installInput, pad, runningHeld, shoulder } from './input'
 import { Landmarks } from './landmarks'
 import { Mochi } from './mochi'
 import { killLoot, GameState, type Storageish } from './loop'
@@ -31,7 +33,7 @@ if (!canvas) throw new Error('canvas missing')
 
 const stage = createStage(canvas)
 if (stage.touch) document.body.classList.add('touch')
-installInput(canvas, (dx, dy) => stage.orbit(dx, dy))
+installInput(canvas)
 const hero = new Hero()
 const mochi = new Mochi()
 stage.scene.add(hero.object, mochi.object)
@@ -62,7 +64,16 @@ let travelling = false
 let run: DungeonRun | null = null
 const crosshair = document.getElementById('crosshair')
 const hint = document.getElementById('hint')
-const HUB_HINT = hint?.textContent ?? ''
+const TPS_HINT_MOUSE = '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · Esc 해제'
+const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · 공격 길게 눌러 연사 · 대시'
+/** Same controls everywhere now, so one hint; it fades after a few seconds like the sewer's. */
+function showHint(): void {
+  if (!hint) return
+  hint.textContent = stage.touch ? TPS_HINT_TOUCH : TPS_HINT_MOUSE
+  hint.classList.remove('fade')
+  void hint.offsetWidth
+  hint.classList.add('fade')
+}
 const talkTip = document.getElementById('talk-tip')
 const talkBtn = document.getElementById('talk')
 document.getElementById('dialog')?.addEventListener('pointerdown', (event) => {
@@ -70,10 +81,89 @@ document.getElementById('dialog')?.addEventListener('pointerdown', (event) => {
   talk.advance()
 })
 const clock = new Clock()
-const raycaster = new Raycaster()
-const ndc = new Vector2()
-const aim = new Vector3(0, 1.1, 4)
-let fireCd = 0
+loadSens()
+/** The one shoulder rig + water gun, shared by the town and the sewer (identical feel). */
+const shooter = new Shooter(
+  {
+    camera: stage.camera,
+    hero,
+    vfx,
+    hud: crosshair?.parentElement ?? null,
+    sfx: (cue, gain) => audio.sfx(cue, gain),
+    gun: (cue, gain, pitch) => gunSfx(cue, gain, pitch),
+    hitStop: (seconds) => {
+      combat.hitStop = Math.max(combat.hitStop, seconds)
+    },
+  },
+  stage.scene,
+)
+const rig = shooter.rig
+const aim = rig.aim
+let townColliders: CameraCollider[] = []
+const townTargets: AimTarget[] = []
+let townFoes: ReturnType<typeof combat.shootable> = []
+/** Ground, houses, trees and the portal are solid to the camera boom and the crosshair. */
+function townRay(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, max: number): number {
+  const len = Math.hypot(dx, dy, dz) || 1
+  const ux = dx / len
+  const uy = dy / len
+  const uz = dz / len
+  let best = max
+  if (uy < -1e-6) {
+    const t = (0.02 - oy) / uy
+    if (t >= 0 && t < best) best = t
+  }
+  for (const c of townColliders) {
+    const t = rayCapsule(ox, oy, oz, ux, uy, uz, c, best)
+    if (t >= 0 && t < best) best = t
+  }
+  return best
+}
+const townWorld: ShotWorld = {
+  solid: townRay,
+  targets: () => {
+    townFoes = combat.shootable()
+    townTargets.length = 0
+    for (const f of townFoes) townTargets.push(combat.capsule(f))
+    return townTargets
+  },
+  strike: (o, d, max, amount) => {
+    const hit = combat.raycast(o, d, max)
+    if (!hit) return null
+    const kill = combat.strikeFoe(hit.foe, amount, d)
+    const tone = hit.foe.kind === 'bloom' ? 'boss' : hit.foe.elite ? 'elite' : 'n'
+    return { t: hit.t, kill, tone, color: 0xffc6e8, floor: hit.foe.object.position.clone().setY(0.02) }
+  },
+  normal: (end, d) => {
+    if (end.y < 0.1) return { x: 0, y: 1, z: 0 }
+    let best: CameraCollider | null = null
+    let gap = Infinity
+    for (const c of townColliders) {
+      if (end.y < c.y0 - 0.2 || end.y > c.y1 + 0.2) continue
+      const g = Math.abs(Math.hypot(end.x - c.x, end.z - c.z) - c.r)
+      if (g < gap) {
+        gap = g
+        best = c
+      }
+    }
+    if (!best || gap > 0.5) return { x: -d.x, y: -d.y, z: -d.z }
+    const nx = end.x - best.x
+    const nz = end.z - best.z
+    const l = Math.hypot(nx, nz) || 1
+    return { x: nx / l, y: 0, z: nz / l }
+  },
+}
+/** Town look: the shared rig, but not while a dialogue or the quest log is up. */
+function armTown(): void {
+  shoulder.on = true
+  shoulder.look = (dx, dy, touch) => {
+    if (mode === 'play' && !talk.open && !run) rig.look(dx, dy, touch)
+  }
+}
+/** Hand the mouse back (talk, quest log, down screen); a click on the world takes it again. */
+function releaseLook(): void {
+  if (document.pointerLockElement) document.exitPointerLock?.()
+}
 let mochiCd = 1
 let frames = 0
 let fpsTime = 0
@@ -85,6 +175,14 @@ const hpFill = document.getElementById('hp-fill')
 const fpsEl = document.getElementById('fps')
 const boot = document.getElementById('boot')
 const note = document.getElementById('note')
+const sens = document.getElementById('sens') as HTMLInputElement | null
+const sensOut = document.getElementById('sens-out')
+if (sens) sens.value = String(SENS.value)
+if (sensOut) sensOut.textContent = SENS.value.toFixed(2)
+sens?.addEventListener('input', () => {
+  const v = setSens(Number(sens.value))
+  if (sensOut) sensOut.textContent = v.toFixed(2)
+})
 const vol = document.getElementById('vol') as HTMLInputElement | null
 if (vol) vol.value = String(Math.round(audio.master * 100))
 vol?.addEventListener('input', () => {
@@ -103,7 +201,7 @@ document.getElementById('retry')?.addEventListener('click', () => restart())
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, enterSewer, leaveSewer } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get places() { return zonePlaces }, enterSewer, leaveSewer } })
 
 void bootGame()
 
@@ -168,6 +266,9 @@ function resumeGame(): void {
 
 function beginPlay(): void {
   mode = 'play'
+  armTown()
+  crosshair?.classList.remove('hidden')
+  showHint()
   enterZone(game.zone, game.zone === 'meadow' || game.zone === 'village' ? PLAZA : PORTAL_ARRIVAL)
   if (!game.save.flags.metMochi) window.setTimeout(() => talk.start('mochi_meet'), 700)
 }
@@ -182,10 +283,19 @@ function enterZone(id: ZoneId, at: { x: number; z: number } = PORTAL_ARRIVAL): v
   zonePlaces = placesFor(id)
   combat.places = zonePlaces
   stage.setColliders(zonePlaces)
+  townColliders = cameraColliders(zonePlaces)
   landmarks.setZone(id)
   setMood(zone.mood)
   hero.revive()
   hero.object.position.set(at.x, 0, at.z)
+  // Arrive looking in toward the middle of the island (her back to the edge).
+  if (Math.hypot(at.x, at.z) > 1) {
+    rig.view.yaw = Math.atan2(-at.x, -at.z)
+    hero.yaw = rig.view.yaw
+  }
+  rig.view.pitch = 0.12
+  rig.view.boom = 1
+  shooter.reset()
   heroTracked = false
   stepTracked = false
   mochi.place(at.x + 0.8, at.z - 0.8)
@@ -230,15 +340,12 @@ function enterSewer(seed = Math.floor(Math.random() * 1e9)): void {
         hitStop: (seconds) => {
           combat.hitStop = Math.max(combat.hitStop, seconds)
         },
+        shooter,
       },
       seed,
     )
     document.body.classList.add('sewer')
-    crosshair?.classList.remove('hidden')
-    if (hint)
-      hint.textContent = stage.touch
-        ? '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · 공격 길게 눌러 연사 · 대시'
-        : '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · Space 대시 · Esc 시점 해제'
+    showHint()
     zoneBanner('꿈 하수도 미궁', '별빛 물길 아래, 꿈을 갉는 무리가 몰려온다')
   }).then(() => {
     travelling = false
@@ -254,11 +361,11 @@ function leaveSewer(): void {
     run?.dispose()
     run = null
     document.body.classList.remove('sewer')
-    crosshair?.classList.add('hidden')
-    if (hint) hint.textContent = HUB_HINT
     landmarks.group.visible = true
     stage.setWorld('island')
+    armTown()
     enterZone('village', PLAZA)
+    showHint()
   }).then(() => {
     travelling = false
   })
@@ -304,6 +411,7 @@ function talkDone(actions: Action[], choice: TalkChoice | null, id: string | Tal
   game.persist(store)
   if (out.openQuests) {
     mode = 'menu'
+    releaseLook()
     openQuestLog(game.save, () => {
       mode = 'play'
     })
@@ -314,6 +422,7 @@ function talkDone(actions: Action[], choice: TalkChoice | null, id: string | Tal
     game.save.flags.ending = true
     game.persist(store)
     mode = 'menu'
+    releaseLook()
     window.setTimeout(() => showEnding(game.save, () => (mode = 'play')), 600)
   }
 }
@@ -358,18 +467,23 @@ function frame(): void {
   combat.shake = Math.max(0, combat.shake - raw * 1.5)
   countFps(raw)
   const talking = talk.open
+  // Dialogue and menus need the cursor: hand it back while one is up.
+  if (talking) releaseLook()
   const move = talking ? { x: 0, y: 0 } : axis()
-  // Always relative to the live (smoothed) camera yaw, so A is screen-left after any orbit.
-  const wish = cameraRelativeWish(move.x, move.y, stage.yaw)
-  aimAt()
-  fireCd = Math.max(0, fireCd - dt)
+  // WASD / the stick relative to the view, exactly as in the sewer.
+  const wish = rig.wish(move.x, move.y)
+  if (import.meta.env.DEV && view.on && view.aimYaw !== undefined) {
+    const p = hero.object.position
+    aim.set(p.x + Math.sin(view.aimYaw) * 5, 1.05, p.z + Math.cos(view.aimYaw) * 5)
+  }
   const dash = consumeDash()
   if (dash && hero.alive && !talking) {
     audio.sfx('dash')
     vfx.dust(hero.object.position, 2.4)
     vfx.ring(hero.object.position.clone().setY(0.05), 0xffd0ea, 0.3, 1.2, 0.3, 0.5)
   }
-  hero.update(dt, { wishX: wish.x, wishZ: wish.z, aim, firing: pad.fire && !talking, dash: dash && !talking, run: runningHeld() })
+  const firing = pad.fire && !talking && hero.alive
+  hero.update(dt, { wishX: wish.x, wishZ: wish.z, aim, firing, dash: dash && !talking, run: runningHeld(), face: true })
   {
     // Landmarks are solid; she slides round the house corner instead of walking through it.
     const p = hero.object.position
@@ -378,16 +492,6 @@ function frame(): void {
     p.z = out.z
   }
   if (hero.dashing) ghost()
-  if (pad.fire && !talking && fireCd <= 0 && hero.alive) {
-    fireCd = 0.16
-    const tip = hero.muzzle.getWorldPosition(new Vector3())
-    const dir = aim.clone().sub(tip)
-    if (dir.lengthSq() < 0.01) dir.set(0, 0, 1)
-    combat.fire(tip, dir, 12, true, 0x9ad7ff, 16)
-    vfx.burst(tip, 0xd7f4ff, { count: 3, speed: 1.4, up: 0.4, life: 0.14, size: 0.22, gravity: 0, drag: 8 })
-    hero.recoil()
-    audio.sfx('shoot_water')
-  }
   const heroPos = hero.object.position
   mochiFollow(dt, heroPos)
   landmarks.update(dt, heroPos)
@@ -401,6 +505,7 @@ function frame(): void {
     float(`-${amount}`, heroPos.clone().setY(1.6), '#ff9eb8')
     if (!hero.alive) {
       audio.sfx('down')
+      releaseLook()
       const { lost, home } = game.died()
       const text = document.getElementById('down-text')
       if (text) text.textContent = `별하가 잠시 눈을 감았다.${lost ? ` 골드 ${lost}을 흘렸어.` : ''} ${zone3d(home).name}에서 다시 일어나자.`
@@ -417,9 +522,12 @@ function frame(): void {
   audio.update(dt, threatNear(heroPos))
   vfx.update(dt)
   if (hpFill) hpFill.style.width = `${Math.max(0, (hero.hp / hero.maxHp) * 100)}%`
-  const aimFlatX = aim.x - heroPos.x
-  const aimFlatZ = aim.z - heroPos.z
-  stage.follow(heroPos.x, heroPos.y, heroPos.z, aimFlatX, aimFlatZ, combat.shake)
+  // Camera on her shoulder, then the crosshair ray from it, then the gun (same order as the sewer).
+  if (combat.shake > 0.02) rig.shake = Math.max(rig.shake, combat.shake * 0.35)
+  hero.object.visible = rig.place(dt, heroPos.x, heroPos.y, heroPos.z, townRay)
+  FADE_FOCUS.value.set(heroPos.x, heroPos.y + 1.0, heroPos.z)
+  rig.aimFrom(townWorld, dt)
+  shooter.update(dt, firing, townWorld)
   if (import.meta.env.DEV && view.on) inspectCamera(heroPos)
   // Tags are projected after the camera moved this frame, so they sit on the heads instead of trailing.
   stage.camera.updateMatrixWorld()
@@ -547,47 +655,6 @@ function inspectCamera(at: Vector3): void {
   const cam = stage.camera
   cam.position.set(at.x + Math.sin(yaw) * Math.cos(pitch) * view.dist, at.y + view.height + Math.sin(pitch) * view.dist, at.z + Math.cos(yaw) * Math.cos(pitch) * view.dist)
   cam.lookAt(at.x, at.y + view.height, at.z)
-}
-
-const aimHold = new Vector3()
-let aimHeld = false
-function aimAt(): void {
-  // While right-dragging the view, keep her aim fixed in the world (relative to her), so the
-  // camera swings round without her spinning to chase the cursor.
-  if (pad.orbiting) {
-    const p = hero.object.position
-    if (!aimHeld) aimHold.set(aim.x - p.x, aim.y, aim.z - p.z)
-    aimHeld = true
-    aim.set(p.x + aimHold.x, aimHold.y, p.z + aimHold.z)
-    return
-  }
-  aimHeld = false
-  if (import.meta.env.DEV && view.on) {
-    const p = hero.object.position
-    const yaw = view.aimYaw ?? hero.yaw
-    aim.set(p.x + Math.sin(yaw) * 5, 1.05, p.z + Math.cos(yaw) * 5)
-    return
-  }
-  // Auto-aim only helps fingers. It used to key off stage.mobile, the low-power flag, which is
-  // also on for weak desktop GPUs and short windows, so a mouse click snapped her aim (and the
-  // camera lead) to the nearest foe.
-  if (!pad.pointer || (pad.fire && pad.touchFire)) {
-    const nearest = nearestFoe()
-    if (nearest) {
-      aim.set(nearest.object.position.x, 0.9, nearest.object.position.z)
-      return
-    }
-  }
-  ndc.x = (pad.px / window.innerWidth) * 2 - 1
-  ndc.y = -(pad.py / window.innerHeight) * 2 + 1
-  raycaster.setFromCamera(ndc, stage.camera)
-  // Low views put the cursor near (or above) the horizon: the hit is reined in to a sane reach
-  // and, with no hit at all, the aim follows the ray's heading from her instead.
-  const o = raycaster.ray.origin
-  const d = raycaster.ray.direction
-  const p = hero.object.position
-  const hit = groundAim(o.x, o.y, o.z, d.x, d.y, d.z, p.x, p.z)
-  aim.set(hit.x, 1.05, hit.z)
 }
 
 function nearestFoe() {
