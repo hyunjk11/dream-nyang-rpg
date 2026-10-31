@@ -11,8 +11,8 @@ export class Chest {
   private readonly glow: Mesh
   private readonly mats: Material[] = []
 
-  constructor(x: number, z: number) {
-    const body = new MeshToonMaterial({ color: 0xc7a6ff, gradientMap: toonGradient() })
+  constructor(x: number, z: number, tint = 0xc7a6ff) {
+    const body = new MeshToonMaterial({ color: tint, gradientMap: toonGradient() })
     const band = new MeshToonMaterial({ color: 0xffd36b, emissive: new Color(0xffc24a), emissiveIntensity: 0.35, gradientMap: toonGradient() })
     const glowMat = new MeshBasicMaterial({ color: new Color(0xfff0b0).multiplyScalar(1.6), transparent: true, opacity: 0 })
     this.mats.push(body, band, glowMat)

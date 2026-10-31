@@ -51,6 +51,8 @@ export class Hero {
   hp: number = DIFFICULTY.hero.maxHp
   /** Walk/run speed multiplier (shoes, capes). */
   speedMul = 1
+  /** Short-lived run boost (a sewer shrine), multiplied on top of speedMul. */
+  boost = 1
   /** Regen multiplier and delay (골골 회복). */
   regenMul = 1
   regenDelay: number = DIFFICULTY.hero.regenDelay
@@ -247,7 +249,7 @@ export class Hero {
     }
     // Steering velocity eases toward the wish, so starts and stops have a little weight instead of
     // popping between 0 and full speed (which also made the feet slide on every stop).
-    const top = this.dashing ? MOVE.dash : this.running ? MOVE.run * this.speedMul : wants ? MOVE.walk * this.speedMul : 0
+    const top = this.dashing ? MOVE.dash : this.running ? MOVE.run * this.speedMul * this.boost : wants ? MOVE.walk * this.speedMul * this.boost : 0
     // A strong push takes some steering away, so holding a key into the enemy can't fight it.
     const pushed = Math.min(1, this.knock.length() / KNOCK.speed)
     const control = 1 - pushed * KNOCK.controlLoss

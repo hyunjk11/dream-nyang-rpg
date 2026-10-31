@@ -65,7 +65,8 @@ const DIRS = [
   [0, -1],
 ] as const
 
-export function generateMaze(seed: number, cellsW = 9, cellsH = 9, bossSize = 5): Maze {
+/** `braid`: share of dead ends knocked through into loops (explore floors keep more dead ends). */
+export function generateMaze(seed: number, cellsW = 9, cellsH = 9, bossSize = 5, braid = 0.34): Maze {
   const rand = rng(seed)
   const w = cellsW * 2 + 1
   const h = cellsH * 2 + 1
@@ -98,12 +99,12 @@ export function generateMaze(seed: number, cellsW = 9, cellsH = 9, bossSize = 5)
     set(nx * 2 + 1, ny * 2 + 1, Tile.Corridor)
     stack.push([nx, ny])
   }
-  // Braid about a third of the dead ends into loops so a horde can flank.
+  // Braid some dead ends into loops (about a third by default) so a horde can flank.
   for (let cy = 0; cy < cellsH; cy += 1) {
     for (let cx = 0; cx < cellsW; cx += 1) {
       const x = cx * 2 + 1
       const y = cy * 2 + 1
-      if (openCount(tiles, w, x, y) !== 1 || rand() > 0.34) continue
+      if (openCount(tiles, w, x, y) !== 1 || rand() > braid) continue
       const walls = DIRS.filter(([dx, dy]) => {
         const bx = x + dx * 2
         const by = y + dy * 2

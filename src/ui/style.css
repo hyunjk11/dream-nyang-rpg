@@ -155,6 +155,16 @@ body.sewer #tracker { display: none; }
 #hint.fade { animation: sewer-hint 9s ease forwards; }
 @keyframes sewer-hint { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
 #minimap { position: absolute; top: 54px; right: 12px; width: 152px; height: 152px; border-radius: 12px; background: rgba(36, 22, 58, 0.5); border: 2px solid rgba(255, 246, 251, 0.6); image-rendering: pixelated; pointer-events: none; }
+#minimap.big { top: 50%; left: 50%; right: auto; width: min(74vmin, 640px); height: min(74vmin, 640px); transform: translate(-50%, -50%); background: rgba(36, 22, 58, 0.82); z-index: 30; }
+#map-legend { display: none; position: absolute; left: 50%; top: calc(50% + min(37vmin, 320px) + 10px); transform: translateX(-50%); z-index: 30; gap: 12px; align-items: center; padding: 6px 14px; border-radius: 999px; background: rgba(255, 248, 252, 0.92); color: #4a3358; font-size: 13px; white-space: nowrap; pointer-events: none; }
+#map-legend.on { display: flex; }
+#map-legend b { font-family: "Jua", sans-serif; font-weight: 400; color: #8a4fb0; }
+#map-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; border: 1px solid #3a2448; }
+#map-legend small { color: #8a7a96; }
+.foe-arrow { position: absolute; width: 0; height: 0; border-left: 11px solid transparent; border-right: 11px solid transparent; border-bottom: 20px solid #ff5a7a; filter: drop-shadow(0 0 3px rgba(40, 10, 30, 0.8)); pointer-events: none; z-index: 6; }
+.foe-arrow.elite { border-bottom-color: #ffd166; }
+.foe-arrow.hidden, #elite-tag.hidden { display: none; }
+#elite-tag { position: absolute; transform: translate(-50%, -100%); padding: 3px 10px; border-radius: 999px; background: rgba(60, 30, 80, 0.78); color: #ffe7a0; font-family: "Jua", sans-serif; font-size: 14px; white-space: nowrap; pointer-events: none; z-index: 5; border: 1px solid rgba(255, 214, 102, 0.6); }
 
 /* Sewer horde HUD: wave line under the HP bar, boss bar across the top. */
 #wave { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); padding: 5px 14px; border-radius: 999px; background: rgba(36, 22, 58, 0.55); color: #fff4fb; font-family: "Jua", sans-serif; font-size: 15px; letter-spacing: 0.02em; pointer-events: none; white-space: nowrap; }

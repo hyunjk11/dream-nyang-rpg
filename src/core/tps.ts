@@ -74,6 +74,8 @@ export interface TpsView {
   kickYaw: number
   /** Smoothed boom fraction 0..1 (1 = full length). */
   boom: number
+  /** Longest boom allowed right now (0..1; narrow corridors pull the camera in). */
+  reach?: number
 }
 
 export function createView(yaw = 0, pitch = 0.12): TpsView {
@@ -168,6 +170,7 @@ export function pose(view: TpsView, ray: RayFn | null, px: number, py: number, p
     const hit = ray(ox, oy, oz, bx, by, bz, TPS.back + TPS.margin)
     allowed = Math.max(0, Math.min(1, (hit - TPS.margin) / TPS.back))
   }
+  allowed = Math.min(allowed, view.reach ?? 1)
   const rate = allowed < view.boom ? 40 : 3.5
   view.boom += (allowed - view.boom) * (1 - Math.exp(-rate * dt))
   view.boom = Math.min(view.boom, allowed)

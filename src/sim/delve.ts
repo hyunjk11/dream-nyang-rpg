@@ -4,7 +4,9 @@
  * DOM or three.js — DungeonRun plays one floor at a time, main.ts carries a Delve between them.
  *
  * Rules (also in the PR body):
- *  - Floor 1 survive waves, floor 2 plug nest pipes, floor 3 find the exit room, floor 4 boss.
+ *  - Floors 1–3 are explore floors: packs waiting in the maze, optional nests, chests and a shrine,
+ *    and the exit room at the far end (from floor 2 its star door needs the key an elite carries).
+ *    Floor 4 is the boss (the only floor that still has waves).
  *  - Gold picked up down there is "run gold": banked when she comes home. Falling drops a share
  *    of it (DIFFICULTY.delve.deathGoldLoss); items and materials go straight to the bag and stay.
  *  - Checkpoint: the start of the floor she reached. Coming home by portal/scroll or falling keeps
@@ -18,7 +20,7 @@ import { itemName, maxRarityFor, rollDrops, sellValue, type Drop } from './loot'
 import { addMaterial } from './quests'
 import type { OpenRun, ItemInstance, Rarity, SaveData } from './types'
 
-export type Objective = 'survive' | 'nests' | 'exit' | 'boss'
+export type Objective = 'exit' | 'boss'
 
 export interface DelveCheckpoint {
   depth: number
@@ -88,16 +90,16 @@ export interface FloorPlan {
   depth: number
   floor: number
   objective: Objective
-  /** Waves to survive, pipes to plug, 1 for exit/boss. */
+  /** Always 1 (reach the exit / beat the boss); kept for the HUD and old callers. */
   goal: number
+  /** The exit room's star door needs the key an elite carries (floor 2 on). */
+  key: boolean
   seed: number
   /** Maze cells (the boss floor is a short approach to a big arena). */
   cells: number
   bossRoom: number
   scale: FloorScale
 }
-
-const OBJECTIVES: Objective[] = ['survive', 'nests', 'exit']
 
 export function floorScale(depth: number, floor: number): FloorScale {
   const k = DIFFICULTY.delve
@@ -120,16 +122,15 @@ export function floorSeed(depth: number, floor: number, salt: number): number {
 }
 
 export function floorPlan(depth: number, floor: number, salt = 0): FloorPlan {
-  const objective: Objective = floor >= BOSS_FLOOR ? 'boss' : OBJECTIVES[(floor - 1) % OBJECTIVES.length]
-  const k = DIFFICULTY.delve
-  const goal = objective === 'survive' ? k.surviveWaves + Math.min(2, depth - 1) : objective === 'nests' ? k.nests : 1
+  const objective: Objective = floor >= BOSS_FLOOR ? 'boss' : 'exit'
   return {
     depth,
     floor,
     objective,
-    goal,
+    goal: 1,
+    key: objective === 'exit' && floor >= 2,
     seed: floorSeed(depth, floor, salt),
-    cells: objective === 'boss' ? 6 : 9,
+    cells: objective === 'boss' ? 6 : 11,
     bossRoom: objective === 'boss' ? 7 : 5,
     scale: floorScale(depth, floor),
   }
@@ -140,17 +141,15 @@ export function floorLabel(depth: number, floor: number): string {
   return `깊이 ${depth} · ${floor >= BOSS_FLOOR ? '보스층' : `${floor}층`}`
 }
 
-/** One-line objective for the HUD (progress = waves survived / pipes plugged / 0|1). */
-export function objectiveText(plan: Pick<FloorPlan, 'objective' | 'goal'>, progress: number, done = false): string {
-  if (done) return plan.objective === 'boss' ? '보물 상자를 열고 출구 포털로!' : '계단 포털이 열렸어 · 들어가면 다음 층'
-  const n = Math.min(progress, plan.goal)
+/**
+ * One-line objective for the HUD. Explore floors: `progress` 0 = still looking for the key,
+ * 1 = key in hand (or no key needed). The run adds a direction arrow and distance.
+ */
+export function objectiveText(plan: Pick<FloorPlan, 'objective' | 'goal'> & { key?: boolean }, progress = 0, done = false): string {
+  if (done) return plan.objective === 'boss' ? '보물 상자를 열고 출구 포털로!' : '출구 방에 도착 · 금빛 계단으로 다음 층'
   switch (plan.objective) {
-    case 'survive':
-      return `웨이브 버티기 ${n}/${plan.goal}`
-    case 'nests':
-      return `둥지 파이프 막기 ${n}/${plan.goal}`
     case 'exit':
-      return '출구 방 찾기 · 미니맵의 금빛 별'
+      return plan.key && progress < 1 ? '별 열쇠를 가진 정예 찾기' : plan.key ? '별 열쇠로 출구 문 열기' : '미궁 끝 출구 방 찾기'
     case 'boss':
       return '악몽 꽃 쓰러뜨리기'
   }
@@ -159,16 +158,10 @@ export function objectiveText(plan: Pick<FloorPlan, 'objective' | 'goal'>, progr
 /** Banner title/sub when a floor begins. */
 export function floorIntro(plan: FloorPlan): { title: string; sub: string } {
   const title = floorLabel(plan.depth, plan.floor)
-  switch (plan.objective) {
-    case 'survive':
-      return { title, sub: `몰려오는 웨이브를 ${plan.goal}번 버텨 봐` }
-    case 'nests':
-      return { title, sub: `둥지 파이프 ${plan.goal}개를 물총으로 막아 줘` }
-    case 'exit':
-      return { title, sub: '미궁 끝의 출구 방을 찾아가자' }
-    case 'boss':
-      return { title, sub: '달빛 방에 악몽 꽃이 잠들어 있어' }
-  }
+  if (plan.objective === 'boss') return { title, sub: '달빛 방에 악몽 꽃이 잠들어 있어' }
+  return plan.key
+    ? { title, sub: '정예가 가진 별 열쇠로 미궁 끝 출구 문을 열자' }
+    : { title, sub: '미궁을 탐험해 끝에 있는 출구 방을 찾자 · M 지도' }
 }
 
 export interface LootLine {
@@ -215,6 +208,21 @@ export function delveDrops(depth: number, elite: boolean, boss: boolean, rng: ()
   const drops = rollDrops({ table, luck, elite, boss, rng, itemLevel: itemLevelFor(depth, floor, boss), bias: (depth - 1) * 5, cap: maxRarityFor(depth, boss) })
   if (boss) for (const d of drops) if (d.kind === 'gold') d.amount = Math.round(d.amount * s.gold)
   return drops
+}
+
+/** Treasure chest grades on explore floors: a dead end, a plugged nest, the secret pocket. */
+export type ChestTier = 'small' | 'nest' | 'secret'
+
+/** What a chest spills: always a little gold and dust, gear more often the rarer the chest. */
+export function chestDrops(depth: number, floor: number, tier: ChestTier, rng: () => number, luck = 2): Drop[] {
+  const s = floorScale(depth, 1)
+  const gear = tier === 'small' ? 0.6 : 0.98
+  const weapon = tier === 'small' ? 0.18 : tier === 'nest' ? 0.35 : 0.7
+  const gold: [number, number] = [Math.round(8 * s.gold), Math.round((tier === 'small' ? 16 : 26) * s.gold)]
+  const table = { gold, gear, weapon, dust: 1, part: tier === 'small' ? 0.4 : 0.8, potion: 0.55 }
+  const elite = tier !== 'small'
+  const bias = (depth - 1) * 5 + (tier === 'secret' ? 18 : 6)
+  return rollDrops({ table, luck, elite, rng, itemLevel: itemLevelFor(depth, floor, false), bias, cap: maxRarityFor(depth, tier === 'secret') })
 }
 
 /** One trip: counts, run gold and the loot list, across floors. */
