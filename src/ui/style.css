@@ -231,7 +231,7 @@ body.sewer #recall { display: inline-flex; }
 body.touch #hotbar { bottom: auto; top: 96px; left: auto; right: 16px; transform: none; flex-direction: column; gap: 6px; }
 body.touch #hotbar button { width: 52px; height: 52px; }
 body.touch #hotbar kbd { display: none; }
-#bag-btn { position: absolute; right: 16px; bottom: 64px; display: none; }
+#bag-btn { position: absolute; right: 16px; bottom: 64px; display: inline-flex; }
 body.touch #bag-btn { display: inline-flex; top: 96px; bottom: auto; right: 78px; }
 #loot-toasts { position: absolute; left: 16px; bottom: 90px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
 .loot-toast {

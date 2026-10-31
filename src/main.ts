@@ -36,7 +36,7 @@ import { computeStats, gainXp, type ComputedStats } from './sim/stats'
 import { bossXp, killXp, nestXp, objectiveXp, townKillXp } from './sim/xp'
 import { xpToNext } from './sim/formulas'
 import { findItem } from './sim/inventory'
-import { itemName } from './sim/loot'
+import { itemName, makeItem } from './sim/loot'
 import { RARITY_COLOR, type ItemInstance } from './sim/types'
 import { InventoryUI, dpsOf } from './ui/inventory'
 
@@ -87,7 +87,7 @@ function loadDungeon(): Promise<typeof import('./world/dungeon/run')> {
 }
 const crosshair = document.getElementById('crosshair')
 const hint = document.getElementById('hint')
-const TPS_HINT_MOUSE = '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · Esc 해제'
+const TPS_HINT_MOUSE = '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · 1–4 스킬 · I 가방 · K 스킬 · Esc 해제'
 const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · 공격 길게 눌러 연사 · 대시'
 /** Same controls everywhere now, so one hint; it fades after a few seconds like the sewer's. */
 function showHint(): void {
@@ -410,7 +410,7 @@ document.getElementById('retry')?.addEventListener('click', () => restart())
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk } })
 
 void bootGame()
 
