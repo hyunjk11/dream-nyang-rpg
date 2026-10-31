@@ -12,6 +12,23 @@ function esc(text: string): string {
   return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c)
 }
 
+/** Stacks repeats ("꿈가루 ×2" + "꿈가루 ×1" → "꿈가루 ×3", three 하트 사탕 → "하트 사탕 ×3"), gear first. */
+export function groupLoot(loot: DelveSummary['loot']): DelveSummary['loot'] {
+  const map = new Map<string, { name: string; rarity: string; n: number }>()
+  for (const l of loot) {
+    const m = /^(.*) ×(\d+)$/.exec(l.name)
+    const base = m ? m[1] : l.name
+    const key = `${l.rarity}|${base}`
+    const cur = map.get(key) ?? { name: base, rarity: l.rarity, n: 0 }
+    cur.n += m ? Number(m[2]) : 1
+    map.set(key, cur)
+  }
+  const rank = (r: string) => (r === 'material' ? 2 : r === 'potion' ? 1 : 0)
+  return [...map.values()]
+    .sort((a, b) => rank(a.rarity) - rank(b.rarity))
+    .map((g) => ({ name: g.n > 1 ? `${g.name} ×${g.n}` : g.name, rarity: g.rarity }) as DelveSummary['loot'][number])
+}
+
 /** Plain-text lines (also what the QA reads). */
 export function summaryLines(s: DelveSummary): { sub: string; stats: [string, string, string?][] } {
   const where = floorLabel(s.depth, s.floor)
@@ -49,7 +66,7 @@ export function showSummary(s: DelveSummary, onClose: () => void): void {
   set('summary-sub', esc(sub))
   set('summary-stats', stats.map(([k, v, cls]) => `<dt>${k}</dt><dd${cls ? ` class="${cls}"` : ''}>${esc(v)}</dd>`).join(''))
   const loot = s.loot.length
-    ? s.loot
+    ? groupLoot(s.loot)
         .map((l) => {
           const color = l.rarity === 'potion' ? '#ffb8d6' : l.rarity === 'material' ? '#b8f0ff' : RARITY_COLOR[l.rarity as Rarity]
           return `<li style="color:${color}">${esc(l.name)}</li>`
