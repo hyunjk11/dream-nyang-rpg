@@ -27,7 +27,7 @@ export const DIALOGUES: Record<string, DialogueDef> = {
       { speaker: '모찌', portrait: 'mochi', text: '여긴 네가 매일 밤 스치기만 했던 꿈의 가장자리. 나는 모찌. 오늘은 그냥 지나치지 마.' },
       { speaker: '모찌', portrait: 'mochi', text: '그런데 꿈이 조금 이상해졌어. 저 솜사탕 슬라임, 보이지? 물총으로 시원하게 맞혀 봐.' },
       { speaker: '별하', portrait: 'byeolha', text: '가방에 있던 물총이 여기서는 진짜네. 알겠어. 같이 가자, 모찌.' },
-      { speaker: '모찌', portrait: 'mochi', text: '발은 WASD, 총구는 마우스를 따라가. 클릭하면 나가고, 스페이스는 대시야. 가방은 I, 스킬은 K.' },
+      { speaker: '모찌', portrait: 'mochi', text: '발은 WASD, 시선은 마우스야. 화면을 한 번 클릭해 시점을 잡고, 다시 클릭하면 물총이 나가. 스페이스는 대시!' },
     ],
     actions: [
       { type: 'flag', id: 'metMochi' },

@@ -4,8 +4,8 @@ import type { FoeKind } from './foes'
 import { placesFor, pushOutOfPlaces } from './places'
 
 /**
- * The 2D zones replayed on the one 3D island. Each zone keeps its 2D name, music, enemy roster,
- * elites and pickups; positions are squeezed from the 2D map onto the island, and the village
+ * The zones in src/data/zones replayed on the one 3D island. Each zone keeps its name, music,
+ * enemy roster, elites and pickups; map positions (pixels) are squeezed onto the island, and the village
  * buildings only stand in the village. The portal (별문) is the only way between zones.
  */
 export type ZoneId = 'meadow' | 'village' | 'forest' | 'vale' | 'altar'
@@ -43,7 +43,7 @@ export interface Zone3d {
 /** Where she lands after stepping through the portal; the start of the meadow is the plaza. */
 export const PORTAL_ARRIVAL = { x: -8.4, z: 3.4 } as const
 export const PLAZA = { x: 0, z: 0 } as const
-/** Half-width of the island patch the 2D map is squeezed into. */
+/** Half-width of the island patch the zone map is squeezed into. */
 const SPREAD = 9.6
 const MAX_R = 10.6
 /** Foes never wake up right on top of her arrival. */
@@ -57,7 +57,7 @@ const MOODS: Record<ZoneId, Mood> = {
   altar: { fog: 0x55449a, sky: 0xd6c8ff, clear: 0x0d0a22 },
 }
 
-/** 2D map pixels → island metres (north stays north: 2D y down is +z). */
+/** Zone map pixels → island metres (north stays north: map y down is +z). */
 export function toIsland(zone: ZoneId, x: number, y: number): { x: number; z: number } {
   const def = ZONES[zone]
   let ix = (x / def.width - 0.5) * 2 * SPREAD
@@ -104,10 +104,10 @@ export interface Destination {
 const status = (save: SaveData, id: string) => save.quests[id]?.status ?? 'inactive'
 
 /**
- * Where the portal can take her from `from`, following the 2D story: the meadow opens once the
+ * Where the portal can take her from `from`, following the story: the meadow opens once the
  * tutorial slime sleeps, the forest after arriving in the village, the vale once Luna's dust
  * errand is done (or Kiki wants parts), the altar once the bloom quest is taken. The altar's
- * way home stays sealed while the bloom is awake, like the 2D boss seal.
+ * way home stays sealed while the bloom is awake, like a boss seal.
  */
 export function destinations(save: SaveData, from: ZoneId, bossAwake = false): Destination[] {
   if (from === 'meadow') {

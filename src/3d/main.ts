@@ -282,7 +282,6 @@ function enterZone(id: ZoneId, at: { x: number; z: number } = PORTAL_ARRIVAL): v
   combat.rebuildBodies()
   zonePlaces = placesFor(id)
   combat.places = zonePlaces
-  stage.setColliders(zonePlaces)
   townColliders = cameraColliders(zonePlaces)
   landmarks.setZone(id)
   setMood(zone.mood)
@@ -317,7 +316,6 @@ function enterSewer(seed = Math.floor(Math.random() * 1e9)): void {
     talk.close()
     combat.setRoster([])
     combat.places = []
-    stage.setColliders([])
     landmarks.group.visible = false
     stage.setWorld('sewer', SEWER_FOG)
     setMood({ fog: SEWER_FOG.color, sky: 0xe6d8ff, clear: SEWER_FOG.color })
@@ -397,7 +395,7 @@ function showResult(result: MutationResult): void {
   paintStats(game.save)
 }
 
-/** A dialogue just ended: run its 2D actions on the save, then any portal hop or ending. */
+/** A dialogue just ended: run its actions on the save, then any portal hop or ending. */
 function talkDone(actions: Action[], choice: TalkChoice | null, id: string | TalkDef): void {
   const out = game.run(actions)
   showResult(out.result)
@@ -406,8 +404,8 @@ function talkDone(actions: Action[], choice: TalkChoice | null, id: string | Tal
     float('+기운', hero.object.position.clone().setY(1.7), '#b8f0c8')
     audio.sfx('heal')
   }
-  if (out.openTinker) toast('총 재조정은 아직 2D 판 공방에서만 할 수 있어.', 'info')
-  if (out.openShop) toast('포포 상점은 아직 2D 판에만 있어.', 'info')
+  if (out.openTinker) toast('키키의 총 공방은 곧 문을 열어. 조금만 기다려 줘!', 'info')
+  if (out.openShop) toast('포포 상점은 곧 문을 열어. 조금만 기다려 줘!', 'info')
   game.persist(store)
   if (out.openQuests) {
     mode = 'menu'
@@ -633,7 +631,7 @@ function updateTalk(): void {
 
 const TIP_HEIGHT: Partial<Record<Place['kind'], number>> = { kiki: 1.75, luna: 1.95, board: 1.95, portal: 2.6 }
 const markAt = new Vector3()
-/** Quest markers (! new errand, ? ready to report) over the villagers, like the 2D game. */
+/** Quest markers (! new errand, ? ready to report) over the villagers. */
 function paintMarkers(): void {
   for (const npc of ['kiki', 'luna'] as const) {
     const el = document.getElementById(`mk-${npc}`)

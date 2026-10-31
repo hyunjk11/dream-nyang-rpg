@@ -1,30 +1,26 @@
 export interface Pad {
+  /** Virtual stick (touch), -1..1. */
   x: number
   y: number
+  /** Trigger held: left mouse (once the view is locked) or the touch fire button. */
   fire: boolean
-  dash: boolean
-  pointer: boolean
-  px: number
-  py: number
-  /** Fire came from a finger (attack button or a tap), so auto-aim may help. */
-  touchFire: boolean
-  /** Right mouse button held: dragging turns the camera instead of moving the aim. */
-  orbiting: boolean
 }
 
 const keys = new Set<string>()
 
-export const pad: Pad = { x: 0, y: 0, fire: false, dash: false, pointer: false, px: 0, py: 0, touchFire: false, orbiting: false }
+export const pad: Pad = { x: 0, y: 0, fire: false }
 
 let dashQueued = false
 let talkQueued = false
 
 /**
- * Shoulder-camera mode (the sewer): a click locks the pointer and mouse motion turns the view;
- * Esc (the browser) releases it. On touch, a drag on the right half of the screen looks around
- * and only the fire button shoots.
+ * Shoulder-camera input, shared by the town and the dungeon. A click locks the pointer and
+ * mouse motion turns the view; Esc (the browser) releases it. The click that takes the lock
+ * never fires, so grabbing the view doesn't waste a shot. On touch, a drag on the right part of
+ * the screen looks around and only the fire button shoots.
  */
 export const shoulder = {
+  /** World input armed (off on the title screen and while swapping worlds). */
   on: false,
   /** View turn handler: pixels moved and whether it came from a finger. */
   look: (_dx: number, _dy: number, _touch: boolean) => {},
@@ -33,22 +29,47 @@ export const shoulder = {
   },
 }
 
+/** The browser refused pointer lock (headless, iframes, old browsers): clicks fire directly. */
+let lockRefused = false
+/** Once a lock has worked, a later refusal (Chrome's re-lock cooldown after Esc) is temporary. */
+let everLocked = false
 let fireFinger = -1
 let lockedAt = 0
-document.addEventListener('pointerlockchange', () => {
-  lockedAt = performance.now()
-})
+const refuse = () => {
+  if (!everLocked) lockRefused = true
+}
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerlockchange', () => {
+    lockedAt = performance.now()
+    if (document.pointerLockElement) everLocked = true
+  })
+  document.addEventListener('pointerlockerror', refuse)
+}
 
-export function installInput(canvas: HTMLCanvasElement, orbit: (dx: number, dy: number) => void = () => {}): void {
-  // Right-drag turns the view; the browser menu would pop over the game.
+/**
+ * Decide what a left click on the world does: take the pointer lock (no shot), or fire.
+ * Pure so the rule is testable.
+ */
+export function clickAction(locked: boolean, refused: boolean): 'lock' | 'fire' {
+  return locked || refused ? 'fire' : 'lock'
+}
+
+function requestLock(canvas: HTMLCanvasElement): void {
+  if (!canvas.requestPointerLock) {
+    lockRefused = true
+    return
+  }
+  try {
+    const out = canvas.requestPointerLock() as Promise<void> | undefined
+    if (out && typeof out.catch === 'function') out.catch(refuse)
+  } catch {
+    refuse()
+  }
+}
+
+export function installInput(canvas: HTMLCanvasElement): void {
+  // The browser menu would pop over the game.
   canvas.addEventListener('contextmenu', (event) => event.preventDefault())
-  let orbitX = 0
-  let orbitY = 0
-  // Fingers on the canvas: a second one means pinch/turn the view, not shoot.
-  const touches = new Set<number>()
-  const lift = (event: PointerEvent) => touches.delete(event.pointerId)
-  canvas.addEventListener('pointerup', lift)
-  canvas.addEventListener('pointercancel', lift)
   window.addEventListener('keydown', (event) => {
     if (event.code === 'Space' || event.code.startsWith('Arrow')) event.preventDefault()
     keys.add(event.code)
@@ -59,71 +80,36 @@ export function installInput(canvas: HTMLCanvasElement, orbit: (dx: number, dy: 
   window.addEventListener('blur', () => {
     keys.clear()
     pad.fire = false
-    pad.orbiting = false
   })
   let lookFinger = -1
   let lookX = 0
   let lookY = 0
   canvas.addEventListener('pointerdown', (event) => {
-    if (shoulder.on) {
-      if (event.pointerType === 'mouse') {
-        if (!shoulder.locked) void Promise.resolve(canvas.requestPointerLock?.()).catch(() => {})
-        if (event.button === 0) pad.fire = true
-        pad.touchFire = false
-        return
-      }
-      // Fingers: the right half of the screen is the look pad (the stick and buttons sit on top).
-      if (event.clientX > window.innerWidth * 0.4 && lookFinger < 0) {
-        lookFinger = event.pointerId
-        lookX = event.clientX
-        lookY = event.clientY
-      }
+    if (!shoulder.on) return
+    if (event.pointerType === 'mouse') {
+      if (event.button !== 0) return
+      if (clickAction(shoulder.locked, lockRefused) === 'lock') requestLock(canvas)
+      else pad.fire = true
       return
     }
-    if (event.pointerType === 'mouse' && event.button === 2) {
-      // Keep the cursor (and so the aim) where it was; only the drag delta turns the camera.
-      pad.orbiting = true
-      orbitX = event.clientX
-      orbitY = event.clientY
-      canvas.setPointerCapture?.(event.pointerId)
-      return
+    // Fingers: the right part of the screen is the look pad (the stick and buttons sit on top).
+    if (event.clientX > window.innerWidth * 0.4 && lookFinger < 0) {
+      lookFinger = event.pointerId
+      lookX = event.clientX
+      lookY = event.clientY
     }
-    if (event.pointerType === 'touch') {
-      touches.add(event.pointerId)
-      if (touches.size >= 2) {
-        pad.fire = false
-        return
-      }
-    }
-    pad.pointer = true
-    if (event.button === 0) pad.fire = true
-    pad.touchFire = event.pointerType !== 'mouse'
-    pad.px = event.clientX
-    pad.py = event.clientY
   })
   window.addEventListener('pointermove', (event) => {
-    if (shoulder.on) {
-      // Browsers report one bogus jump right after the lock engages; drop it and any absurd spike.
-      if (event.pointerType === 'mouse' && shoulder.locked && performance.now() - lockedAt > 90) {
-        if (Math.abs(event.movementX) < 300 && Math.abs(event.movementY) < 300) shoulder.look(event.movementX, event.movementY, false)
+    if (!shoulder.on) return
+    // Browsers report one bogus jump right after the lock engages; drop it and any absurd spike.
+    if (event.pointerType === 'mouse') {
+      if (shoulder.locked && performance.now() - lockedAt > 90 && Math.abs(event.movementX) < 300 && Math.abs(event.movementY) < 300) {
+        shoulder.look(event.movementX, event.movementY, false)
       }
-      else if (event.pointerId === lookFinger) {
-        shoulder.look(event.clientX - lookX, event.clientY - lookY, true)
-        lookX = event.clientX
-        lookY = event.clientY
-      }
-      return
-    }
-    if (pad.orbiting) {
-      orbit(event.clientX - orbitX, event.clientY - orbitY)
-      orbitX = event.clientX
-      orbitY = event.clientY
-      return
-    }
-    if (event.target === canvas || pad.fire) {
-      pad.pointer = true
-      pad.px = event.clientX
-      pad.py = event.clientY
+    } else if (event.pointerId === lookFinger) {
+      shoulder.look(event.clientX - lookX, event.clientY - lookY, true)
+      lookX = event.clientX
+      lookY = event.clientY
     }
   })
   window.addEventListener('pointerup', (event) => {
@@ -131,7 +117,7 @@ export function installInput(canvas: HTMLCanvasElement, orbit: (dx: number, dy: 
       lookFinger = -1
       return
     }
-    if (shoulder.on && event.pointerType !== 'mouse') {
+    if (event.pointerType !== 'mouse') {
       // Lifting the look finger never stops fire; the fire button's own finger does.
       if (event.pointerId === fireFinger) {
         fireFinger = -1
@@ -139,14 +125,7 @@ export function installInput(canvas: HTMLCanvasElement, orbit: (dx: number, dy: 
       }
       return
     }
-    if (event.pointerType === 'mouse' && event.button === 2) {
-      pad.orbiting = false
-      // Resume aiming from wherever the cursor ended up; her turn-rate cap smooths it.
-      pad.px = event.clientX
-      pad.py = event.clientY
-      return
-    }
-    pad.fire = false
+    if (event.button === 0) pad.fire = false
   })
   const dash = document.getElementById('dash')
   dash?.addEventListener('pointerdown', (event) => {
@@ -158,7 +137,6 @@ export function installInput(canvas: HTMLCanvasElement, orbit: (dx: number, dy: 
     event.preventDefault()
     fireFinger = event.pointerId
     pad.fire = true
-    pad.touchFire = true
   })
   window.addEventListener('pointercancel', (event) => {
     if (event.pointerId === lookFinger) lookFinger = -1

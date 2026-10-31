@@ -7,7 +7,7 @@ import type { FoeKind } from './foes'
 import type { ZoneId } from './zones3d'
 import { ZONE_IDS } from './zones3d'
 
-/** Its own slot: the 3D slice never overwrites the 2D game's save. */
+/** Save slot (kept from the 3D test build so existing saves still load). */
 export const SAVE_KEY_3D = 'dream-nyang-rpg-3d-save-v1'
 
 export interface Storageish {
@@ -29,7 +29,7 @@ export function killLoot(zone: ZoneId, tags: readonly string[], elite: string | 
 }
 
 /**
- * The game loop's state without any DOM or three.js: the 2D save shape and quest rules
+ * The game loop's state without any DOM or three.js: the save shape and quest rules
  * (src/sim), driven by 3D events — kills, pickups, portal hops and dialogue actions.
  */
 export class GameState {

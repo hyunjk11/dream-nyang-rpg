@@ -1,9 +1,8 @@
 /**
- * Byeolha's locomotion, knockback and camera-orbit rules. Pure math (no Three.js) so the feel is
+ * Byeolha's locomotion, and knockback rules. Pure math (no Three.js) so the feel is
  * unit-tested. All smoothing is exponential (1 - e^-λdt), so it behaves the same at 30, 60 or 144 FPS.
  */
 import { wrapAngle } from './feel'
-import { CAMERA_PITCH_MAX, CAMERA_PITCH_MIN } from './camera'
 
 export const MOVE = {
   walk: 3.15,
@@ -46,21 +45,6 @@ export const KNOCK = {
   decay: 9,
   /** Share of her own steering removed while the push is strong, so input doesn't fight it. */
   controlLoss: 0.6,
-}
-
-export const ORBIT = {
-  /** Right-drag: radians per pixel, and degrees of pitch per pixel. */
-  yawPerPx: 0.0055,
-  pitchPerPx: 0.12,
-  /** Down to a low behind-her view; up to the steep map-like angle. */
-  pitchMin: CAMERA_PITCH_MIN,
-  pitchMax: CAMERA_PITCH_MAX,
-  /** Camera follows the dragged target with this λ, so press/release never snaps. */
-  lambda: 14,
-  /** Two-finger drag on touch. */
-  touchYawPerPx: 0.008,
-  /** Two fingers sliding up/down together tilt the view, degrees per pixel. */
-  touchPitchPerPx: 0.18,
 }
 
 export function smoothstep(a: number, b: number, x: number): number {
@@ -121,31 +105,4 @@ export function knockDecay(dt: number, decay = KNOCK.decay): number {
 /** Total distance a push of `speed` travels before it dies out. */
 export function knockDistance(speed = KNOCK.speed, decay = KNOCK.decay): number {
   return speed / decay
-}
-
-export interface OrbitState {
-  yaw: number
-  pitch: number
-  yawTarget: number
-  pitchTarget: number
-}
-
-export function createOrbit(yaw: number, pitch: number): OrbitState {
-  return { yaw, pitch, yawTarget: yaw, pitchTarget: pitch }
-}
-
-/**
- * Drag by (dx, dy) pixels. Dragging right turns the view right (mouse-look), dragging down tilts
- * the view more top-down, dragging up lowers it toward a behind-her angle. Pitch is clamped
- * between the shoulder view and the steep map view.
- */
-export function orbitDrag(state: OrbitState, dx: number, dy: number, yawPerPx = ORBIT.yawPerPx, pitchPerPx = ORBIT.pitchPerPx): void {
-  state.yawTarget -= dx * yawPerPx
-  state.pitchTarget = Math.max(ORBIT.pitchMin, Math.min(ORBIT.pitchMax, state.pitchTarget + dy * pitchPerPx))
-}
-
-export function orbitStep(state: OrbitState, dt: number): void {
-  const k = 1 - Math.exp(-ORBIT.lambda * dt)
-  state.yaw += (state.yawTarget - state.yaw) * k
-  state.pitch += (state.pitchTarget - state.pitch) * k
 }

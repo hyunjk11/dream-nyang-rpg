@@ -40,7 +40,7 @@ export function finishActions(id: string | TalkDef, choice: TalkChoice | null): 
   return [...(lookup(id)?.actions ?? []), ...(choice?.actions ?? [])]
 }
 
-/** The 3D slice's dialogue box: speaker, portrait from the 2D art, line text and choices. */
+/** The 3D slice's dialogue box: speaker, painted portrait, line text and choices. */
 export class TalkBox {
   private def: TalkDef | null = null
   private id: string | TalkDef = ''

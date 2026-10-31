@@ -11,7 +11,6 @@ import {
   Scene,
   SphereGeometry,
   Vector2,
-  Vector3,
   WebGLRenderTarget,
   WebGLRenderer,
 } from 'three'
@@ -20,12 +19,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { LOOK } from './look'
-import { CAMERA_DISTANCE, CAMERA_FOV, CAMERA_PITCH_DEG, CAMERA_YAW, cameraOffset, clampCameraDistance, focusPoint } from './feel'
-import { boomLength, cameraColliders, cameraRig, wheelStep, type CameraCollider } from './camera'
-import type { Place } from './places'
 import { buildIsland } from './decor'
-import { ORBIT, createOrbit, orbitDrag, orbitStep } from './motion'
-import { FADE_FOCUS, toon } from './materials'
+import { toon } from './materials'
+import { TPS } from './tps'
 
 export interface Stage {
   scene: Scene
@@ -33,17 +29,8 @@ export interface Stage {
   renderer: WebGLRenderer
   render: () => void
   resize: () => void
-  follow: (px: number, py: number, pz: number, aimX: number, aimZ: number, shake: number) => void
   mobile: boolean
   touch: boolean
-  /** Rotate the view by a drag of (dx, dy) pixels (right-drag on desktop, two fingers on touch). */
-  orbit: (dx: number, dy: number, touch?: boolean) => void
-  /** Live view pitch in degrees (smoothed). */
-  readonly pitch: number
-  /** Landmarks the camera must not pass through in this zone. */
-  setColliders: (places: readonly Place[]) => void
-  /** Current (smoothed) camera yaw, for camera-relative movement. */
-  readonly yaw: number
   /** Island hub or the sewer dungeon: the island, sky stars, sun shadows and fog swap out. */
   setWorld: (world: 'island' | 'sewer', fog?: { color: number; near: number; far: number }) => void
   /** Draw calls in the last rendered frame (QA). */
@@ -100,27 +87,8 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   const stars = starField()
   scene.add(stars)
 
-  const camera = new PerspectiveCamera(CAMERA_FOV, window.innerWidth / window.innerHeight, 0.1, 80)
-  const focus = new Vector3()
-  const desired = new Vector3()
-  // Wheel zoom; the real boom length also shortens as the view drops (see cameraRig).
-  let zoom = CAMERA_DISTANCE
-  let currentZoom = zoom
-  let colliders: CameraCollider[] = []
-  let boom = -1
-  let lastFollow = 0
-  let focusReady = false
-  let leadX = 0
-  let leadZ = 0
-  const view = createOrbit(CAMERA_YAW, CAMERA_PITCH_DEG)
-  let shakeT = 0
-  bindZoom(canvas, (dir) => {
-    const next = wheelStep({ zoom, pitch: view.pitchTarget }, dir)
-    zoom = next.zoom
-    view.pitchTarget = next.pitch
-  }, (delta) => {
-    zoom = clampCameraDistance(zoom + delta)
-  }, (dx, dy) => orbitDrag(view, dx, dy, ORBIT.touchYawPerPx, ORBIT.touchPitchPerPx))
+  // Placed every frame by the shared ShoulderRig (shooter.ts); town and dungeon use the same one.
+  const camera = new PerspectiveCamera(TPS.fov, window.innerWidth / window.innerHeight, 0.1, 80)
 
   let composer: EffectComposer | null = null
   if (!mobile) {
@@ -165,22 +133,6 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
         fog.near = look.near
         fog.far = look.far
       }
-      if (!sewer) {
-        camera.fov = CAMERA_FOV
-        camera.updateProjectionMatrix()
-        focusReady = false
-        boom = -1
-      }
-    },
-    get yaw() {
-      return view.yaw
-    },
-    get pitch() {
-      return view.pitch
-    },
-    orbit: (dx, dy, touch) => orbitDrag(view, dx, dy, touch ? ORBIT.touchYawPerPx : ORBIT.yawPerPx, touch ? ORBIT.touchPitchPerPx : ORBIT.pitchPerPx),
-    setColliders: (places) => {
-      colliders = cameraColliders(places)
     },
     scene,
     camera,
@@ -196,90 +148,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       else renderer.render(scene, camera)
       calls = renderer.info.render.calls
     },
-    follow: (px, py, pz, aimX, aimZ, shake) => {
-      const now = performance.now()
-      const dt = Math.min(0.05, lastFollow ? (now - lastFollow) / 1000 : 1)
-      lastFollow = now
-      // The aim lead gets its own slow filter: flicking the mouse across her used to swing the
-      // whole view 1.8 m in about a third of a second, which read as the screen lurching.
-      const lead = focusPoint(0, 0, 0, aimX, aimZ)
-      const kl = 1 - Math.exp(-3.5 * dt)
-      leadX += (lead.x - leadX) * kl
-      leadZ += (lead.z - leadZ) * kl
-      const lookX = px + leadX
-      // Low views look a little higher on her, so she isn't tiny and the horizon shows.
-      const rig = cameraRig(view.pitch, currentZoom)
-      const lookY = py + rig.lookY
-      const lookZ = pz + leadZ
-      // Frame-rate independent follow on her body.
-      const k = 1 - Math.exp(-10 * dt)
-      if (!focusReady) focus.set(lookX, lookY, lookZ)
-      focusReady = true
-      focus.x += (lookX - focus.x) * k
-      focus.y += (lookY - focus.y) * k
-      focus.z += (lookZ - focus.z) * k
-      currentZoom += (zoom - currentZoom) * (1 - Math.exp(-10 * dt))
-      orbitStep(view, dt)
-      const length = cameraRig(view.pitch, currentZoom).distance
-      const offset = cameraOffset(view.yaw, view.pitch, length)
-      desired.set(focus.x + offset.x, focus.y + offset.y, focus.z + offset.z)
-      // Pull the camera in front of a house, tree or the portal behind her: in fast so the lens
-      // never shows the inside of a wall, back out slowly so it doesn't pump.
-      const allowed = boomLength(focus.x, focus.y, focus.z, desired.x, desired.y, desired.z, colliders)
-      if (boom < 0) boom = allowed
-      boom += (allowed - boom) * (1 - Math.exp(-(allowed < boom ? 30 : 4) * dt))
-      boom = Math.min(boom, length)
-      camera.position.copy(focus).addScaledVector(desired.sub(focus), boom / length)
-      // Smooth shake (a few summed sines) instead of a fresh random offset each frame, which
-      // looked like the picture skipping.
-      shakeT += dt
-      if (shake > 0) {
-        const sx = Math.sin(shakeT * 61) * 0.6 + Math.sin(shakeT * 37 + 1.3) * 0.4
-        const sy = Math.sin(shakeT * 53 + 0.7) * 0.6 + Math.sin(shakeT * 29 + 2.1) * 0.4
-        camera.position.x += sx * shake * 0.5
-        camera.position.y += sy * shake * 0.22
-      }
-      camera.lookAt(focus)
-      FADE_FOCUS.value.copy(focus)
-    },
   }
-}
-
-function bindZoom(canvas: HTMLCanvasElement, onWheel: (dir: number) => void, onDelta: (delta: number) => void, onTwist: (dx: number, dy: number) => void): void {
-  canvas.addEventListener('wheel', (event) => {
-    event.preventDefault()
-    onWheel(Math.sign(event.deltaY))
-  }, { passive: false })
-  const pointers = new Map<number, { x: number; y: number }>()
-  let pinch = 0
-  let midX = 0
-  let midY = 0
-  canvas.addEventListener('pointerdown', (event) => {
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
-  })
-  canvas.addEventListener('pointermove', (event) => {
-    if (!pointers.has(event.pointerId)) return
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
-    if (pointers.size < 2) return
-    const [a, b] = [...pointers.values()]
-    const dist = Math.hypot(a.x - b.x, a.y - b.y)
-    const mid = (a.x + b.x) / 2
-    const midV = (a.y + b.y) / 2
-    if (pinch > 0) {
-      onDelta((pinch - dist) * 0.012)
-      // Two fingers sliding together: sideways turns the view, up/down tilts it.
-      onTwist(mid - midX, midV - midY)
-    }
-    pinch = dist
-    midX = mid
-    midY = midV
-  })
-  const end = (event: PointerEvent) => {
-    pointers.delete(event.pointerId)
-    if (pointers.size < 2) pinch = 0
-  }
-  canvas.addEventListener('pointerup', end)
-  canvas.addEventListener('pointercancel', end)
 }
 
 function starField(): InstancedMesh {

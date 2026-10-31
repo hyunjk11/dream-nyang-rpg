@@ -4,7 +4,7 @@ import type { SaveData } from '../sim/types'
 
 const $ = (id: string) => document.getElementById(id)
 
-/** Title card over the 2D key art: new game, continue, and a way back to the 2D game. */
+/** Title card over the key art: new game and continue. */
 export function showTitle(base: string, canContinue: boolean, handlers: { fresh: () => void; resume: () => void }): void {
   const layer = $('title')
   if (!layer) return
@@ -32,7 +32,7 @@ export function hideTitle(): void {
   $('title')?.classList.add('hidden')
 }
 
-/** The 2D prologue: three painted slides, then she wakes on the island. */
+/** The prologue: three painted slides, then she wakes on the island. */
 export function playIntro(base: string, done: () => void): void {
   const layer = $('intro')
   const text = $('intro-text')
@@ -136,7 +136,7 @@ export function fadeThrough(swap: () => void): Promise<void> {
   })
 }
 
-/** The board's quest log (the 2D open-quests action). */
+/** The board's quest log (the open-quests action). */
 export function openQuestLog(save: SaveData, onClose: () => void): void {
   const el = $('quest-log')
   const body = $('quest-body')

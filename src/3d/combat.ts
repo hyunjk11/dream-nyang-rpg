@@ -47,9 +47,9 @@ export interface Foe {
   yaw: number
   stride: number
   bar: { group: Group; fill: Mesh }
-  /** Quest tags from the 2D roster ('wild', 'tutorial', 'boss'). */
+  /** Quest tags from the zone roster ('wild', 'tutorial', 'boss'). */
   tags: string[]
-  /** 2D elite affix: a bigger, tougher foe that always carries a toy part. */
+  /** Elite affix: a bigger, tougher foe that always carries a toy part. */
   elite?: string
   /** Zone foes sleep for good once beaten (until she comes back to the zone). */
   once: boolean

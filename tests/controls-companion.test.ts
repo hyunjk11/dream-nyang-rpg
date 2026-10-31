@@ -1,42 +1,10 @@
-import { PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { cameraOffset, cameraRelativeWish } from '../src/3d/feel'
 import { CAT, catSlot, createCat, stepCat } from '../src/sim/companion'
+import { createView, pose } from '../src/3d/tps'
 
-function screenOf(x: number, z: number): { x: number; y: number } {
-  const offset = cameraOffset()
-  const camera = new PerspectiveCamera(42, 16 / 9, 0.1, 100)
-  camera.position.set(offset.x, offset.y, offset.z)
-  camera.lookAt(0, 0, 0)
-  camera.updateMatrixWorld()
-  const p = new Vector3(x, 0, z).project(camera)
-  return { x: p.x, y: p.y }
-}
-
-describe('방향키는 화면 기준', () => {
-  const cases: [string, number, number, number, number][] = [
-    ['W/위', 0, 1, 0, 1],
-    ['S/아래', 0, -1, 0, -1],
-    ['A/왼쪽', -1, 0, -1, 0],
-    ['D/오른쪽', 1, 0, 1, 0],
-  ]
-  for (const [name, ax, ay, sx, sy] of cases) {
-    it(`${name} 는 화면에서 그 방향으로 간다`, () => {
-      const wish = cameraRelativeWish(ax, ay)
-      const s = screenOf(wish.x, wish.z)
-      if (sx !== 0) {
-        expect(Math.sign(s.x)).toBe(sx)
-        expect(Math.abs(s.y)).toBeLessThan(Math.abs(s.x) * 0.2)
-      }
-      if (sy !== 0) {
-        expect(Math.sign(s.y)).toBe(sy)
-        expect(Math.abs(s.x)).toBeLessThan(Math.abs(s.y) * 0.2)
-      }
-    })
-  }
-})
-
-const cam = cameraOffset()
+// Where the shoulder camera sits relative to her (view yaw 0.62), as main.ts hands it to Mochi.
+const lens = pose(createView(0.62, 0.1), null, 0, 0, 0, 1 / 60)
+const cam = { x: lens.x, z: lens.z }
 
 function run(cat = createCat(), seconds: number, hero: (t: number) => { x: number; z: number; vx: number; vz: number }) {
   const dt = 1 / 60

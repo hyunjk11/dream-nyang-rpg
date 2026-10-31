@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { ASSIST, SENS, TPS, assistPick, clampSens, createView, perPixel, pose, rayCapsule, type AimTarget } from '../src/3d/tps'
 import { ShoulderRig, type AimWorld } from '../src/3d/shooter'
 import { DIFFICULTY, waveSize } from '../src/3d/difficulty'
+import { clickAction } from '../src/3d/input'
+import { cameraColliders } from '../src/3d/camera'
+import { placesFor } from '../src/3d/places'
 import { waveFor, REST, LIVE_CAP } from '../src/3d/dungeon/waves'
 import { HORDE, Horde } from '../src/3d/dungeon/horde'
 import { BOSS } from '../src/3d/dungeon/boss'
@@ -110,6 +113,24 @@ describe('마을·던전 공용 숄더 조준', () => {
       d.normalize()
       const hit = h.raycast(tip.x, tip.y, tip.z, d.x, d.y, d.z, len + 0.5)
       expect(hit?.foe).toBe(f)
+    }
+  })
+
+  it('시점을 잡는 첫 클릭은 쏘지 않는다 (잠긴 뒤부터 발사)', () => {
+    expect(clickAction(false, false)).toBe('lock')
+    expect(clickAction(true, false)).toBe('fire')
+    // Pointer lock refused (headless, iframe): clicks fire straight away so the game stays playable.
+    expect(clickAction(false, true)).toBe('fire')
+  })
+
+  it('마을 랜드마크는 카메라·조준이 통과하지 못하는 충돌체를 갖고, 별문 가운데는 비어 있다', () => {
+    const places = placesFor('village')
+    const cols = cameraColliders(places)
+    expect(cols.length).toBeGreaterThanOrEqual(places.length)
+    const portal = places.find((p) => p.kind === 'portal')
+    if (portal) {
+      const ground = cols.filter((c) => c.y0 === 0 && Math.hypot(c.x - portal.x, c.z - portal.z) < 0.01)
+      expect(ground).toHaveLength(0)
     }
   })
 
