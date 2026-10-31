@@ -65,7 +65,7 @@ const DIRS = [
   [0, -1],
 ] as const
 
-export function generateMaze(seed: number, cellsW = 9, cellsH = 9): Maze {
+export function generateMaze(seed: number, cellsW = 9, cellsH = 9, bossSize = 5): Maze {
   const rand = rng(seed)
   const w = cellsW * 2 + 1
   const h = cellsH * 2 + 1
@@ -122,11 +122,12 @@ export function generateMaze(seed: number, cellsW = 9, cellsH = 9): Maze {
   const start = { x: 2, y: 2 }
   // Boss chamber round the tile farthest from the start.
   const far = farthest(tiles, w, h, start.x, start.y)
-  const bw = 5
-  const bh = 5
+  const bw = bossSize
+  const bh = bossSize
+  const half = Math.floor(bossSize / 2)
   const bossRoom: Rect = {
-    x: clamp(far.x - 2, 1, w - 1 - bw),
-    y: clamp(far.y - 2, 1, h - 1 - bh),
+    x: clamp(far.x - half, 1, w - 1 - bw),
+    y: clamp(far.y - half, 1, h - 1 - bh),
     w: bw,
     h: bh,
   }

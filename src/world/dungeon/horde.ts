@@ -195,6 +195,8 @@ export class Horde {
   /** Kills this run, by kind and elites. */
   kills = 0
   eliteKills = 0
+  /** Depth/floor multipliers on hp and damage (1 = depth 1, floor 1). */
+  scale = { hp: 1, damage: 1 }
   private readonly maze: Maze
   private nextId = 1
   private frame = 0
@@ -229,7 +231,7 @@ export class Horde {
   spawn(kind: HordeKind, x: number, z: number, elite = false, dx = 0, dz = 0): HordeFoe | null {
     if (this.foes.length >= HORDE_CAP) return null
     const s = HORDE[kind]
-    const hp = Math.round(s.hp * DIFFICULTY.horde.hp * (elite ? ELITE.hp : 1))
+    const hp = Math.round(s.hp * DIFFICULTY.horde.hp * this.scale.hp * (elite ? ELITE.hp : 1))
     const foe: HordeFoe = {
       id: this.nextId++,
       kind,
@@ -243,7 +245,7 @@ export class Horde {
       maxHp: hp,
       radius: s.radius * (elite ? ELITE.scale : 1),
       speed: s.speed * DIFFICULTY.horde.speed * (elite ? ELITE.speed : 1) * (0.88 + ((this.nextId * 0.618) % 1) * 0.24),
-      damage: Math.max(1, Math.round(s.damage * DIFFICULTY.horde.damage * (elite ? ELITE.damage : 1))),
+      damage: Math.max(1, Math.round(s.damage * DIFFICULTY.horde.damage * this.scale.damage * (elite ? ELITE.damage : 1))),
       age: 0,
       dying: 0,
       hurt: 0,

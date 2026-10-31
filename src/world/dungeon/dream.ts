@@ -9,6 +9,7 @@ import {
   ExtrudeGeometry,
   Group,
   InstancedMesh,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshToonMaterial,
@@ -308,7 +309,7 @@ export class Decor {
   private water(): Mesh {
     const m = this.maze
     const boss = m.bossRoom
-    const fromBoss = distances(m.tiles, m.w, m.h, boss.x + 2, boss.y + 2)
+    const fromBoss = distances(m.tiles, m.w, m.h, boss.x + Math.floor(boss.w / 2), boss.y + Math.floor(boss.h / 2))
     const pos: number[] = []
     const phase: number[] = []
     const tint: number[] = []
@@ -529,7 +530,7 @@ export class Decor {
     })
     // A great moon hangs over the boss chamber.
     const b = m.bossRoom
-    const c = tileCentre(m, b.x + 2, b.y + 2)
+    const c = tileCentre(m, b.x + Math.floor(b.w / 2), b.y + Math.floor(b.h / 2))
     o.position.set(c.x, CEILING - 0.6, c.z)
     o.rotation.set(-Math.PI / 2, 0, 0.7)
     o.scale.setScalar(4.2)
@@ -576,6 +577,24 @@ export class Decor {
     return pts
   }
 
+  /** Plug a nest pipe: the dark hole closes and the ring greys out. */
+  sealNest(i: number): void {
+    const [rings, holes] = this.nestMeshes
+    if (!rings || !holes || i < 0 || i >= this.maze.nests.length) return
+    const o = new Object3D()
+    const mat = new Matrix4()
+    holes.getMatrixAt(i, mat)
+    mat.decompose(o.position, o.quaternion, o.scale)
+    o.scale.setScalar(0.001)
+    o.updateMatrix()
+    holes.setMatrixAt(i, o.matrix)
+    holes.instanceMatrix.needsUpdate = true
+    rings.setColorAt(i, new Color(0x8d8798))
+    if (rings.instanceColor) rings.instanceColor.needsUpdate = true
+  }
+
+  private nestMeshes: InstancedMesh[] = []
+
   private nestMouths(): Mesh[] {
     const m = this.maze
     const rings = new InstancedMesh(new TorusGeometry(0.95, 0.2, 10, 24), new MeshToonMaterial({ color: 0xffffff, gradientMap: toonGradient(), map: stripeTexture() }), Math.max(1, m.nests.length))
@@ -602,6 +621,7 @@ export class Decor {
     holes.count = m.nests.length
     rings.name = 'sewer-nest-pipes'
     holes.name = 'sewer-nest-holes'
+    this.nestMeshes = [rings, holes]
     return [rings, holes]
   }
 

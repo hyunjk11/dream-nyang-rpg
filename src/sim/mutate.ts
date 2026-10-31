@@ -45,6 +45,7 @@ export function freshSave(settings = DEFAULT_SETTINGS): SaveData {
     zoneId: 'meadow',
     spawn: 'default',
     settings: { ...settings },
+    delve: { unlocked: 1, cleared: 0, checkpoint: null, runs: 0 },
   }
   const gun = makeItem('gun_water', 'common', () => 0.2, 1)
   addItem(save, gun, true)

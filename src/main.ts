@@ -25,6 +25,8 @@ import { Color, Fog, HemisphereLight } from 'three'
 import type { Action, MutationResult } from './sim/types'
 import { Vfx } from './core/vfx'
 import type { DungeonRun } from './world/dungeon/run'
+import { Delve, portalChoices, type DelveEnd, type DelveSummary, type FloorPlan } from './sim/delve'
+import { showSummary } from './ui/summary'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -59,8 +61,12 @@ let mode: 'title' | 'intro' | 'play' | 'menu' = 'title'
 let zonePlaces: readonly Place[] = placesFor('meadow')
 let saveClock = 0
 let travelling = false
-/** The sewer run while she is down there; null on the island hub. */
+/** The sewer floor while she is down there; null on the island hub. */
 let run: DungeonRun | null = null
+/** The whole trip (floors, kills, run gold, loot) while she is down there. */
+let delve: Delve | null = null
+/** Boss of this trip beaten: the depth it opened (0 = none). Set the moment it falls. */
+let delveUnlocked = -1
 /** The sewer lives in its own chunk: fetched (with its horde art) while the title shows, awaited on entry. */
 let dungeonModule: Promise<typeof import('./world/dungeon/run')> | null = null
 function loadDungeon(): Promise<typeof import('./world/dungeon/run')> {
@@ -74,7 +80,8 @@ const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · �
 /** Same controls everywhere now, so one hint; it fades after a few seconds like the sewer's. */
 function showHint(): void {
   if (!hint) return
-  hint.textContent = stage.touch ? TPS_HINT_TOUCH : TPS_HINT_MOUSE
+  const sewer = run ? (stage.touch ? ' · 귀환 버튼' : ' · T 귀환') : ''
+  hint.textContent = (stage.touch ? TPS_HINT_TOUCH : TPS_HINT_MOUSE) + sewer
   hint.classList.remove('fade')
   void hint.offsetWidth
   hint.classList.add('fade')
@@ -206,7 +213,7 @@ document.getElementById('retry')?.addEventListener('click', () => restart())
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get places() { return zonePlaces }, enterSewer, leaveSewer } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk } })
 
 void bootGame()
 
@@ -312,44 +319,35 @@ function enterZone(id: ZoneId, at: { x: number; z: number } = PORTAL_ARRIVAL): v
   if (id === 'altar' && !game.save.flags.bossIntro && combat.bossAwake) window.setTimeout(() => talk.start('boss_intro'), 900)
 }
 
-/** Down the portal into a fresh, seeded sewer maze (Hellgate-style shoulder camera). */
-function enterSewer(seed = Math.floor(Math.random() * 1e9)): void {
+/**
+ * Down the portal: start a trip at `depth` (from floor `floor`, the checkpoint when resuming).
+ * A bare number (old debug hook) is treated as a maze seed on depth 1, floor 1.
+ */
+function enterSewer(depth = 1, floor = 1, seed?: number): void {
   if (run || travelling) return
+  const trip = Delve.start(game.save, depth, floor)
+  if (!trip) {
+    toast('아직 열리지 않은 깊이야. 앞 깊이의 보스를 먼저 쓰러뜨려 줘.', 'info')
+    return
+  }
   travelling = true
   audio.sfx('windup', 0.7)
-  void loadDungeon().then(({ DungeonRun, SEWER_FOG }) => fadeThrough(() => {
+  void loadDungeon().then((mod) => fadeThrough(() => {
     talk.close()
     combat.setRoster([])
     combat.places = []
     landmarks.group.visible = false
-    stage.setWorld('sewer', SEWER_FOG)
-    setMood({ fog: SEWER_FOG.color, sky: 0xe6d8ff, clear: SEWER_FOG.color })
+    stage.setWorld('sewer', mod.SEWER_FOG)
+    setMood({ fog: mod.SEWER_FOG.color, sky: 0xe6d8ff, clear: mod.SEWER_FOG.color })
     zonePlaces = []
-    run = new DungeonRun(
-      {
-        scene: stage.scene,
-        camera: stage.camera,
-        hero,
-        mochi,
-        vfx,
-        sfx: (cue, gain) => audio.sfx(cue, gain),
-        steps: footsteps,
-        leave: () => leaveSewer(),
-        hud: crosshair?.parentElement ?? null,
-        lights: stage.touch ? 2 : 4,
-        hurt: (amount, from) => sewerHurt(amount, from),
-        banner: (title, sub) => zoneBanner(title, sub),
-        gun: (cue, gain, pitch) => gunSfx(cue, gain, pitch),
-        hitStop: (seconds) => {
-          combat.hitStop = Math.max(combat.hitStop, seconds)
-        },
-        shooter,
-      },
-      seed,
-    )
+    delve = trip
+    delveUnlocked = -1
+    hero.hp = hero.maxHp
+    game.persist(store)
+    const plan = trip.plan
+    buildFloor(mod, seed === undefined ? plan : { ...plan, seed })
     document.body.classList.add('sewer')
     showHint()
-    zoneBanner('꿈 하수도 미궁', '별빛 물길 아래, 꿈을 갉는 무리가 몰려온다')
   }))
     .catch(() => toast('하수도로 가는 길을 불러오지 못했어. 잠시 뒤 다시 해 줘.', 'info'))
     .finally(() => {
@@ -357,11 +355,82 @@ function enterSewer(seed = Math.floor(Math.random() * 1e9)): void {
     })
 }
 
-/** Back up to the island hub (the village square). */
-function leaveSewer(): void {
+/** One floor of the trip: a fresh DungeonRun wired to the delve. */
+function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan): void {
+  run = new mod.DungeonRun(
+    {
+      scene: stage.scene,
+      camera: stage.camera,
+      hero,
+      mochi,
+      vfx,
+      sfx: (cue, gain) => audio.sfx(cue, gain),
+      steps: footsteps,
+      leave: (why) => leaveSewer(why),
+      stairs: () => nextFloor(),
+      kill: (elite) => delve?.kill(elite),
+      pickup: (drop) => {
+        const r = delve ? delve.pickup(game.save, drop) : { heal: 0, text: '' }
+        if (drop.kind === 'item') audio.sfx('quest')
+        return r
+      },
+      bossDown: () => {
+        if (!delve) return
+        delveUnlocked = delve.bossCleared(game.save)
+        game.persist(store)
+      },
+      runGold: () => delve?.gold ?? 0,
+      float: (text, at, color) => float(text, at, color),
+      hud: crosshair?.parentElement ?? null,
+      lights: stage.touch ? 2 : 4,
+      hurt: (amount, from) => sewerHurt(amount, from),
+      banner: (title, sub) => zoneBanner(title, sub),
+      gun: (cue, gain, pitch) => gunSfx(cue, gain, pitch),
+      hitStop: (seconds) => {
+        combat.hitStop = Math.max(combat.hitStop, seconds)
+      },
+      shooter,
+    },
+    plan,
+  )
+}
+
+/** Stairs portal: on to the next floor (checkpoint saved there). */
+function nextFloor(): void {
+  if (!run || !delve || travelling || delve.onBoss) return
+  travelling = true
+  audio.sfx('windup', 0.8)
+  const trip = delve
+  void loadDungeon().then((mod) => fadeThrough(() => {
+    run?.dispose()
+    run = null
+    const plan = trip.nextFloor(game.save)
+    game.persist(store)
+    buildFloor(mod, plan)
+  })).finally(() => {
+    travelling = false
+  })
+}
+
+/** Close the trip: bank run gold (a fall drops some), save, and queue the summary card. */
+function endDelve(end: DelveEnd): DelveSummary | null {
+  if (!delve) return null
+  const trip = delve
+  delve = null
+  // Beating the boss counts even if she walks home through the start portal afterwards.
+  const how: DelveEnd = delveUnlocked >= 0 && end !== 'down' ? 'clear' : end
+  const sum = trip.finish(game.save, how, Math.max(0, delveUnlocked))
+  delveUnlocked = -1
+  game.persist(store)
+  return sum
+}
+
+/** Back up to the island hub (the village square), then the run summary. */
+function leaveSewer(why: DelveEnd = 'recall'): void {
   if (!run || travelling) return
   travelling = true
   audio.sfx('windup', 0.7)
+  const sum = endDelve(why)
   void fadeThrough(() => {
     run?.dispose()
     run = null
@@ -373,8 +442,18 @@ function leaveSewer(): void {
     showHint()
   }).then(() => {
     travelling = false
+    if (!sum) return
+    mode = 'menu'
+    releaseLook()
+    if (import.meta.env.DEV) lastSummary = sum
+    audio.sfx(sum.end === 'down' ? 'ui' : 'quest')
+    showSummary(sum, () => {
+      mode = 'play'
+    })
   })
 }
+/** Last summary shown (dev QA hook). */
+let lastSummary: DelveSummary | null = null
 
 function travel(to: ZoneId): void {
   if (travelling) return
@@ -421,7 +500,9 @@ function talkDone(actions: Action[], choice: TalkChoice | null, id: string | Tal
       mode = 'play'
     })
   }
-  if (choice?.go === 'sewer') enterSewer()
+  const dive = choice?.go?.match(/^sewer:(\d+):(\d+)$/)
+  if (dive) enterSewer(Number(dive[1]), Number(dive[2]))
+  else if (choice?.go === 'sewer') enterSewer()
   else if (choice?.go) travel(choice.go as ZoneId)
   if (id === 'luna_bloom_done' && game.finished && !game.save.flags.ending) {
     game.save.flags.ending = true
@@ -440,7 +521,7 @@ function gateTalk(): TalkDef {
     lines: [{ speaker: '별문', portrait: 'prop_portal', text: '별빛 문이 일렁인다. 어디로 갈까?' }],
     choices: [
       ...dests.map((d) => ({ text: d.label, go: d.to })),
-      ...(game.zone === 'village' ? [{ text: '꿈 하수도 미궁 (던전)', go: 'sewer' }] : []),
+      ...(game.zone === 'village' ? portalChoices(game.save).map((c) => ({ text: c.label, go: `sewer:${c.depth}:${c.floor}` })) : []),
       { text: '그만두기' },
     ],
   }
@@ -552,6 +633,7 @@ function sewerFrame(dt: number, raw: number): void {
     return
   }
   run.update(dt)
+  if (delve && hero.alive) delve.seconds += raw
   vfx.update(dt)
   audio.update(dt, false)
   if (hpFill) hpFill.style.width = `${Math.max(0, (hero.hp / hero.maxHp) * 100)}%`
@@ -560,7 +642,7 @@ function sewerFrame(dt: number, raw: number): void {
     tipAt.copy(hero.object.position).setY(2.0).project(stage.camera)
     talkTip.style.left = `${(tipAt.x * 0.5 + 0.5) * window.innerWidth}px`
     talkTip.style.top = `${(-tipAt.y * 0.5 + 0.5) * window.innerHeight}px`
-    talkTip.textContent = stage.touch ? '마을로' : 'E 마을로'
+    talkTip.textContent = stage.touch ? run.portalHint : `E ${run.portalHint}`
   }
   talkBtn?.classList.toggle('hidden', !run.nearPortal)
   stage.camera.updateMatrixWorld()
@@ -775,7 +857,7 @@ function sewerHurt(amount: number, from: Vector3): void {
   audio.sfx('down')
   if (document.pointerLockElement) document.exitPointerLock?.()
   const text = document.getElementById('down-text')
-  if (text) text.textContent = '별하가 꿈 하수도에서 잠시 눈을 감았다. 마을 광장에서 다시 일어나자.'
+  if (text) text.textContent = '별하가 꿈 하수도에서 잠시 눈을 감았다. 이번 탐험 골드를 조금 흘렸지만, 주운 물건과 층 기록은 그대로야. 마을 광장에서 다시 일어나자.'
   document.getElementById('down')?.classList.remove('hidden')
 }
 
@@ -784,7 +866,7 @@ function restart(): void {
     hero.hp = hero.maxHp
     hero.revive()
     document.getElementById('down')?.classList.add('hidden')
-    leaveSewer()
+    leaveSewer('down')
     audio.sfx('heal')
     return
   }

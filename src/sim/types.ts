@@ -67,6 +67,8 @@ export interface SaveData {
   zoneId: string
   spawn: string
   settings: Settings
+  /** Dream-sewer delve progress (see sim/delve.ts); old saves get it on load. */
+  delve?: { unlocked: number; cleared: number; checkpoint: { depth: number; floor: number } | null; runs: number }
 }
 
 export type Action =
