@@ -767,6 +767,7 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
         giveXp(nestXp(plan.depth))
         contractHit({ type: 'nest', depth: plan.depth })
       },
+      chestOpened: () => contractHit({ type: 'chest', depth: plan.depth }),
       objectiveDone: () => {
         giveXp(objectiveXp(plan.depth))
         if (plan.objective !== 'boss') contractHit({ type: 'floor', depth: plan.depth })

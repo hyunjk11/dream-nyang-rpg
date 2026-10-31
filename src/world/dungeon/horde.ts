@@ -106,7 +106,22 @@ export interface HordeFoe {
   /** Seconds of sticky candy left, and its damage per second (끈적). */
   goo: number
   gooDps: number
+  /** Explore floors: the pack it belongs to (-1 = none: always hunting, like wave foes). */
+  pack: number
+  /** idle = waiting at home, chase = after her, home = walking back after losing her. */
+  mode: FoeMode
+  homeX: number
+  homeZ: number
+  /** Seconds she has been out of sight / out of leash range while it chases. */
+  lost: number
+  /** Countdown to the next sight check (staggered). */
+  look: number
 }
+
+export type FoeMode = 'idle' | 'chase' | 'home'
+
+/** Optional ray against the walls (sight checks); Horde falls back to the maze grid. */
+export type SightFn = (ax: number, az: number, bx: number, bz: number) => boolean
 
 /** How much a chilled foe slows (share of speed kept). */
 export const CHILL_SLOW = ELEMENTS.slow
@@ -198,6 +213,19 @@ export const HORDE_CAP = 220
 
 const CELL = 1.2
 
+/** Explore-floor aggro rules (see layout.ts EXPLORE). */
+export interface Aggro {
+  /** Sight range (m) for idle packs. */
+  range: number
+  /** Chasing foes give up after `leashTime` s out of sight or beyond `leash` m. */
+  leash: number
+  leashTime: number
+  /** Most foes chasing at once (sight wakes wait for room; hits always wake). */
+  cap: number
+  sight?: SightFn
+  onWake?: (pack: number) => void
+}
+
 export class Horde {
   readonly foes: HordeFoe[] = []
   readonly flow: FlowField
@@ -208,6 +236,10 @@ export class Horde {
   scale = { hp: 1, damage: 1 }
   /** Every killing blow, whatever dealt it (droplets, bombs, candy). */
   onKill: ((f: HordeFoe) => void) | null = null
+  /** Explore floors: aggro rules (null = everyone hunts her, the wave behaviour). */
+  aggro: Aggro | null = null
+  /** Per-pack flow fields home (built on demand). */
+  private readonly homes = new Map<number, FlowField>()
   private readonly maze: Maze
   private nextId = 1
   private frame = 0
@@ -230,6 +262,37 @@ export class Horde {
     this.link = new Int32Array(HORDE_CAP)
     this.ox = (-maze.w / 2) * TILE
     this.oz = (-maze.h / 2) * TILE
+  }
+
+  /** Foes after her right now. */
+  get chasing(): number {
+    let n = 0
+    for (const f of this.foes) if (f.dying <= 0 && f.mode === 'chase') n += 1
+    return n
+  }
+
+  /** Wake a whole pack (a hit, or one of them saw her). `force` ignores the chase cap. */
+  wakePack(pack: number, force = false): number {
+    if (pack < 0) return 0
+    let room = force || !this.aggro ? Infinity : this.aggro.cap - this.chasing
+    let n = 0
+    for (const f of this.foes) {
+      if (f.pack !== pack || f.dying > 0 || f.mode === 'chase') continue
+      if (room <= 0) break
+      f.mode = 'chase'
+      f.lost = 0
+      room -= 1
+      n += 1
+    }
+    if (n) this.aggro?.onWake?.(pack)
+    return n
+  }
+
+  /** The doors changed: rebuild every flow field next frame. */
+  invalidate(): void {
+    this.flow.tx = -1
+    this.flow.ty = -1
+    this.homes.clear()
   }
 
   get alive(): number {
@@ -267,6 +330,12 @@ export class Horde {
       chill: 0,
       goo: 0,
       gooDps: 0,
+      pack: -1,
+      mode: 'chase',
+      homeX: x,
+      homeZ: z,
+      lost: 0,
+      look: ((this.nextId * 0.27) % 1) * 0.25,
     }
     this.foes.push(foe)
     return foe
@@ -300,6 +369,11 @@ export class Horde {
       f.far = d > 26
       if (f.far && (this.frame + f.id) % 2 === 1) continue
       const step = f.far ? dt * 2 : dt
+      if (this.aggro && f.pack >= 0 && f.mode !== 'chase') {
+        this.wander(f, step, target, d)
+        continue
+      }
+      if (this.aggro && f.pack >= 0) this.leash(f, step, target, d)
       this.steer(f, step, dx, dz, d, target.alive)
       this.melee(f, step, d, target, strike)
     }
@@ -351,6 +425,9 @@ export class Horde {
     const push = f.elite ? 0.6 : 1.6
     f.vx += px * push
     f.vz += pz * push
+    if (f.mode !== 'chase' && f.pack >= 0) this.wakePack(f.pack, true)
+    f.mode = 'chase'
+    f.lost = 0
     if (f.hp > 0) return false
     f.dying = 1e-4
     this.kills += 1
@@ -373,6 +450,101 @@ export class Horde {
   /** Drop everyone (leaving the sewer / boss cleared the room). */
   clear(): void {
     this.foes.length = 0
+  }
+
+  /** Can a foe at (ax, az) see her at (bx, bz)? */
+  private sees(ax: number, az: number, bx: number, bz: number): boolean {
+    if (this.aggro?.sight) return this.aggro.sight(ax, az, bx, bz)
+    const d = Math.hypot(bx - ax, bz - az)
+    const n = Math.ceil(d / (TILE * 0.25))
+    for (let i = 1; i < n; i += 1) {
+      const t = worldToTile(this.maze, ax + ((bx - ax) * i) / n, az + ((bz - az) * i) / n)
+      if (!walkable(this.maze, t.x, t.y)) return false
+    }
+    return true
+  }
+
+  /** Waiting at home (or walking back): look for her now and then. */
+  private wander(f: HordeFoe, dt: number, target: HordeTarget, d: number): void {
+    const a = this.aggro as Aggro
+    f.look -= dt
+    if (f.look <= 0) {
+      f.look = 0.25
+      if (target.alive && d < a.range && this.sees(f.x, f.z, target.x, target.z)) {
+        if (this.wakePack(f.pack) || this.chasing < a.cap) {
+          f.mode = 'chase'
+          f.lost = 0
+          return
+        }
+      }
+    }
+    if (f.mode === 'home') {
+      const hx = f.homeX - f.x
+      const hz = f.homeZ - f.z
+      const hd = Math.hypot(hx, hz)
+      if (hd < 0.6) {
+        f.mode = 'idle'
+        // Back home it licks its wounds.
+        f.hp = f.maxHp
+      } else {
+        let gx = hx
+        let gz = hz
+        const field = this.homeField(f.pack, f.homeX, f.homeZ)
+        const ft = worldToTile(this.maze, f.x, f.z)
+        const here = field.at(ft.x, ft.y)
+        if (here > 1 || here < 0) {
+          const n = field.next(ft.x, ft.y)
+          const c = tileCentre(this.maze, n.x, n.y)
+          gx = c.x - f.x
+          gz = c.z - f.z
+        }
+        const gl = Math.hypot(gx, gz) || 1
+        const want = f.speed * 0.8 * speedMul(f)
+        const k = Math.min(1, dt * 7)
+        f.vx += ((gx / gl) * want - f.vx) * k
+        f.vz += ((gz / gl) * want - f.vz) * k
+        f.x += f.vx * dt
+        f.z += f.vz * dt
+        if (Math.hypot(f.vx, f.vz) > 0.2) f.yaw = Math.atan2(f.vx, f.vz)
+        return
+      }
+    }
+    // Idle: settle, bob in place, turn slowly.
+    const k = Math.min(1, dt * 6)
+    f.vx -= f.vx * k
+    f.vz -= f.vz * k
+    f.x += f.vx * dt
+    f.z += f.vz * dt
+    f.windup = 0
+  }
+
+  /** Chasing: lose interest when she is out of sight or too far for a while. */
+  private leash(f: HordeFoe, dt: number, target: HordeTarget, d: number): void {
+    const a = this.aggro as Aggro
+    f.look -= dt
+    if (f.look > 0) {
+      if (f.lost > 0) f.lost += dt
+    } else {
+      f.look = 0.25
+      const lost = !target.alive || d > a.leash || !this.sees(f.x, f.z, target.x, target.z)
+      f.lost = lost ? f.lost + 0.25 : 0
+    }
+    if (f.lost >= a.leashTime) {
+      f.mode = 'home'
+      f.lost = 0
+      f.windup = 0
+    }
+  }
+
+  private homeField(pack: number, x: number, z: number): FlowField {
+    let field = this.homes.get(pack)
+    if (!field) {
+      field = new FlowField(this.maze)
+      const t = worldToTile(this.maze, x, z)
+      field.aim(t.x, t.y)
+      this.homes.set(pack, field)
+    }
+    return field
   }
 
   private steer(f: HordeFoe, dt: number, dx: number, dz: number, d: number, hunt: boolean): void {

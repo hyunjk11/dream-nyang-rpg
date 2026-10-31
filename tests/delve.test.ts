@@ -12,11 +12,10 @@ function memory() {
 }
 
 describe('탐험 층 구성', () => {
-  it('깊이마다 세 층 + 보스층이고 목표가 버티기 → 둥지 → 출구 → 보스 순서다', () => {
+  it('깊이마다 탐험 세 층 + 보스층이고, 2층부터 별 열쇠가 필요하다', () => {
     expect(BOSS_FLOOR).toBe(4)
-    expect([1, 2, 3, 4].map((f) => floorPlan(1, f).objective)).toEqual(['survive', 'nests', 'exit', 'boss'])
-    expect(floorPlan(1, 1).goal).toBe(DIFFICULTY.delve.surviveWaves)
-    expect(floorPlan(1, 2).goal).toBe(DIFFICULTY.delve.nests)
+    expect([1, 2, 3, 4].map((f) => floorPlan(1, f).objective)).toEqual(['exit', 'exit', 'exit', 'boss'])
+    expect([1, 2, 3, 4].map((f) => floorPlan(1, f).key)).toEqual([false, true, true, false])
     expect(floorPlan(1, 4).bossRoom).toBeGreaterThan(floorPlan(1, 3).bossRoom)
   })
 
@@ -45,9 +44,11 @@ describe('탐험 층 구성', () => {
   it('HUD 문구가 한국어로 진행도를 보여준다', () => {
     expect(floorLabel(1, 2)).toBe('깊이 1 · 2층')
     expect(floorLabel(2, 4)).toBe('깊이 2 · 보스층')
-    expect(objectiveText(floorPlan(1, 1), 1)).toBe('웨이브 버티기 1/3')
-    expect(objectiveText(floorPlan(1, 2), 5)).toBe('둥지 파이프 막기 3/3')
-    expect(objectiveText(floorPlan(1, 1), 3, true)).toContain('계단 포털')
+    expect(objectiveText(floorPlan(1, 1))).toBe('미궁 끝 출구 방 찾기')
+    expect(objectiveText(floorPlan(1, 2), 0)).toBe('별 열쇠를 가진 정예 찾기')
+    expect(objectiveText(floorPlan(1, 2), 1)).toBe('별 열쇠로 출구 문 열기')
+    expect(objectiveText(floorPlan(1, 1), 1, true)).toContain('계단')
+    expect(objectiveText(floorPlan(1, 4))).toBe('악몽 꽃 쓰러뜨리기')
     expect(formatTime(187)).toBe('3분 07초')
   })
 })

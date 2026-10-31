@@ -14,8 +14,11 @@ import {
 import type { Hero } from '../../actors/hero'
 import type { Mochi } from '../../actors/mochi'
 import type { Vfx } from '../../core/vfx'
-import { axis, consumeDash, consumeRecall, consumeTalk, pad, runningHeld, shoulder } from '../../core/input'
-import { TILE, Tile, generateMaze, tileCentre, walkable, worldToTile, type Maze } from './maze'
+import { axis, consumeDash, consumeMap, consumeRecall, consumeTalk, pad, runningHeld, shoulder } from '../../core/input'
+import { TILE, Tile, rng, tileCentre, worldToTile, type Maze } from './maze'
+import { EXPLORE, floorMaze, planLayout, type Layout } from './layout'
+import { ExploreDirector, type ExploreEvent } from './explore'
+import { CrackedWall, Shrine, StarDoor } from './props'
 import { Decor } from './dream'
 import { Minimap } from './minimap'
 import { Portal } from './portal'
@@ -35,7 +38,7 @@ import { hitNormal } from '../../combat/gunfeel'
 import type { GunCue } from '../../audio/gunsound'
 import { rayCapsule } from '../../core/tps'
 import { DIFFICULTY } from '../../combat/difficulty'
-import { delveDrops, floorIntro, floorLabel, floorPlan, objectiveText, type FloorPlan } from '../../sim/delve'
+import { chestDrops, delveDrops, floorIntro, floorLabel, floorPlan, objectiveText, type ChestTier, type FloorPlan } from '../../sim/delve'
 import type { Drop } from '../../sim/loot'
 import { LootView } from './loot-view'
 import { Chest } from './chest'
@@ -68,6 +71,8 @@ export interface RunHost {
   /** A nest pipe was plugged / the floor objective was met (XP). */
   nestDown?: () => void
   objectiveDone?: () => void
+  /** Explore floors: a treasure chest was opened (contracts). */
+  chestOpened?: () => void
   /** Any foe died at (x, z), by droplet, bomb or candy (skills chain off it). */
   foeDied?: (x: number, z: number) => void
   /** Loot luck from gear and the tree. */
@@ -95,6 +100,24 @@ export const SEWER_FOG = { color: 0x55407e, near: 4, far: 25 }
 
 /** Boss body is drawn at this multiple of its island size. */
 const BOSS_SCALE = 1.4
+/** Cracked-wall hit band height (m). */
+const CEIL_HIT = 3.2
+/** Shrine blessings (one at random, EXPLORE.shrineTime seconds). */
+export type Blessing = 'power' | 'swift' | 'mend'
+const BLESSING: Record<Blessing, { title: string; sub: string; hud: string }> = {
+  power: { title: '달빛 축복: 힘', sub: '30초 동안 물줄기 피해 +25%', hud: '피해 +25%' },
+  swift: { title: '달빛 축복: 바람', sub: '30초 동안 이동 속도 +20%', hud: '이동 +20%' },
+  mend: { title: '달빛 축복: 치유', sub: '30초 동안 체력이 빠르게 차올라', hud: '빠른 회복' },
+}
+const ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖']
+
+/** A treasure chest on an explore floor. */
+interface LootChest {
+  chest: Chest
+  tier: ChestTier
+  mark: string
+}
+
 /** Town scroll: seconds of standing still-ish (a hit cancels it). */
 export const RECALL_TIME = 1.6
 
@@ -109,7 +132,7 @@ interface NestTarget {
 }
 
 /** Which portal she stands in (for the hint and E). */
-export type PortalKind = 'home' | 'stairs' | 'exit' | 'chest'
+export type PortalKind = 'home' | 'stairs' | 'exit' | 'chest' | 'loot' | 'shrine' | 'door'
 
 /**
  * One sewer run: the maze, the shoulder camera and her shooting. Owns nothing of the hub; the
@@ -130,9 +153,24 @@ export class DungeonRun {
   done = false
   /** Waves survived / pipes plugged. */
   progress = 0
-  readonly nests: NestTarget[] = []
+  readonly nests: NestTarget[]
   readonly loot: LootView
   readonly chest: Chest | null = null
+  /** Explore floors: packs, nests, key and doors (null on the boss floor). */
+  readonly explore: ExploreDirector | null = null
+  readonly layout: Layout | null = null
+  /** Explore-floor treasure chests (dead ends, plugged nests, the secret pocket). */
+  readonly chests: LootChest[] = []
+  private readonly doorMeshes: StarDoor[] = []
+  private crack: CrackedWall | null = null
+  readonly shrine: Shrine | null = null
+  /** Active shrine blessing and seconds left. */
+  blessing: { kind: Blessing; t: number } | null = null
+  /** She stepped into the exit room (explore floors). */
+  arrived = false
+  private doorNag = 0
+  private readonly arrowEls: HTMLElement[] = []
+  private readonly tagEl: HTMLElement | null = null
   /** >0 while the town scroll is being read (seconds so far). */
   recallT = 0
   private recallHp = 0
@@ -169,11 +207,12 @@ export class DungeonRun {
   constructor(host: RunHost, plan: FloorPlan | number) {
     this.host = host
     this.plan = typeof plan === 'number' ? { ...floorPlan(1, 1), seed: plan } : plan
-    this.maze = generateMaze(this.plan.seed, this.plan.cells, this.plan.cells, this.plan.bossRoom)
+    this.maze = floorMaze(this.plan)
     this.director = new Director(this.plan.scale.firstWave)
-    // A maze without dead ends has no pipes to plug: that floor becomes "find the exit".
-    if (this.plan.objective === 'nests' && !this.maze.nests.length) this.plan = { ...this.plan, objective: 'exit', goal: 1 }
-    if (this.plan.objective === 'nests') this.plan = { ...this.plan, goal: Math.min(this.plan.goal, this.maze.nests.length) }
+    const exploring = this.plan.objective === 'exit'
+    // Lay out packs, nests, chests, shrine and the secret before the geometry (it carves).
+    this.layout = exploring ? planLayout(this.maze, this.plan, rng(this.plan.seed ^ 0x5bd1e995)) : null
+    if (this.layout && !this.layout.needsKey) this.plan = { ...this.plan, key: false }
     this.sewer = new Sewer(this.maze)
     host.scene.add(this.sewer.group)
     const s = tileCentre(this.maze, this.maze.start.x, this.maze.start.y)
@@ -188,13 +227,13 @@ export class DungeonRun {
     const exit = tileCentre(this.maze, bx, isBoss ? by + 2 : by)
     this.exitPortal = new Portal(new Vector3(exit.x, 0, exit.z), 0xff9fd2)
     this.stairsPortal = new Portal(new Vector3(exit.x, 0, exit.z), 0xffd36b)
-    this.stairsPortal.active = this.plan.objective === 'exit'
+    // Stairs only ever stand in the exit room at the far end.
+    this.stairsPortal.active = exploring
     this.sewer.group.add(this.homePortal.group, this.exitPortal.group, this.stairsPortal.group)
     this.minimap = new Minimap(this.maze, host.hud)
     this.minimap.mark(this.maze.startRoom.x, this.maze.startRoom.y, '#7fd0ff')
     if (isBoss) this.minimap.mark(bx, by, '#ff6fb8')
-    else if (this.plan.objective === 'exit') this.minimap.mark(bx, by, '#ffd36b')
-    for (const n of this.maze.nests) this.minimap.mark(n.x, n.y, this.plan.objective === 'nests' ? '#d24dff' : '#7a3a8a')
+    else this.minimap.mark(bx, by, '#7be0a8', 'exit', false, 'exit')
     this.ownShooter = !host.shooter
     this.shooter = host.shooter ?? new Shooter(host, this.sewer.group, Math.PI / 4, 0.1)
     this.shooter.reset()
@@ -211,6 +250,14 @@ export class DungeonRun {
     this.horde = new Horde(this.maze)
     this.horde.scale = { hp: this.plan.scale.hp, damage: this.plan.scale.damage }
     this.horde.onKill = (f) => this.foeDown(f)
+    if (this.layout) {
+      this.horde.scale.hp *= EXPLORE.hp
+      const nestHp = Math.round(DIFFICULTY.delve.nestHp * this.plan.scale.hp)
+      this.explore = new ExploreDirector(maze, this.layout, this.horde, Math.random, nestHp)
+      if (this.horde.aggro) this.horde.aggro.sight = (ax, az, bx2, bz) => this.sees(ax, az, bx2, bz)
+      this.nests = this.explore.nests
+      this.buildProps(this.layout)
+    } else this.nests = []
     this.skillWorld = { solid: this.ray, bodies: () => this.bodies() }
     this.hordeView = new HordeView()
     this.sewer.group.add(this.hordeView.group)
@@ -229,13 +276,6 @@ export class DungeonRun {
       this.chest = new Chest(c.x, c.z)
       this.chest.group.visible = false
       this.sewer.group.add(this.chest.group)
-    }
-    if (this.plan.objective === 'nests') {
-      const hp = Math.round(DIFFICULTY.delve.nestHp * this.plan.scale.hp)
-      this.maze.nests.forEach((n, i) => {
-        const c = tileCentre(this.maze, n.x, n.y)
-        this.nests.push({ i, x: c.x - n.dx * (TILE / 2 - 0.55), z: c.z - n.dy * (TILE / 2 - 0.55), hp, maxHp: hp, hurt: 0 })
-      })
     }
     this.orbs = new InstancedMesh(
       new SphereGeometry(BOSS.orbRadius, 12, 8),
@@ -262,6 +302,17 @@ export class DungeonRun {
       delve.innerHTML = '<b></b><span></span><em></em>'
       host.hud.appendChild(delve)
       this.delveEl = delve
+      for (let i = 0; i < 6; i += 1) {
+        const a = document.createElement('div')
+        a.className = 'foe-arrow hidden'
+        host.hud.appendChild(a)
+        this.arrowEls.push(a)
+      }
+      const tag = document.createElement('div')
+      tag.id = 'elite-tag'
+      tag.className = 'hidden'
+      host.hud.appendChild(tag)
+      this.tagEl = tag
     }
     host.hero.limit = Infinity
     host.hero.revive()
@@ -293,6 +344,13 @@ export class DungeonRun {
     this.delveEl?.remove()
     this.loot.dispose()
     this.chest?.dispose()
+    for (const c of this.chests) c.chest.dispose()
+    for (const d of this.doorMeshes) d.dispose()
+    this.crack?.dispose()
+    this.shrine?.dispose()
+    for (const a of this.arrowEls) a.remove()
+    this.tagEl?.remove()
+    this.host.hero.boost = 1
     this.stairsPortal.dispose()
     this.hordeView.dispose()
     if (this.ownShooter) this.shooter.dispose()
@@ -338,13 +396,22 @@ export class DungeonRun {
     this.collect(dt)
     this.objective()
     this.chest?.update(dt, this.time)
+    for (const c of this.chests) c.chest.update(dt, this.time)
+    for (const d of this.doorMeshes) d.update(this.time)
+    this.crack?.update(dt)
+    this.shrine?.update(this.time)
+    this.bless(dt)
+    this.camReach()
     this.recall(dt)
     this.paintHud()
+    this.paintArrows()
     this.decor.update(this.time, dt, p)
     this.homePortal.update(this.time)
     this.exitPortal.update(this.time)
     this.stairsPortal.update(this.time)
+    this.mapFoes()
     this.minimap.update(dt, p.x, p.z, this.view.yaw)
+    if (consumeMap()) this.minimap.toggle()
     if (consumeTalk()) this.use()
   }
 
@@ -352,6 +419,9 @@ export class DungeonRun {
   use(): void {
     const at = this.portalAt
     if (at === 'chest') this.openChest()
+    else if (at === 'loot') this.openLoot()
+    else if (at === 'shrine') this.useShrine()
+    else if (at === 'door') this.tryDoor()
     else if (at === 'stairs') this.host.stairs?.()
     else if (at === 'exit') this.host.leave('clear')
     else if (at === 'home') this.host.leave('recall')
@@ -397,47 +467,21 @@ export class DungeonRun {
     }
   }
 
-  /** Waves / pipes / boss → objective met: open the way on. */
+  /** Explore floors: arriving in the exit room meets the objective (the stairs wait there). */
   private objective(): void {
-    if (this.done) return
-    const o = this.plan.objective
-    if (o === 'survive') this.progress = this.director.cleared
-    else if (o === 'nests') this.progress = this.nests.filter((n) => n.hp <= 0).length
-    if ((o === 'survive' || o === 'nests') && this.progress >= this.plan.goal) {
-      this.done = true
-      this.director.quiet = true
-      const at = this.stairsSpot()
-      this.stairsPortal.group.position.set(at.x, 0, at.z)
-      this.stairsPortal.active = true
-      const t = worldToTile(this.maze, at.x, at.z)
-      this.minimap.mark(t.x, t.y, '#ffd36b')
-      this.host.vfx.poof(new Vector3(at.x, 0.8, at.z), 0xffd36b, 1.6)
-      this.host.sfx('splash', 0.8)
-      this.host.banner(o === 'survive' ? '웨이브를 버텨 냈어!' : '둥지를 모두 막았어!', '가까이에 금빛 계단 포털이 열렸어')
-      this.host.objectiveDone?.()
-    }
-  }
-
-  /** An open tile a few steps from her (not on top of her, not inside the boss room). */
-  private stairsSpot(): { x: number; z: number } {
-    const m = this.maze
+    if (this.done || !this.layout) return
     const p = this.host.hero.object.position
-    const here = worldToTile(m, p.x, p.z)
-    let best: { x: number; z: number } | null = null
-    let bestScore = Infinity
-    for (let y = 0; y < m.h; y += 1) {
-      for (let x = 0; x < m.w; x += 1) {
-        if (!walkable(m, x, y)) continue
-        const d = this.horde.flow.at(x, y)
-        if (d < 0) continue
-        const score = Math.abs(d - 2.5) + (x === here.x && y === here.y ? 9 : 0)
-        if (score < bestScore) {
-          bestScore = score
-          best = tileCentre(m, x, y)
-        }
-      }
-    }
-    return best ?? { x: p.x, z: p.z }
+    if (this.explore?.hasKey && !this.explore.doorsOpen && this.explore.doorNear(p.x, p.z, TILE * 0.95)) this.tryDoor()
+    const t = worldToTile(this.maze, p.x, p.z)
+    const r = this.layout.exit
+    this.progress = this.explore?.hasKey || !this.layout.needsKey ? 1 : 0
+    if (t.x < r.x || t.y < r.y || t.x >= r.x + r.w || t.y >= r.y + r.h) return
+    this.done = true
+    this.arrived = true
+    const at = this.stairsPortal.group.position
+    this.host.vfx.poof(at.clone().setY(0.8), 0xffd36b, 1.6)
+    this.host.sfx('splash', 0.8)
+    this.host.banner('출구 방에 도착했어!', '금빛 계단 포털에서 E로 다음 층')
   }
 
   /** Pickups she walked into this frame. */
@@ -497,6 +541,9 @@ export class DungeonRun {
   get portalAt(): PortalKind | null {
     const p = this.host.hero.object.position
     if (this.chest?.near(p.x, p.z) && this.boss && !this.boss.alive) return 'chest'
+    if (this.chests.some((c) => c.chest.near(p.x, p.z))) return 'loot'
+    if (this.shrine?.near(p.x, p.z)) return 'shrine'
+    if (this.explore?.doorNear(p.x, p.z, TILE * 1.05)) return 'door'
     if (this.stairsPortal.contains(p.x, p.z)) return 'stairs'
     if (this.exitPortal.contains(p.x, p.z)) return 'exit'
     if (this.homePortal.contains(p.x, p.z)) return 'home'
@@ -512,7 +559,12 @@ export class DungeonRun {
   get portalHint(): string {
     switch (this.portalAt) {
       case 'chest':
+      case 'loot':
         return '상자 열기'
+      case 'shrine':
+        return '달빛 제단 (30초 축복)'
+      case 'door':
+        return this.explore?.hasKey ? '별 열쇠로 문 열기' : '별 열쇠가 필요해'
       case 'stairs':
         return '다음 층으로'
       case 'exit':
@@ -544,7 +596,15 @@ export class DungeonRun {
     for (const f of this.horde.foes) if (this.horde.hittable(f)) out.push(this.horde.capsule(f))
     if (this.boss?.alive && this.boss.awake) out.push(this.boss.capsule())
     for (const n of this.nests) if (n.hp > 0) out.push(this.nestCapsule(n))
+    const crack = this.crackCapsule()
+    if (crack) out.push(crack)
     return out
+  }
+
+  /** The cracked wall as a fat capsule poking out of its face (null once broken). */
+  private crackCapsule(): AimTarget | null {
+    const f = this.explore?.secretFace
+    return f ? { x: f.x, z: f.z, y0: 0, y1: CEIL_HIT, r: 0.9 } : null
   }
 
   private nestCapsule(n: NestTarget): AimTarget {
@@ -566,15 +626,17 @@ export class DungeonRun {
     n.hp = 0
     this.decor.sealNest(n.i)
     const nest = this.maze.nests[n.i]
-    this.minimap.mark(nest.x, nest.y, '#8d8798')
+    this.minimap.restyle(`nest${n.i}`, 'done', '#8d8798')
     const at = new Vector3(n.x, 1.25, n.z)
     this.host.vfx.poof(at, 0xd9a6ff, 1.4)
     this.host.sfx('splash', 0.9)
-    this.loot.spill(this.drops(true, false), n.x, n.z, 1)
     this.host.nestDown?.()
+    // A plugged nest always leaves a chest behind.
+    const c = tileCentre(this.maze, nest.x, nest.y)
+    this.addChest(c.x + nest.dx * 0.5, c.z + nest.dy * 0.5, 'nest', nest.x, nest.y)
     const left = this.nests.filter((x) => x.hp > 0).length
     const plugged = this.nests.length - left
-    if (plugged < this.plan.goal) this.host.banner('둥지 파이프를 막았어', `${plugged}/${this.plan.goal} · 남은 둥지를 찾아 보자`)
+    this.host.banner('둥지 파이프를 막았어!', `${plugged}/${this.nests.length} · 보물 상자가 나타났어`)
   }
 
   private drops(elite: boolean, boss: boolean) {
@@ -584,6 +646,7 @@ export class DungeonRun {
   /** A horde foe went down (any cause): count it, spill its drops, let skills chain. */
   private foeDown(f: HordeFoe): void {
     this.host.kill?.(f.elite)
+    if (this.explore) for (const ev of this.explore.foeDown(f)) this.onExplore(ev, f.x, f.z)
     this.loot.spill(this.drops(f.elite, false), f.x, f.z, f.elite ? 1.2 : 0.8)
     this.host.foeDied?.(f.x, f.z)
   }
@@ -601,7 +664,7 @@ export class DungeonRun {
         tone: f.elite ? 'elite' : 'n',
         hit: (amount, dx, dz, knock, slow) => {
           chill(f, slow)
-          return this.horde.damage(f, amount, dx * (1 + knock), dz * (1 + knock))
+          return this.horde.damage(f, amount * this.might, dx * (1 + knock), dz * (1 + knock))
         },
       })
     }
@@ -629,7 +692,7 @@ export class DungeonRun {
         r: 0.7,
         tone: 'elite',
         hit: (amount) => {
-          n.hp -= amount
+          n.hp -= amount * this.might
           n.hurt = 1
           if (n.hp > 0) return false
           this.plugNest(n)
@@ -652,7 +715,19 @@ export class DungeonRun {
     }
   }
 
-  private strike(tip: Vector3, dir: Vector3, reach: number, amount: number, procs?: ShotProcs) {
+  private strike(tip: Vector3, dir: Vector3, reach: number, raw: number, procs?: ShotProcs) {
+    const amount = raw * this.might
+    const crack = this.crackCapsule()
+    if (crack && this.explore) {
+      const t = rayCapsule(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, crack, reach)
+      const near = this.horde.raycast(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, reach)
+      if (t >= 0 && (!near || t < near.t)) {
+        this.crack?.hit()
+        const broke = this.explore.hitSecret(amount)
+        if (broke) this.breakWall()
+        return { t, kill: broke, tone: 'elite' as const, color: 0xffd6f2 }
+      }
+    }
     const foe = this.horde.raycast(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, reach)
     const bossT = this.boss ? this.boss.raycast(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, reach) : -1
     if (this.boss && bossT >= 0 && (!foe || bossT < foe.t)) {
@@ -684,12 +759,18 @@ export class DungeonRun {
     const inBoss = !!boss && (boss.inRoom(p.x, p.z) || boss.awake)
     // Plugged pipes are out of the director's pick.
     const nestDistance = this.maze.nests.map((n, i) => (this.nests[i] && this.nests[i].hp <= 0 ? -1 : this.horde.flow.at(n.x, n.y)))
-    const orders = this.director.update(dt, { nestDistance, alive: this.horde.alive, inBoss })
-    for (const o of orders) this.pour(o.nest, o.kind, o.elite)
-    if (this.director.wave !== this.lastWave && this.director.active) {
+    // Timed waves only on the boss floor; explore floors wake packs and nests near her.
+    if (this.explore) {
+      const kinds = this.layout?.packs[0]?.kinds ?? ['slime']
+      const spawnAt = (i: number, kind: keyof typeof HORDE) => this.pourNest(i, kind)
+      for (const ev of this.explore.update(dt, p.x, p.z, hero.alive, spawnAt, kinds)) this.onExplore(ev, p.x, p.z)
+    } else {
+      const orders = this.director.update(dt, { nestDistance, alive: this.horde.alive, inBoss })
+      for (const o of orders) this.pour(o.nest, o.kind, o.elite)
+    }
+    if (!this.explore && this.director.wave !== this.lastWave && this.director.active) {
       this.lastWave = this.director.wave
-      const of = this.plan.objective === 'survive' && !this.done ? ` / ${this.plan.goal}` : ''
-      this.host.banner(`웨이브 ${this.lastWave}${of}`, this.director.active.elites ? `정예 ${this.director.active.elites}마리가 섞여 있어` : '파이프에서 몰려온다')
+      this.host.banner(`웨이브 ${this.lastWave}`, this.director.active.elites ? `정예 ${this.director.active.elites}마리가 섞여 있어` : '파이프에서 몰려온다')
       this.host.sfx('windup', 0.6)
     }
     const strike = (amount: number, x: number, z: number) => this.host.hurt(amount, new Vector3(x, 0, z))
@@ -712,6 +793,14 @@ export class DungeonRun {
         }
       }
     }
+  }
+
+  /** One foe out of a nest pipe mouth (explore floors). */
+  private pourNest(nest: number, kind: keyof typeof HORDE): HordeFoe | null {
+    const mouth = this.decor.mouths[nest]
+    if (!mouth) return null
+    const j = (Math.random() - 0.5) * 0.8
+    return this.horde.spawn(kind, mouth.at.x + mouth.dir.z * j, mouth.at.z + mouth.dir.x * j, false, mouth.dir.x, mouth.dir.z)
   }
 
   private pour(nest: number, kind: keyof typeof HORDE, elite: boolean): void {
@@ -742,6 +831,291 @@ export class DungeonRun {
     if (!pick.length) return null
     const i = pick[Math.floor(Math.random() * pick.length)]
     return tileCentre(m, i % m.w, Math.floor(i / m.w))
+  }
+
+  /** Can a foe at (ax, az) see her at (bx, bz)? A ray at chest height against the walls. */
+  private sees(ax: number, az: number, bx: number, bz: number): boolean {
+    const dx = bx - ax
+    const dz = bz - az
+    const d = Math.hypot(dx, dz)
+    if (d < 0.05) return true
+    return rayHit(this.maze, ax, 1.1, az, dx / d, 0, dz / d, d) >= d - 0.3
+  }
+
+  /** Doors, the cracked wall, chests and the shrine for an explore floor. */
+  private buildProps(layout: Layout): void {
+    const m = this.maze
+    for (const c of layout.chests) {
+      const at = tileCentre(m, c.x, c.y)
+      this.addChest(at.x, at.z, 'small', c.x, c.y)
+    }
+    if (layout.secret) {
+      const s = layout.secret
+      const w = tileCentre(m, s.wall.x, s.wall.y)
+      this.crack = new CrackedWall(w.x, w.z, -s.dx, -s.dy)
+      this.sewer.group.add(this.crack.group)
+      const p = tileCentre(m, s.pocket.x, s.pocket.y)
+      this.addChest(p.x, p.z, 'secret', s.pocket.x, s.pocket.y)
+    }
+    if (layout.shrine) {
+      const at = tileCentre(m, layout.shrine.x, layout.shrine.y)
+      const shrine = new Shrine(at.x, at.z)
+      ;(this as { shrine: Shrine | null }).shrine = shrine
+      this.sewer.group.add(shrine.group)
+      this.minimap.mark(layout.shrine.x, layout.shrine.y, '#8fd8ff', 'shrine', false, 'shrine')
+    }
+    layout.nests.forEach((n, i) => this.minimap.mark(n.x, n.y, '#ff8fc8', 'nest', false, `nest${i}`))
+    if (!layout.needsKey) return
+    const r = layout.exit
+    const inExit = (x: number, y: number) => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h
+    const isDoor = (x: number, y: number) => layout.doors.some((d) => d.x === x && d.y === y)
+    for (const d of layout.doors) {
+      const c = tileCentre(m, d.x, d.y)
+      this.minimap.mark(d.x, d.y, '#f2b64c', 'door', false, `door${d.x}_${d.y}`)
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const x = d.x + dx
+        const y = d.y + dy
+        if (x < 0 || y < 0 || x >= m.w || y >= m.h || inExit(x, y) || isDoor(x, y) || m.tiles[y * m.w + x] === Tile.Solid) continue
+        const door = new StarDoor(c.x + dx * (TILE / 2 - 0.15), c.z + dy * (TILE / 2 - 0.15), dy !== 0)
+        this.doorMeshes.push(door)
+        this.sewer.group.add(door.group)
+      }
+    }
+  }
+
+  private addChest(x: number, z: number, tier: ChestTier, tx: number, ty: number): void {
+    const tint = tier === 'secret' ? 0xffa8d8 : tier === 'nest' ? 0x9fe8d0 : 0xc7a6ff
+    const chest = new Chest(x, z, tint)
+    this.sewer.group.add(chest.group)
+    const mark = this.minimap.mark(tx, ty, tier === 'secret' ? '#ffa8d8' : '#ffd166', 'chest', tier === 'nest', `chest${this.chests.length}`)
+    this.chests.push({ chest, tier, mark })
+  }
+
+  /** E at an explore chest: spill its loot. */
+  private openLoot(): void {
+    const p = this.host.hero.object.position
+    const c = this.chests.find((k) => k.chest.near(p.x, p.z))
+    if (!c) return
+    c.chest.open()
+    const at = c.chest.group.position
+    this.host.vfx.poof(at.clone().setY(1), c.tier === 'secret' ? 0xffa8d8 : 0xffd36b, 1.8)
+    this.host.sfx('splash', 0.9)
+    const drops = chestDrops(this.plan.depth, this.plan.floor, c.tier, Math.random, this.host.luck?.() ?? 2)
+    this.loot.spill(drops, at.x, at.z + 0.4, 1.2)
+    this.minimap.restyle(c.mark, 'done', '#9b93ad')
+    if (c.tier === 'secret') this.host.banner('비밀 보물 상자!', '금 간 벽 뒤에 숨어 있던 선물이야')
+    this.host.chestOpened?.()
+  }
+
+  /** E at the shrine: a random 30 s blessing. */
+  private useShrine(): void {
+    const s = this.shrine
+    if (!s || s.used) return
+    s.use()
+    const kinds: Blessing[] = ['power', 'swift', 'mend']
+    const kind = kinds[Math.floor(Math.random() * kinds.length)]
+    this.blessing = { kind, t: EXPLORE.shrineTime }
+    this.minimap.restyle('shrine', 'done', '#9b93ad')
+    const at = s.group.position
+    this.host.vfx.ring(at.clone().setY(0.1), 0x8fd8ff, 0.4, 3.2, 0.7)
+    this.host.vfx.poof(at.clone().setY(1.9), 0x8fd8ff, 1.4)
+    this.host.sfx('splash', 0.8)
+    this.host.banner(BLESSING[kind].title, BLESSING[kind].sub)
+  }
+
+  /** Damage multiplier from the shrine. */
+  get might(): number {
+    return this.blessing?.kind === 'power' ? 1.25 : 1
+  }
+
+  private bless(dt: number): void {
+    const b = this.blessing
+    const hero = this.host.hero
+    if (!b) return
+    b.t -= dt
+    if (b.kind === 'mend' && hero.alive) hero.hp = Math.min(hero.maxHp, hero.hp + hero.maxHp * 0.04 * dt)
+    hero.boost = b.kind === 'swift' && b.t > 0 ? 1.2 : 1
+    if (b.t <= 0) this.blessing = null
+  }
+
+  /** E at the star door (it also opens by itself when she walks up with the key). */
+  private tryDoor(): void {
+    const ex = this.explore
+    if (!ex) return
+    if (!ex.hasKey) {
+      if (this.time - this.doorNag > 3) {
+        this.doorNag = this.time
+        this.host.banner('별 열쇠가 필요해', '열쇠를 가진 정예를 찾아 쓰러뜨리자 (목표 화살표)')
+      }
+      return
+    }
+    const p = this.host.hero.object.position
+    for (const ev of ex.openDoors()) this.onExplore(ev, p.x, p.z)
+  }
+
+  private breakWall(): void {
+    const c = this.crack
+    if (!c) return
+    const at = c.group.position.clone().setY(1.6)
+    this.host.vfx.poof(at, 0xffd6f2, 2.4)
+    this.host.vfx.dust(at.clone().setY(0.2), 3)
+    this.host.sfx('splash', 1)
+    c.dispose()
+    this.crack = null
+    this.host.banner('금 간 벽이 무너졌어!', '숨겨진 방을 찾았어')
+  }
+
+  private onExplore(ev: ExploreEvent, x: number, z: number): void {
+    switch (ev.type) {
+      case 'key':
+        this.host.vfx.poof(new Vector3(x, 1.2, z), 0xffe36e, 2)
+        this.host.vfx.ring(new Vector3(x, 0.1, z), 0xffe36e, 0.4, 3.5, 0.6)
+        this.host.sfx('splash', 1)
+        this.host.float?.('★ 별 열쇠', this.host.hero.object.position.clone().setY(2.1), '#ffe36e')
+        this.host.banner('별 열쇠를 얻었어!', '미궁 끝 출구 방의 별 문을 열 수 있어')
+        this.minimap.unmark('key')
+        break
+      case 'door':
+        for (const d of this.doorMeshes) {
+          this.host.vfx.poof(d.group.position.clone().setY(1.6), 0xffe36e, 1.6)
+          d.dispose()
+        }
+        this.doorMeshes.length = 0
+        for (const d of this.layout?.doors ?? []) this.minimap.unmark(`door${d.x}_${d.y}`)
+        this.host.sfx('windup', 0.8)
+        this.host.banner('별 문이 열렸어!', '출구 방으로 들어가자')
+        break
+      case 'nest-wake':
+        this.host.banner('둥지가 깨어났어', '파이프를 막으면 보물 상자 (선택)')
+        break
+      case 'spawn':
+        this.host.vfx.burst(new Vector3(ev.foe.x, 0.4, ev.foe.z), 0xd9a6ff, { count: 4, speed: 1.4, up: 1.6, life: 0.4, size: 0.2, gravity: -3, drag: 2 })
+        break
+      case 'secret':
+        break
+    }
+  }
+
+  /** Narrow corridors pull the camera in so walls do not fill the screen. */
+  private camReach(): void {
+    const p = this.host.hero.object.position
+    const t = worldToTile(this.maze, p.x, p.z)
+    const kind = this.maze.tiles[t.y * this.maze.w + t.x]
+    this.view.reach = kind === Tile.Corridor ? 0.72 : 1
+  }
+
+  /** Chasing foes and the key holder on the minimap. */
+  private mapFoes(): void {
+    if (!this.explore) return
+    const list: { x: number; z: number }[] = []
+    for (const f of this.horde.foes) if (f.dying <= 0 && f.mode === 'chase') list.push(f)
+    this.minimap.foes(list)
+    const k = this.explore.hasKey ? null : this.explore.keyHolder
+    if (k) {
+      const t = worldToTile(this.maze, k.x, k.z)
+      this.minimap.mark(t.x, t.y, '#ffe36e', 'key', false, 'key')
+    }
+  }
+
+  /** Where the objective arrow points (explore floors), or null. */
+  hintTarget(): { x: number; z: number } | null {
+    const L = this.layout
+    const ex = this.explore
+    if (!L || !ex || this.done) return null
+    const p = this.host.hero.object.position
+    if (L.needsKey && !ex.hasKey) {
+      const k = ex.keyHolder
+      if (k) return { x: k.x, z: k.z }
+    }
+    if (L.needsKey && !ex.doorsOpen && L.doors.length) {
+      let best = tileCentre(this.maze, L.doors[0].x, L.doors[0].y)
+      for (const d of L.doors) {
+        const c = tileCentre(this.maze, d.x, d.y)
+        if (Math.hypot(c.x - p.x, c.z - p.z) < Math.hypot(best.x - p.x, best.z - p.z)) best = c
+      }
+      return best
+    }
+    return { x: this.stairsPortal.group.position.x, z: this.stairsPortal.group.position.z }
+  }
+
+  /** Angle of (x, z) from her, relative to the camera (0 = straight ahead, + = right). */
+  private bearing(x: number, z: number): number {
+    const p = this.host.hero.object.position
+    const dx = x - p.x
+    const dz = z - p.z
+    const yaw = this.view.yaw
+    const fwd = dx * Math.sin(yaw) + dz * Math.cos(yaw)
+    const right = dx * -Math.cos(yaw) + dz * Math.sin(yaw)
+    return Math.atan2(right, fwd)
+  }
+
+  /** "↗ 24m" toward the current target. */
+  get hintText(): string {
+    const t = this.hintTarget()
+    if (!t) return ''
+    const p = this.host.hero.object.position
+    const a = this.bearing(t.x, t.z)
+    const i = ((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8
+    return `${ARROWS[i]} ${Math.round(Math.hypot(t.x - p.x, t.z - p.z))}m`
+  }
+
+  private readonly ndc = new Vector3()
+
+  /** Edge arrows for chasing foes she can't see, and the nearest elite's name tag. */
+  private paintArrows(): void {
+    if (!this.arrowEls.length || !this.explore) return
+    const p = this.host.hero.object.position
+    const cam = this.host.camera
+    const off: { f: HordeFoe; d: number }[] = []
+    let elite: HordeFoe | null = null
+    let eliteD = 16
+    for (const f of this.horde.foes) {
+      if (f.dying > 0) continue
+      const d = Math.hypot(f.x - p.x, f.z - p.z)
+      if (f.elite && d < eliteD && this.explore.elites.has(f.id) && this.sees(f.x, f.z, p.x, p.z)) {
+        elite = f
+        eliteD = d
+      }
+      if (f.mode !== 'chase' || d > 20) continue
+      this.ndc.set(f.x, 1, f.z).project(cam)
+      if (this.ndc.z < 1 && Math.abs(this.ndc.x) < 0.95 && Math.abs(this.ndc.y) < 0.95) continue
+      off.push({ f, d })
+    }
+    off.sort((a, b) => a.d - b.d)
+    this.arrowEls.forEach((el, i) => {
+      const o = off[i]
+      if (!o) {
+        if (!el.classList.contains('hidden')) el.classList.add('hidden')
+        return
+      }
+      const a = this.bearing(o.f.x, o.f.z)
+      el.classList.remove('hidden')
+      el.classList.toggle('elite', o.f.elite)
+      el.style.left = `${50 + Math.sin(a) * 44}%`
+      el.style.top = `${52 - Math.cos(a) * 40}%`
+      el.style.transform = `translate(-50%, -50%) rotate(${a}rad)`
+      el.style.opacity = `${Math.max(0.35, 1 - o.d / 22)}`
+    })
+    const tag = this.tagEl
+    if (!tag) return
+    if (elite) {
+      this.ndc.set(elite.x, 2.6 * (elite.radius / 0.5), elite.z).project(cam)
+      if (this.ndc.z < 1 && Math.abs(this.ndc.x) < 1 && Math.abs(this.ndc.y) < 1) {
+        const info = this.explore.elites.get(elite.id)
+        const text = `${info?.key ? '★ ' : ''}정예 · ${info?.name ?? ''}`
+        if (tag.textContent !== text) tag.textContent = text
+        tag.classList.remove('hidden')
+        tag.style.left = `${(this.ndc.x + 1) * 50}%`
+        tag.style.top = `${(1 - this.ndc.y) * 50}%`
+        return
+      }
+    }
+    if (!tag.classList.contains('hidden')) tag.classList.add('hidden')
   }
 
   private bossDown(): void {
@@ -793,7 +1167,12 @@ export class DungeonRun {
     if (this.waveEl) {
       const w = this.director.active
       const kills = this.host.runKills?.() ?? this.horde.kills
-      const text = boss?.awake
+      const chasing = this.horde.chasing
+      const text = this.explore
+        ? chasing
+          ? `탐험 · 쫓아오는 몹 ${chasing} · 총 처치 ${kills}`
+          : `탐험 · 총 처치 ${kills}`
+        : boss?.awake
         ? boss.alive
           ? `보스전 · 총 처치 ${kills}`
           : `미궁 정화 · 총 처치 ${kills}`
@@ -810,9 +1189,17 @@ export class DungeonRun {
           ? this.chest?.opened
             ? '분홍 포털로 마을에 돌아가자'
             : '보물 상자를 열자 (E)'
-          : objectiveText(this.plan, this.progress, this.done)
-      const gold = this.host.runGold ? `이번 탐험 골드 ${this.host.runGold()}` : ''
-      const recall = this.recallT > 0 ? `귀환 주문 읽는 중… ${Math.max(0, RECALL_TIME - this.recallT).toFixed(1)}초` : gold
+          : `${objectiveText(this.plan, this.progress, this.done)}${this.hintText ? ` ${this.hintText}` : ''}`
+      const gold = this.host.runGold ? `골드 ${this.host.runGold()}` : ''
+      const extra: string[] = []
+      if (this.layout) {
+        const plugged = this.nests.filter((n) => n.hp <= 0).length
+        const opened = this.chests.filter((c) => c.chest.opened).length
+        extra.push(`선택: 둥지 ${plugged}/${this.nests.length} · 상자 ${opened}/${this.chests.length}`)
+      }
+      if (this.blessing) extra.push(`축복 ${BLESSING[this.blessing.kind].hud} ${Math.ceil(this.blessing.t)}초`)
+      if (gold) extra.push(gold)
+      const recall = this.recallT > 0 ? `귀환 주문 읽는 중… ${Math.max(0, RECALL_TIME - this.recallT).toFixed(1)}초` : extra.join(' · ')
       const text = `${floorLabel(this.plan.depth, this.plan.floor)}|${goal}|${recall}`
       if (text !== this.delveText) {
         this.delveText = text

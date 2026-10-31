@@ -12,6 +12,7 @@ export const pad: Pad = { x: 0, y: 0, fire: false }
 
 let dashQueued = false
 let talkQueued = false
+let mapQueued = false
 let recallQueued = false
 let candyQueued = false
 let equipQueued = false
@@ -88,6 +89,7 @@ export function installInput(canvas: HTMLCanvasElement): void {
     keys.add(event.code)
     if (event.code === 'Space' && !event.repeat) dashQueued = true
     if ((event.code === 'KeyE' || event.code === 'Enter') && !event.repeat) talkQueued = true
+    if (event.code === 'KeyM' && !event.repeat) mapQueued = true
     if (event.code === 'KeyT' && !event.repeat) recallQueued = true
     if (event.code === 'KeyQ' && !event.repeat) candyQueued = true
     if (event.code === 'KeyG' && !event.repeat) equipQueued = true
@@ -194,6 +196,13 @@ export function installInput(canvas: HTMLCanvasElement): void {
   const stick = document.getElementById('stick')
   const knob = document.getElementById('knob')
   if (stick && knob) bindStick(stick, knob)
+}
+
+/** M: toggle the big dungeon map. */
+export function consumeMap(): boolean {
+  const had = mapQueued
+  mapQueued = false
+  return had
 }
 
 /** E / Enter / the talk button: talk to whoever is close, or advance the line. */
