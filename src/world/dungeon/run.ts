@@ -429,3 +429,4 @@ export class DungeonRun {
     }
   }
 }
+export { loadHordeArt } from './horde-view'

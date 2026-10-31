@@ -7,7 +7,6 @@ import { createStage } from './core/arena'
 import { audio } from './audio/audio'
 import { Combat } from './combat/combat'
 import { loadFoeModels } from './combat/foes'
-import { loadHordeArt } from './world/dungeon/horde-view'
 import { cameraColliders, type CameraCollider } from './core/camera'
 import { FADE_FOCUS } from './core/materials'
 import { Shooter, type ShotWorld } from './combat/shooter'
@@ -25,7 +24,7 @@ import { PLAZA, PORTAL_ARRIVAL, destinations, gateLocked, zone3d, type ZoneId } 
 import { Color, Fog, HemisphereLight } from 'three'
 import type { Action, MutationResult } from './sim/types'
 import { Vfx } from './core/vfx'
-import { DungeonRun, SEWER_FOG } from './world/dungeon/run'
+import type { DungeonRun } from './world/dungeon/run'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -62,6 +61,12 @@ let saveClock = 0
 let travelling = false
 /** The sewer run while she is down there; null on the island hub. */
 let run: DungeonRun | null = null
+/** The sewer lives in its own chunk: fetched (with its horde art) while the title shows, awaited on entry. */
+let dungeonModule: Promise<typeof import('./world/dungeon/run')> | null = null
+function loadDungeon(): Promise<typeof import('./world/dungeon/run')> {
+  dungeonModule ??= import('./world/dungeon/run')
+  return dungeonModule
+}
 const crosshair = document.getElementById('crosshair')
 const hint = document.getElementById('hint')
 const TPS_HINT_MOUSE = '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · Esc 해제'
@@ -214,7 +219,7 @@ async function bootGame(): Promise<void> {
     hero.load(`${base}models/3d/byeolha_animated_mobile.glb`),
     mochi.load(`${base}models/3d/mochi_mobile.glb`),
     loadFoeModels(base),
-    loadHordeArt(base),
+    loadDungeon().then((m) => m.loadHordeArt(base)),
     landmarks.load(base),
   ])
   combat.rebuildBodies()
@@ -309,10 +314,10 @@ function enterZone(id: ZoneId, at: { x: number; z: number } = PORTAL_ARRIVAL): v
 
 /** Down the portal into a fresh, seeded sewer maze (Hellgate-style shoulder camera). */
 function enterSewer(seed = Math.floor(Math.random() * 1e9)): void {
-  if (run) return
+  if (run || travelling) return
   travelling = true
   audio.sfx('windup', 0.7)
-  void fadeThrough(() => {
+  void loadDungeon().then(({ DungeonRun, SEWER_FOG }) => fadeThrough(() => {
     talk.close()
     combat.setRoster([])
     combat.places = []
@@ -345,9 +350,11 @@ function enterSewer(seed = Math.floor(Math.random() * 1e9)): void {
     document.body.classList.add('sewer')
     showHint()
     zoneBanner('꿈 하수도 미궁', '별빛 물길 아래, 꿈을 갉는 무리가 몰려온다')
-  }).then(() => {
-    travelling = false
-  })
+  }))
+    .catch(() => toast('하수도로 가는 길을 불러오지 못했어. 잠시 뒤 다시 해 줘.', 'info'))
+    .finally(() => {
+      travelling = false
+    })
 }
 
 /** Back up to the island hub (the village square). */
