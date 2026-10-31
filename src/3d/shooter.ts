@@ -175,6 +175,9 @@ export interface ShotTrace {
   to: Vector3
   aim: Vector3
   hit: boolean
+  /** Where the end point sat on screen the moment it fired (NDC, 0,0 = crosshair). */
+  ndcX: number
+  ndcY: number
 }
 
 /** The full-auto water gun on the shoulder rig. */
@@ -185,6 +188,9 @@ export class Shooter {
   readonly hudFx: HudFx
   /** Most recent droplet (QA). */
   last: ShotTrace | null = null
+  /** Droplets fired / landed on a foe since the last reset (QA readout). */
+  fired = 0
+  landed = 0
   private readonly host: ShooterHost
   private readonly tip = new Vector3()
   private readonly dir = new Vector3()
@@ -265,7 +271,10 @@ export class Shooter {
       this.host.vfx.burst(end.clone().addScaledVector(new Vector3(n.x, n.y, n.z), 0.05), 0xd8f2ff, { count: 4, speed: 3.4, up: 1.2, life: 0.22, size: 0.09, gravity: 7, drag: 2 })
       this.host.vfx.hit(end, 0x9ad7ff)
     }
-    this.last = { from: tip.clone(), to: end.clone(), aim: this.rig.aim.clone(), hit: !!hit }
+    const ndc = end.clone().project(camera)
+    this.last = { from: tip.clone(), to: end.clone(), aim: this.rig.aim.clone(), hit: !!hit, ndcX: ndc.x, ndcY: ndc.y }
+    this.fired += 1
+    if (hit) this.landed += 1
     this.tracer(tip, end)
     this.gunFx.shot(tip, dir, camera, gun.shots)
     hero.recoil()

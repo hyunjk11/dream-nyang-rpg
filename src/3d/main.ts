@@ -64,7 +64,7 @@ let travelling = false
 let run: DungeonRun | null = null
 const crosshair = document.getElementById('crosshair')
 const hint = document.getElementById('hint')
-const TPS_HINT_MOUSE = '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · Esc 시점 해제'
+const TPS_HINT_MOUSE = '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · Esc 해제'
 const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · 공격 길게 눌러 연사 · 대시'
 /** Same controls everywhere now, so one hint; it fades after a few seconds like the sewer's. */
 function showHint(): void {
