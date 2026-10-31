@@ -35,10 +35,19 @@ export interface Orb {
 
 export type BossEvent = 'wake' | 'ring' | 'summon' | 'down'
 
+/** Depth scaling for one boss (1 = the depth-1 bloom). */
+export interface BossScale {
+  hp: number
+  damage: number
+}
+
 export class Boss {
   x: number
   z: number
-  hp = BOSS.hp
+  /** Full health for this depth. */
+  readonly maxHp: number
+  hp: number
+  private readonly dmg: number
   awake = false
   /** >0 while bursting apart after the last hit. */
   dying = 0
@@ -54,8 +63,11 @@ export class Boss {
   private readonly maze: Maze
   private readonly room: Rect
 
-  constructor(maze: Maze) {
+  constructor(maze: Maze, scale: BossScale = { hp: 1, damage: 1 }) {
     this.maze = maze
+    this.maxHp = Math.round(BOSS.hp * scale.hp)
+    this.hp = this.maxHp
+    this.dmg = scale.damage
     this.room = maze.bossRoom
     const c = tileCentre(maze, this.room.x + Math.floor(this.room.w / 2), this.room.y + Math.floor(this.room.h / 2))
     this.x = c.x
@@ -107,7 +119,7 @@ export class Boss {
     this.contactCd = Math.max(0, this.contactCd - dt)
     if (d < BOSS.radius + 0.6 && this.contactCd <= 0 && heroAlive) {
       this.contactCd = 1.2
-      hit(BOSS.contact, this.x, this.z)
+      hit(Math.round(BOSS.contact * this.dmg), this.x, this.z)
     }
     this.ringClock -= dt
     if (this.windup > 0) {
@@ -119,9 +131,9 @@ export class Boss {
       }
     } else if (this.ringClock <= 0) {
       this.windup = 1e-3
-      this.ringClock = BOSS.ringEvery * (this.hp < BOSS.hp / 2 ? 0.72 : 1)
+      this.ringClock = BOSS.ringEvery * (this.hp < this.maxHp / 2 ? 0.72 : 1)
     }
-    const third = this.hp / BOSS.hp
+    const third = this.hp / this.maxHp
     if ((this.summoned === 0 && third < 2 / 3) || (this.summoned === 1 && third < 1 / 3)) {
       this.summoned += 1
       ev.push('summon')
@@ -153,7 +165,7 @@ export class Boss {
 
   private ring(): void {
     this.spin += 0.37
-    const n = BOSS.ringCount + (this.hp < BOSS.hp / 2 ? 4 : 0)
+    const n = BOSS.ringCount + (this.hp < this.maxHp / 2 ? 4 : 0)
     for (let i = 0; i < n; i += 1) {
       const a = this.spin + (i / n) * Math.PI * 2
       this.orbs.push({ x: this.x + Math.sin(a) * 1.1, y: 1.0, z: this.z + Math.cos(a) * 1.1, vx: Math.sin(a) * BOSS.orbSpeed, vz: Math.cos(a) * BOSS.orbSpeed, life: 4 })
@@ -168,7 +180,7 @@ export class Boss {
       o.life -= dt
       let gone = o.life <= 0 || solidAt(this.maze, o.x, o.z)
       if (!gone && heroAlive && Math.hypot(o.x - hx, o.z - hz) < BOSS.orbRadius + 0.36) {
-        hit(BOSS.orbDamage, o.x - o.vx * 0.1, o.z - o.vz * 0.1)
+        hit(Math.round(BOSS.orbDamage * this.dmg), o.x - o.vx * 0.1, o.z - o.vz * 0.1)
         gone = true
       }
       if (gone) this.orbs.splice(i, 1)

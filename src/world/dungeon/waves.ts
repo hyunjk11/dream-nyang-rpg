@@ -73,6 +73,12 @@ export const LIVE_CAP = DIFFICULTY.waves.liveCap
 
 export class Director {
   wave = 0
+  /** Waves seen out to the end (the survive objective counts these). */
+  cleared = 0
+  /** Objective met: no new waves, the pipes go quiet. */
+  quiet = false
+  /** Roster offset: wave n of this floor plays as waveFor(n + offset). */
+  private readonly offset: number
   /** Seconds until the next wave begins (during rest). */
   rest = 2.5
   private left = 0
@@ -81,6 +87,10 @@ export class Director {
   private clock = 0
   private current: Wave | null = null
   private serial = 0
+
+  constructor(firstWave = 1) {
+    this.offset = Math.max(0, Math.floor(firstWave) - 1)
+  }
 
   get active(): Wave | null {
     return this.current
@@ -91,6 +101,7 @@ export class Director {
     const out: SpawnOrder[] = []
     if (v.inBoss) return out
     if (!this.current) {
+      if (this.quiet) return out
       this.rest -= dt
       if (this.rest > 0) return out
       this.begin()
@@ -121,6 +132,7 @@ export class Director {
       if (v.alive + out.length >= LIVE_CAP) this.pour = Math.min(this.pour, 1)
     } else if (v.alive <= Math.max(3, Math.floor(w.total * 0.15)) || this.clock > WAVE_MAX_TIME) {
       this.current = null
+      this.cleared += 1
       this.rest = REST
     }
     return out
@@ -129,7 +141,7 @@ export class Director {
   /** Start the next wave now (tests, QA stress). */
   begin(): Wave {
     this.wave += 1
-    this.current = waveFor(this.wave)
+    this.current = waveFor(this.wave + this.offset)
     this.left = this.current.total
     this.elitesLeft = this.current.elites
     this.pour = 0

@@ -12,6 +12,7 @@ export const pad: Pad = { x: 0, y: 0, fire: false }
 
 let dashQueued = false
 let talkQueued = false
+let recallQueued = false
 
 /**
  * Shoulder-camera input, shared by the town and the dungeon. A click locks the pointer and
@@ -75,6 +76,7 @@ export function installInput(canvas: HTMLCanvasElement): void {
     keys.add(event.code)
     if (event.code === 'Space' && !event.repeat) dashQueued = true
     if ((event.code === 'KeyE' || event.code === 'Enter') && !event.repeat) talkQueued = true
+    if (event.code === 'KeyT' && !event.repeat) recallQueued = true
   })
   window.addEventListener('keyup', (event) => keys.delete(event.code))
   window.addEventListener('blur', () => {
@@ -149,6 +151,10 @@ export function installInput(canvas: HTMLCanvasElement): void {
     event.preventDefault()
     talkQueued = true
   })
+  document.getElementById('recall')?.addEventListener('pointerdown', (event) => {
+    event.preventDefault()
+    recallQueued = true
+  })
   const stick = document.getElementById('stick')
   const knob = document.getElementById('knob')
   if (stick && knob) bindStick(stick, knob)
@@ -158,6 +164,13 @@ export function installInput(canvas: HTMLCanvasElement): void {
 export function consumeTalk(): boolean {
   const had = talkQueued
   talkQueued = false
+  return had
+}
+
+/** T / the 귀환 button: read the town scroll down in the sewer. */
+export function consumeRecall(): boolean {
+  const had = recallQueued
+  recallQueued = false
   return had
 }
 

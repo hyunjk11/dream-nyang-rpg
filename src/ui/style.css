@@ -188,3 +188,26 @@ body.sewer #tracker { display: none; }
 #heat span { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); font-family: "Jua", sans-serif; font-size: 16px; color: #ffb0dc; text-shadow: 0 1px 3px #3a1f50, 0 0 2px #3a1f50; display: none; white-space: nowrap; }
 #heat.vent span { display: block; animation: vent 0.3s ease-in-out infinite alternate; }
 @keyframes vent { from { opacity: 0.5; } to { opacity: 1; } }
+
+/* Delve HUD (replaces the quest tracker down in the sewer): floor, objective, run gold. */
+#delve { position: absolute; left: 16px; top: 56px; max-width: min(300px, 58vw); padding: 9px 14px; border-radius: 16px; background: rgba(255, 248, 252, 0.88); color: #4a3358; display: flex; flex-direction: column; gap: 2px; font-size: 13px; pointer-events: none; }
+#delve b { font-family: "Jua", sans-serif; font-weight: 400; color: #8a4fb0; font-size: 16px; }
+#delve span { font-weight: 600; }
+#delve em { font-style: normal; color: #b07a2a; font-size: 12px; }
+#delve em:empty { display: none; }
+#delve.done span { color: #2f9a63; }
+#recall { display: none; }
+body.sewer #recall { display: inline-flex; }
+/* Run summary card after a trip. */
+#summary { position: fixed; inset: 0; z-index: 4; display: grid; place-items: center; background: rgba(20, 10, 30, 0.5); }
+#summary.hidden { display: none; }
+#summary h3 { font-family: "Jua", sans-serif; font-weight: 400; color: #8a4fb0; margin: 12px 0 4px; font-size: 16px; }
+#summary-sub { text-align: center; margin: 0 0 10px; }
+#summary-stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; }
+#summary-stats dt { color: #8a6aa0; }
+#summary-stats dd { margin: 0; font-weight: 700; }
+#summary-stats dd.lost { color: #c4527a; }
+#summary-loot { list-style: none; padding: 0; margin: 0 0 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+#summary-loot li { padding: 3px 10px; border-radius: 999px; background: rgba(74, 51, 88, 0.85); font-size: 13px; }
+#summary-loot li.none { background: none; color: #8a6aa0; padding: 0; }
+#summary-close { display: block; margin: 0 auto; }
