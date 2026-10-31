@@ -26,13 +26,15 @@ export const EXPLORE = {
   leash: 18,
   leashTime: 6,
   /** At most this many foes chase her at once (more wake as others fall). */
-  chaseCap: 12,
+  chaseCap: 8,
   /** Optional nest pipes: count, burst size, seconds between bursts, live cap per pipe, wake range (m). */
   nests: [2, 3] as const,
   nestBurst: [2, 3] as const,
   nestEvery: 6,
   nestCap: 6,
   nestRange: 14,
+  /** A pipe runs dry after this many foes (plugging it still pays the chest). */
+  nestTotal: 15,
   /** Dead-end chests, the shrine buff (s) and the chance of a secret pocket. */
   chests: [3, 5] as const,
   shrineTime: 30,
@@ -44,7 +46,7 @@ export const EXPLORE = {
   /** No pack this close (tiles) to the start: the first room is safe. */
   safe: 7,
   /** Foe hp on explore floors (on top of DIFFICULTY.horde.hp): fewer foes, each one a bit meatier. */
-  hp: 1.35,
+  hp: 1.6,
 } as const
 
 /** Elite affixes: a name prefix and what it does. */

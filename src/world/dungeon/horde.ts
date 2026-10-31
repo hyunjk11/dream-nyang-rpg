@@ -425,7 +425,8 @@ export class Horde {
     const push = f.elite ? 0.6 : 1.6
     f.vx += px * push
     f.vz += pz * push
-    if (f.mode !== 'chase' && f.pack >= 0) this.wakePack(f.pack, true)
+    // A hit always wakes the foe it hit, and its pack as far as the chase cap allows.
+    if (f.mode !== 'chase' && f.pack >= 0) this.wakePack(f.pack)
     f.mode = 'chase'
     f.lost = 0
     if (f.hp > 0) return false

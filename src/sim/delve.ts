@@ -130,7 +130,7 @@ export function floorPlan(depth: number, floor: number, salt = 0): FloorPlan {
     goal: 1,
     key: objective === 'exit' && floor >= 2,
     seed: floorSeed(depth, floor, salt),
-    cells: objective === 'boss' ? 6 : 9,
+    cells: objective === 'boss' ? 6 : 11,
     bossRoom: objective === 'boss' ? 7 : 5,
     scale: floorScale(depth, floor),
   }

@@ -22,6 +22,8 @@ export interface NestState {
   pack: number
   /** Live foes it has out. */
   out: number
+  /** Foes it has spawned in total (dry at `EXPLORE.nestTotal`). */
+  spawned: number
   /** It has noticed her (first burst). */
   woke: boolean
 }
@@ -62,7 +64,7 @@ export class ExploreDirector {
     for (const p of layout.packs) this.spawnPack(p)
     layout.nests.forEach((n, i) => {
       const c = tileCentre(maze, n.x, n.y)
-      this.nests.push({ i, x: c.x - n.dx * (TILE / 2 - 0.55), z: c.z - n.dy * (TILE / 2 - 0.55), hp: nestHp, maxHp: nestHp, hurt: 0, clock: 0.8, pack: 1000 + i, out: 0, woke: false })
+      this.nests.push({ i, x: c.x - n.dx * (TILE / 2 - 0.55), z: c.z - n.dy * (TILE / 2 - 0.55), hp: nestHp, maxHp: nestHp, hurt: 0, clock: 0.8, pack: 1000 + i, out: 0, spawned: 0, woke: false })
     })
     // Doors and the cracked wall are open in the geometry; close them for walking and shots.
     for (const b of blockers(layout)) maze.tiles[b.y * maze.w + b.x] = Tile.Solid
@@ -164,16 +166,21 @@ export class ExploreDirector {
       n.hurt = Math.max(0, n.hurt - dt * 4)
       if (n.hp <= 0 || !alive) continue
       const d = Math.hypot(n.x - hx, n.z - hz)
-      if (d > EXPLORE.nestRange) continue
+      if (d > EXPLORE.nestRange || n.spawned >= EXPLORE.nestTotal) continue
       n.clock -= dt
       if (n.clock > 0) continue
+      // No fresh burst while the crowd on her is already at the chase cap.
+      if (this.horde.chasing >= EXPLORE.chaseCap) {
+        n.clock = 1
+        continue
+      }
       if (!n.woke) {
         n.woke = true
         out.push({ type: 'nest-wake', i: n.i })
       }
       n.clock = EXPLORE.nestEvery
       const burst = EXPLORE.nestBurst[0] + Math.floor(this.rand() * (EXPLORE.nestBurst[1] - EXPLORE.nestBurst[0] + 1))
-      for (let k = 0; k < burst && n.out < EXPLORE.nestCap; k += 1) {
+      for (let k = 0; k < burst && n.out < EXPLORE.nestCap && n.spawned < EXPLORE.nestTotal; k += 1) {
         const f = spawnAt(n.i, kinds[Math.floor(this.rand() * kinds.length)])
         if (!f) break
         f.pack = n.pack
@@ -181,6 +188,7 @@ export class ExploreDirector {
         f.homeX = n.x
         f.homeZ = n.z
         n.out += 1
+        n.spawned += 1
         out.push({ type: 'spawn', foe: f, nest: n.i })
       }
     }
