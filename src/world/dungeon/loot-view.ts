@@ -79,6 +79,7 @@ export class LootView {
   private readonly pieces: Piece[] = []
   private readonly geo: Record<GeoKey, BufferGeometry>
   private readonly mats = new Map<string, Material>()
+  private tagRow = 0
 
   private readonly collide: (x: number, z: number) => { x: number; z: number }
 
@@ -127,7 +128,11 @@ export class LootView {
       mesh.position.set(x, 0.6, z)
       this.group.add(mesh)
       if (beam) this.group.add(beam)
-      if (label) this.group.add(label)
+      if (label) {
+        // Tags from one spill sit on staggered rows so the names don't print over each other.
+        label.userData.lift = (this.tagRow++ % 4) * 0.34
+        this.group.add(label)
+      }
       this.pieces.push(piece)
     })
   }
@@ -176,7 +181,7 @@ export class LootView {
       p.mesh.rotation.y = time * 2.4 + i
       p.mesh.visible = p.age < LIFE - 4 || Math.sin(p.age * 18) > 0
       if (p.label) {
-        p.label.position.set(p.x, p.y + 0.62, p.z)
+        p.label.position.set(p.x, p.y + 0.62 + (p.label.userData.lift as number), p.z)
         p.label.visible = p.mesh.visible && !p.pulled
       }
       if (p.beam) {
