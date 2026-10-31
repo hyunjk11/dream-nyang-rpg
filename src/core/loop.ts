@@ -2,6 +2,7 @@ import { resolveDialogue, npcMarker } from '../data/dialogues'
 import { applyActions, freshSave, onDeath, type ActionOutcome } from '../sim/mutate'
 import { addMaterial, onEnter, onKill, onTalk, tracker } from '../sim/quests'
 import { gainGold } from '../sim/stats'
+import { delveOf } from '../sim/delve'
 import { emptyResult, mergeResult, type Action, type MutationResult, type SaveData } from '../sim/types'
 import type { FoeKind } from '../combat/foes'
 import type { ZoneId } from '../world/town/zones3d'
@@ -109,6 +110,7 @@ export class GameState {
       const save = JSON.parse(raw) as SaveData
       if (!save || save.version !== 1 || !save.quests || !Array.isArray(save.items)) return null
       save.materials = { dream_dust: 0, toy_part: 0, ...save.materials }
+      delveOf(save)
       return new GameState(save)
     } catch {
       return null
