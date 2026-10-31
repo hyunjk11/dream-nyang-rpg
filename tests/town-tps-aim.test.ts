@@ -89,6 +89,30 @@ describe('마을·던전 공용 숄더 조준', () => {
     expect(a.y).toBeGreaterThan(TPS.height)
   })
 
+  it('던전 적: 조준선이 몸 위에 있으면 물방울도 그 몸에 맞는다 (같은 캡슐)', () => {
+    const m = generateMaze(11)
+    const h = new Horde(m)
+    const c = tileCentre(m, m.start.x, m.start.y)
+    const f = h.spawn('slime', c.x, c.z + 2)!
+    f.age = 5
+    const cap = h.capsule(f)
+    // Ray from a lens 3 m back and above, aimed at the upper rim of the body.
+    for (const y of [cap.y0 + 0.05, (cap.y0 + cap.y1) / 2, cap.y1 - 0.05]) {
+      const o = new Vector3(c.x, 1.9, c.z - 2)
+      const goal = new Vector3(c.x, y, c.z + 2 - cap.r + 0.01)
+      const t = rayCapsule(o.x, o.y, o.z, ...goal.clone().sub(o).normalize().toArray(), cap, 60)
+      expect(t).toBeGreaterThan(0)
+      const aim = o.clone().addScaledVector(goal.clone().sub(o).normalize(), t)
+      // A muzzle low and to the right sends its droplet at that aim point: it must hit the same foe.
+      const tip = new Vector3(c.x + 0.4, 1.1, c.z - 1.2)
+      const d = aim.clone().sub(tip)
+      const len = d.length()
+      d.normalize()
+      const hit = h.raycast(tip.x, tip.y, tip.z, d.x, d.y, d.z, len + 0.5)
+      expect(hit?.foe).toBe(f)
+    }
+  })
+
   it('감도는 0.3~2.5 사이로 저장되고, 마우스·터치 각속도에 곱해진다', () => {
     expect(clampSens(9)).toBe(SENS.max)
     expect(clampSens(0.01)).toBe(SENS.min)

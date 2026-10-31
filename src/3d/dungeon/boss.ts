@@ -7,6 +7,7 @@ import { DIFFICULTY } from '../difficulty'
 import type { Maze, Rect } from './maze'
 import { TILE, tileCentre } from './maze'
 import { collideCircle, solidAt } from './walls'
+import { rayCapsule, type AimTarget } from '../tps'
 
 export const BOSS = {
   hp: Math.round(1400 * DIFFICULTY.boss.hp),
@@ -140,17 +141,14 @@ export class Boss {
   }
 
   /** Ray (unit direction) against the body sphere; distance or -1. */
+  /** Upright body shared by the crosshair and the droplets. */
+  capsule(): AimTarget {
+    return { x: this.x, z: this.z, y0: BOSS.chest - BOSS.radius, y1: BOSS.chest + BOSS.radius, r: BOSS.radius }
+  }
+
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, max: number): number {
     if (!this.alive || !this.awake) return -1
-    const lx = this.x - ox
-    const ly = BOSS.chest - oy
-    const lz = this.z - oz
-    const along = lx * dx + ly * dy + lz * dz
-    const r = BOSS.radius
-    if (along < 0 || along - r > max) return -1
-    const perp2 = lx * lx + ly * ly + lz * lz - along * along
-    if (perp2 > r * r) return -1
-    return Math.max(0, along - Math.sqrt(r * r - perp2))
+    return rayCapsule(ox, oy, oz, dx, dy, dz, this.capsule(), max)
   }
 
   private ring(): void {

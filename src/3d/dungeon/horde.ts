@@ -10,6 +10,7 @@
 import { DIFFICULTY } from '../difficulty'
 import { TILE, tileCentre, walkable, worldToTile, type Maze } from './maze'
 import { collideCircle } from './walls'
+import { rayCapsule, type AimTarget } from '../tps'
 
 export type HordeKind =
   | 'slime'
@@ -293,27 +294,31 @@ export class Horde {
     }
   }
 
+  /** The upright body the crosshair and droplets test against (same shape for both). */
+  capsule(f: HordeFoe): AimTarget {
+    const chest = HORDE[f.kind].chest * (f.elite ? ELITE.scale : 1)
+    const r = f.radius * 1.15
+    return { x: f.x, z: f.z, y0: Math.max(0, chest - r), y1: chest + r, r }
+  }
+
+  /** Can this foe be aimed at / hit yet (not dying, mostly out of the floor)? */
+  hittable(f: HordeFoe): boolean {
+    return f.dying === 0 && f.age >= SPAWN_TIME * 0.4
+  }
+
   /**
    * First foe a ray (origin o, unit direction d) touches within `max` metres.
-   * Bodies are spheres at their chest height; dying ones are skipped.
+   * Bodies are the same upright capsules the aim ray uses, so a droplet sent at
+   * the crosshair point always lands on what the crosshair is over.
    */
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, max: number): { foe: HordeFoe; t: number } | null {
     let best: HordeFoe | null = null
     let bt = max
     for (const f of this.foes) {
-      if (f.dying > 0 || f.age < SPAWN_TIME * 0.4) continue
-      const r = f.radius * 1.15
-      const cy = HORDE[f.kind].chest * (f.elite ? ELITE.scale : 1)
-      const lx = f.x - ox
-      const ly = cy - oy
-      const lz = f.z - oz
-      const along = lx * dx + ly * dy + lz * dz
-      if (along < 0 || along - r > bt) continue
-      const perp2 = lx * lx + ly * ly + lz * lz - along * along
-      if (perp2 > r * r) continue
-      const t = along - Math.sqrt(r * r - perp2)
-      if (t < bt) {
-        bt = Math.max(0, t)
+      if (!this.hittable(f)) continue
+      const t = rayCapsule(ox, oy, oz, dx, dy, dz, this.capsule(f), bt)
+      if (t >= 0 && t < bt) {
+        bt = t
         best = f
       }
     }

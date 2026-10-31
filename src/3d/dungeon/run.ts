@@ -29,7 +29,6 @@ import { DRAIN, Director } from './waves'
 import { BOSS, Boss } from './boss'
 import { foePose, makeFoeBody } from '../foes'
 import { GUN, hitNormal } from './gunfeel'
-import { ELITE } from './horde'
 import type { GunCue } from './gunsound'
 
 /** What the sewer borrows from the hub game each frame. */
@@ -287,13 +286,8 @@ export class DungeonRun {
   private targets(): readonly AimTarget[] {
     const out = this.aimTargets
     out.length = 0
-    for (const f of this.horde.foes) {
-      if (f.dying > 0 || f.age < 0.2) continue
-      const chest = HORDE[f.kind].chest * (f.elite ? ELITE.scale : 1)
-      const r = f.radius * 1.15
-      out.push({ x: f.x, z: f.z, y0: Math.max(0, chest - r), y1: chest + r, r })
-    }
-    if (this.boss.alive && this.boss.awake) out.push({ x: this.boss.x, z: this.boss.z, y0: BOSS.chest - BOSS.radius, y1: BOSS.chest + BOSS.radius, r: BOSS.radius })
+    for (const f of this.horde.foes) if (this.horde.hittable(f)) out.push(this.horde.capsule(f))
+    if (this.boss.alive && this.boss.awake) out.push(this.boss.capsule())
     return out
   }
 
