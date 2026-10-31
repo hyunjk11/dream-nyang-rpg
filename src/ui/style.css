@@ -336,3 +336,66 @@ body.touch #bag-btn { display: inline-flex; top: 96px; bottom: auto; right: 78px
   #tree { grid-template-columns: 1fr; }
   #inv-grid { grid-template-columns: repeat(6, minmax(38px, 1fr)); }
 }
+
+/* ---- Stage 4: town services (포포 상점 · 키키 공방 · 퀘스트 게시판 · 보관함) ---- */
+#town { position: fixed; inset: 0; z-index: 4; display: grid; place-items: center; background: rgba(20, 10, 30, 0.55); }
+.town-card header { flex-wrap: wrap; }
+.town-title { margin: 0; font: 24px "Jua", sans-serif; color: #8a4fb0; }
+.town-sub { color: #9a7aa8; font-size: 12px; }
+.town-wallet { margin-left: auto; font-family: "Jua", sans-serif; color: #b07a10; font-size: 14px; }
+.town-close { background: #ffd0e4; }
+.town-body { display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
+.town-board .town-body, .town-card.town-board .town-body { grid-template-columns: 1fr; }
+.town-col h3 { margin: 12px 0 6px; }
+.town-col h3:first-child { margin-top: 0; }
+.town-side { background: #fbf4fd; border-radius: 18px; padding: 10px 12px; align-self: start; }
+.town-grid { display: grid; grid-template-columns: repeat(8, minmax(40px, 1fr)); gap: 5px; margin-bottom: 6px; }
+.town-grid .inv-cell .price { position: absolute; left: 3px; top: 1px; font: normal 10px "Jua", sans-serif; color: #b07a10; }
+.town-grid .inv-cell .plus { position: absolute; left: 3px; bottom: 1px; font: normal 10px "Jua", sans-serif; color: #2a7a40; }
+.town-grid .inv-cell.sold { opacity: 0.4; }
+.town-sweets { display: grid; gap: 6px; }
+.town-sweet { display: flex; align-items: center; gap: 8px; background: #fbf4fd; border-radius: 14px; padding: 6px 10px; }
+.town-sweet div { flex: 1; display: flex; flex-direction: column; }
+.town-sweet b { font: 15px "Jua", sans-serif; font-weight: 400; color: #6a3a8a; }
+.town-sweet small { font-size: 11px; color: #7a5a88; }
+.town-sweet button, .town-col > button { font-size: 13px; padding: 7px 11px; background: #efe4f2; }
+.town-sweet button.primary { background: #8a4fb0; color: #fff; }
+.town-sweet button:disabled { opacity: 0.45; }
+.town-job { margin-top: 10px; padding-top: 8px; border-top: 1px dashed #e2d4ea; display: flex; flex-direction: column; gap: 6px; }
+.town-job h4 { margin: 0 !important; }
+.town-job small { font-size: 12px; color: #7a5a88; }
+.town-job > button { align-self: flex-start; }
+.town-job button { font-size: 13px; padding: 7px 11px; background: #efe4f2; }
+.town-job button.primary { background: #8a4fb0; color: #fff; }
+.town-job button:disabled { opacity: 0.45; }
+.town-plus { display: flex; gap: 3px; }
+.town-plus i { flex: 1; height: 8px; border-radius: 4px; background: #efe4f2; }
+.town-plus i.on { background: linear-gradient(90deg, #ffd66b, #ff9fd2); }
+.town-affix { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.town-board { display: grid; gap: 10px; }
+.town-contract { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-radius: 18px; background: #fbf4fd; border: 2px solid #efe4f2; }
+.town-contract b { font: 17px "Jua", sans-serif; font-weight: 400; color: #6a3a8a; }
+.town-contract small { font-size: 12px; color: #7a5a88; }
+.town-contract.s-active { border-color: #b98ad6; }
+.town-contract.s-done { border-color: #ffc65a; background: #fff8e6; }
+.town-contract.s-claimed { opacity: 0.55; }
+.town-bar { height: 8px; border-radius: 9px; background: #efe4f2; overflow: hidden; }
+.town-bar span { display: block; height: 100%; background: linear-gradient(90deg, #b98ad6, #ff9fd2); }
+.town-card.flash { animation: town-flash 0.6s ease-out; }
+@keyframes town-flash { 0% { box-shadow: 0 0 0 0 rgba(255, 214, 107, 0.9); } 100% { box-shadow: 0 0 0 26px rgba(255, 214, 107, 0); } }
+#contract-hud { position: absolute; right: 16px; top: 108px; max-width: min(260px, 52vw); display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+#contract-hud div { padding: 5px 10px; border-radius: 12px; background: rgba(255, 248, 252, 0.86); color: #4a3358; font-size: 12px; }
+#contract-hud div.done { background: rgba(255, 238, 190, 0.95); color: #8a5a00; }
+#contract-hud b { font: 12px "Jua", sans-serif; font-weight: 400; color: #8a4fb0; margin-right: 4px; }
+.loot-toast { pointer-events: auto; }
+.loot-toast .quick { margin-top: 4px; font-size: 12px; padding: 4px 10px; border-radius: 10px; background: var(--rar); color: #fff; border: 0; }
+.loot-toast .gain { display: block; font-size: 11px; color: #9dffb0; }
+#candy { position: relative; }
+#candy-count { font-size: 10px; margin-left: 2px; }
+@media (max-width: 820px) {
+  .town-body { grid-template-columns: 1fr; }
+  .town-grid { grid-template-columns: repeat(6, minmax(40px, 1fr)); }
+  .town-card button { min-height: 40px; }
+  #contract-hud { top: 96px; right: 8px; }
+}
+body.touch #contract-hud { top: 150px; }

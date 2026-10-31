@@ -13,6 +13,8 @@ export const pad: Pad = { x: 0, y: 0, fire: false }
 let dashQueued = false
 let talkQueued = false
 let recallQueued = false
+let candyQueued = false
+let equipQueued = false
 /** Active skill slots pressed (keys 1–4 or the hotbar), oldest first. */
 const skillQueue: number[] = []
 /** I / Tab = bag, K = skill tree. */
@@ -87,6 +89,8 @@ export function installInput(canvas: HTMLCanvasElement): void {
     if (event.code === 'Space' && !event.repeat) dashQueued = true
     if ((event.code === 'KeyE' || event.code === 'Enter') && !event.repeat) talkQueued = true
     if (event.code === 'KeyT' && !event.repeat) recallQueued = true
+    if (event.code === 'KeyQ' && !event.repeat) candyQueued = true
+    if (event.code === 'KeyG' && !event.repeat) equipQueued = true
     if (event.code === 'Tab') event.preventDefault()
     if (event.repeat) return
     const slot = skillSlotFor(event.code)
@@ -178,6 +182,11 @@ export function installInput(canvas: HTMLCanvasElement): void {
       skillQueue.push(Number(el.dataset.slot))
     })
   })
+  document.getElementById('candy')?.addEventListener('pointerdown', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    candyQueued = true
+  })
   document.getElementById('bag-btn')?.addEventListener('pointerdown', (event) => {
     event.preventDefault()
     menuQueued = 'bag'
@@ -201,6 +210,20 @@ export function consumeRecall(): boolean {
   return had
 }
 
+/** Q / the 사탕 button: eat a heart candy. */
+export function consumeCandy(): boolean {
+  const had = candyQueued
+  candyQueued = false
+  return had
+}
+
+/** G (or the pickup toast's button): wear the newest pickup. */
+export function consumeQuickEquip(): boolean {
+  const had = equipQueued
+  equipQueued = false
+  return had
+}
+
 /** Next pressed active slot (0–3), or -1. */
 export function consumeSkill(): number {
   return skillQueue.shift() ?? -1
@@ -217,6 +240,8 @@ export function consumeMenu(): 'bag' | 'skills' | null {
 export function clearQueued(): void {
   skillQueue.length = 0
   menuQueued = null
+  candyQueued = false
+  equipQueued = false
 }
 
 export function consumeDash(): boolean {

@@ -15,6 +15,12 @@ import {
   PointsMaterial,
   Scene,
   SphereGeometry,
+  Sprite,
+  SpriteMaterial,
+  SRGBColorSpace,
+  TextureLoader,
+  BoxGeometry,
+  ConeGeometry,
   Vector3,
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
@@ -83,6 +89,87 @@ function lantern(): Group {
   return group
 }
 
+/** Popo's candy stall: a wooden counter, a pink-and-cream striped awning, sweet jars, and Popo. */
+function popoStall(base: string): Group {
+  const group = new Group()
+  const wood = toon(0xb07a56)
+  const counter = new Mesh(new BoxGeometry(1.8, 0.85, 0.7), wood)
+  counter.position.set(0, 0.43, 0.25)
+  const top = new Mesh(new BoxGeometry(1.95, 0.08, 0.82), toon(0xe9c9a0))
+  top.position.set(0, 0.89, 0.25)
+  const front = new Mesh(new BoxGeometry(1.6, 0.5, 0.02), toon(0xffd6e6))
+  front.position.set(0, 0.48, 0.61)
+  group.add(counter, top, front)
+  for (const x of [-0.88, 0.88]) {
+    const post = new Mesh(new CylinderGeometry(0.04, 0.05, 2.0, 6), wood)
+    post.position.set(x, 1.0, 0.55)
+    group.add(post)
+  }
+  // Striped awning: alternating wedges along a tilted board.
+  const stripes = 7
+  for (let i = 0; i < stripes; i += 1) {
+    const w = 2.1 / stripes
+    const stripe = new Mesh(new BoxGeometry(w, 0.05, 1.05), toon(i % 2 ? 0xfff4e4 : 0xff9fc6))
+    stripe.position.set(-1.05 + w * (i + 0.5), 2.02, 0.32)
+    stripe.rotation.x = 0.28
+    group.add(stripe)
+    const flap = new Mesh(new ConeGeometry(w * 0.5, 0.16, 3), toon(i % 2 ? 0xfff4e4 : 0xff9fc6))
+    flap.position.set(-1.05 + w * (i + 0.5), 1.83, 0.86)
+    flap.rotation.x = Math.PI
+    group.add(flap)
+  }
+  // Sweet jars on the counter, each with a candy glow.
+  const jarColors = [0xff9fd2, 0x9fe8c8, 0xffe08a, 0xbfa8ff]
+  jarColors.forEach((c, i) => {
+    const jar = new Mesh(new CylinderGeometry(0.12, 0.12, 0.26, 10), toon(0xeaf8ff, c, 0.35))
+    jar.position.set(-0.6 + i * 0.4, 1.06, 0.4)
+    const lid = new Mesh(new SphereGeometry(0.1, 8, 6), toon(0x9fe8c8))
+    lid.scale.y = 0.5
+    lid.position.set(jar.position.x, 1.21, 0.4)
+    group.add(jar, lid)
+  })
+  // A little sign on the awning: 포포.
+  const sign = new Mesh(new BoxGeometry(0.7, 0.26, 0.04), toon(0xfff4e4, 0xffc070, 0.25))
+  sign.position.set(0, 2.32, 0.2)
+  group.add(sign)
+  group.traverse((obj) => {
+    if ((obj as Mesh).isMesh) (obj as Mesh).castShadow = true
+  })
+  addOutline(group, 0.014)
+  // Popo herself, from her painted portrait, standing behind the counter.
+  const tex = new TextureLoader().load(`${base}assets/npc_popo.png`)
+  tex.colorSpace = SRGBColorSpace
+  const popo = new Sprite(new SpriteMaterial({ map: tex, transparent: true, alphaTest: 0.2 }))
+  popo.scale.set(1.25, 1.25, 1)
+  popo.position.set(0, 1.18, -0.2)
+  popo.name = 'popo'
+  group.add(popo)
+  return group
+}
+
+/** Byeolha's stash chest: a round-lidded toy chest with a gold band and a star latch. */
+function stashChest(): Group {
+  const group = new Group()
+  const box = new Mesh(new BoxGeometry(0.9, 0.5, 0.6), toon(0x9a6ad0))
+  box.position.y = 0.25
+  const lid = new Mesh(new CylinderGeometry(0.3, 0.3, 0.9, 14, 1, false, 0, Math.PI), toon(0xb98ad6))
+  lid.rotation.z = Math.PI / 2
+  lid.rotation.y = Math.PI / 2
+  lid.position.y = 0.5
+  lid.name = 'lid'
+  const band = new Mesh(new BoxGeometry(0.94, 0.08, 0.64), toon(0xffd66b, 0xffc070, 0.3))
+  band.position.y = 0.5
+  const latch = new Mesh(new SphereGeometry(0.07, 8, 6), toon(0xfff2a0, 0xffd66b, 1.2))
+  latch.position.set(0, 0.42, 0.31)
+  latch.name = 'latch'
+  group.add(box, lid, band, latch)
+  group.traverse((obj) => {
+    if ((obj as Mesh).isMesh) (obj as Mesh).castShadow = true
+  })
+  addOutline(group, 0.012)
+  return group
+}
+
 /** A slow swirl of sparkles in front of the portal arch. */
 function portalSparks(): Points {
   const count = 70
@@ -117,6 +204,8 @@ export class Landmarks {
   private readonly byKind = new Map<PlaceKind, Group[]>()
   private zone = 'village'
   private time = 0
+  private popo: Object3D | null = null
+  private latch: Mesh | null = null
 
   constructor(scene: Scene) {
     scene.add(this.group)
@@ -133,7 +222,17 @@ export class Landmarks {
 
   /** Load every Meshy landmark; missing files just leave a gap. Returns how many loaded. */
   async load(base: string): Promise<number> {
-    const jobs = PLACES.filter((p) => p.kind !== 'lantern').map(async (place) => {
+    for (const place of PLACES) {
+      if (place.kind !== 'popo' && place.kind !== 'stash') continue
+      const made = place.kind === 'popo' ? popoStall(base) : stashChest()
+      made.position.set(place.x, 0, place.z)
+      made.rotation.y = place.turn
+      this.group.add(made)
+      this.track(place.kind, made)
+      if (place.kind === 'popo') this.popo = made.getObjectByName('popo') ?? null
+      else this.latch = (made.getObjectByName('latch') as Mesh | undefined) ?? null
+    }
+    const jobs = PLACES.filter((p) => p.kind !== 'lantern' && p.kind !== 'popo' && p.kind !== 'stash').map(async (place) => {
       try {
         const gltf = await loader.loadAsync(`${base}models/3d/${fileFor(place.kind)}`)
         const model = gltf.scene
@@ -209,6 +308,9 @@ export class Landmarks {
       const k = g.base * (1 + Math.sin(t * g.speed) * 0.25)
       for (const mat of g.mats) mat.emissiveIntensity = k
     }
+    // Popo bounces on her toes; the chest's star latch twinkles.
+    if (this.popo) this.popo.position.y = 1.18 + Math.abs(Math.sin(t * 2.4)) * 0.05
+    if (this.latch) (this.latch.material as MeshToonMaterial).emissiveIntensity = 1 + Math.sin(t * 3.1) * 0.5
     if (this.sparks) {
       this.sparks.rotation.z = t * 0.6
       ;(this.sparks.material as PointsMaterial).opacity = 0.6 + Math.sin(t * 2.2) * 0.25

@@ -23,6 +23,7 @@ import { Sewer } from './sewer'
 import { TPS, type AimTarget, type RayFn, type TpsView } from '../../core/tps'
 import { Shooter, type ShotProcs, type ShotWorld } from '../../combat/shooter'
 import { blast, type SkillBody, type SkillWorld } from '../../combat/skills'
+import { applyProcs, chill, ELEMENTS, procBursts } from '../../combat/elements'
 import { RARITY_COLOR } from '../../sim/types'
 import { collideCircle, rayHit } from './walls'
 import { HORDE, Horde, type HordeFoe } from './horde'
@@ -56,6 +57,8 @@ export interface RunHost {
   kill?: (elite: boolean) => void
   /** She touched a pickup; returns the heal share (of max hp) and the float text. */
   pickup?: (drop: Drop) => { heal: number; text: string }
+  /** Spend a return scroll if she carries one (instant recall). */
+  scroll?: () => boolean
   /** The floor boss went down (unlock the next depth now, so a fall after still counts). */
   bossDown?: () => void
   /** Run gold so far (HUD readout). */
@@ -361,6 +364,12 @@ export class DungeonRun {
       this.recallT = 0
       return
     }
+    if (this.host.scroll?.()) {
+      this.host.vfx.ring(this.host.hero.object.position.clone().setY(0.06), 0x9ad7ff, 0.3, 2.4, 0.5)
+      this.host.banner('귀환 두루마리!', '포포의 두루마리가 바로 마을로 데려다줘')
+      this.host.leave('recall')
+      return
+    }
     this.recallT = 1e-3
     this.recallHp = this.host.hero.hp
     this.recallRing = 0
@@ -591,7 +600,7 @@ export class DungeonRun {
         r: f.radius,
         tone: f.elite ? 'elite' : 'n',
         hit: (amount, dx, dz, knock, slow) => {
-          if (slow > 0) f.chill = Math.max(f.chill, slow)
+          chill(f, slow)
           return this.horde.damage(f, amount, dx * (1 + knock), dz * (1 + knock))
         },
       })
@@ -634,20 +643,12 @@ export class DungeonRun {
   /** Element procs where a droplet landed. */
   private procs(at: Vector3, amount: number, procs: ShotProcs | undefined, f: HordeFoe | null): void {
     if (!procs) return
-    if (f && procs.ice) {
-      f.chill = Math.max(f.chill, 1.6)
-      this.host.vfx.burst(at, 0xbfefff, { count: 4, speed: 1.2, up: 0.6, life: 0.4, size: 0.12, gravity: 1, drag: 2 })
-    }
-    if (f && procs.candy) {
-      f.goo = 3
-      f.gooDps = Math.max(f.gooDps, amount * 0.3)
-      this.host.vfx.burst(at, 0xff9fd2, { count: 3, speed: 0.8, up: 0.4, life: 0.5, size: 0.14, gravity: 3, drag: 2 })
-    }
+    if (f) procBursts(this.host.vfx, at, applyProcs(f, procs, amount))
     if (procs.sparkle) {
-      this.host.vfx.burst(at, 0xfff2a0, { count: 8, speed: 3, up: 1.2, life: 0.35, size: 0.1, gravity: 2, drag: 2, additive: true })
+      procBursts(this.host.vfx, at, { sparkle: true })
       const x = at.x
       const z = at.z
-      queueMicrotask(() => blast(this.bodies(), x, z, 1.5, amount * 0.6, 0, 0, (n, p, tone) => this.shooter.hudFx.number(n, p, tone)))
+      queueMicrotask(() => blast(this.bodies(), x, z, ELEMENTS.sparkleRadius, amount * ELEMENTS.sparkleShare, 0, 0, (n, p, tone) => this.shooter.hudFx.number(n, p, tone)))
     }
   }
 

@@ -1,6 +1,6 @@
 /** Pure layout for the island's landmarks and their solid footprints. No Three.js. */
 
-export type PlaceKind = 'house' | 'workshop' | 'tree' | 'portal' | 'fountain' | 'well' | 'board' | 'lantern' | 'kiki' | 'luna'
+export type PlaceKind = 'house' | 'workshop' | 'tree' | 'portal' | 'fountain' | 'well' | 'board' | 'lantern' | 'kiki' | 'luna' | 'popo' | 'stash'
 
 export interface Place {
   kind: PlaceKind
@@ -36,6 +36,9 @@ export const PLACES: readonly Place[] = [
   at('kiki', -6.0, -6.0, 1.45, 0.35, 'kiki', 0.5),
   at('luna', -1.4, -5.8, 1.6, 0.35, 'luna', 0.15),
   at('board', -9.8, -3.6, 1.7, 0.4, 'board', 0.35),
+  // Stage 4: Popo's candy stall beside the lane, and Byeolha's stash chest by her house (both procedural).
+  at('popo', 3.0, -8.4, 2.2, 0.7, 'popo', -0.1),
+  at('stash', 6.2, -6.0, 0.7, 0.45, 'stash', -0.4),
   at('tree', 11.0, -4.6, 4.8, 0.9, undefined, -0.4),
   at('portal', -11.0, 4.2, 3.4, 0, 'gate', 0.6),
   at('fountain', 4.6, 9.8, 2.3, 1.25, undefined, 0),
@@ -48,7 +51,7 @@ export const PLACES: readonly Place[] = [
   at('lantern', -4.1, 10.4, 0, 0),
 ]
 
-/** The models that ship as Meshy GLBs (lanterns are procedural). */
+/** The models that ship as Meshy GLBs (lanterns, Popo's stall and the stash chest are procedural). */
 export const PLACE_MODELS: readonly PlaceKind[] = ['house', 'workshop', 'kiki', 'luna', 'board', 'tree', 'portal', 'fountain', 'well']
 
 /**
@@ -97,7 +100,7 @@ export function nearestTalk(x: number, z: number, reach = 2.4, places: readonly 
 }
 
 /** Village-only landmarks: out in the wild zones only the tree, fountain, portal and lanterns stay. */
-export const VILLAGE_ONLY: readonly PlaceKind[] = ['house', 'workshop', 'kiki', 'luna', 'board', 'well']
+export const VILLAGE_ONLY: readonly PlaceKind[] = ['house', 'workshop', 'kiki', 'luna', 'board', 'well', 'popo', 'stash']
 
 /** The landmarks standing (and solid) in one zone. */
 export function placesFor(zone: string): readonly Place[] {
