@@ -27,6 +27,7 @@ import { WATER_LOOK, buildToyGun, createToyGun, type GunLook } from './toygun'
 import type { WeaponKind } from '../sim/types'
 import { KNOCK, MOVE, gaitBlend, gaitRate, knockDecay, legYaw, turnToward } from '../core/motion'
 import { DIFFICULTY } from '../combat/difficulty'
+import { Wear, type WearLook } from './wear'
 
 const loader = new GLTFLoader()
 loader.setMeshoptDecoder(MeshoptDecoder)
@@ -63,6 +64,8 @@ export class Hero {
   /** Gun size multiplier from the equipped base (the rig scale is multiplied by it). */
   private gunSize = 1
   private gunLook: [WeaponKind, GunLook, number | null] = ['water', WATER_LOOK, null]
+  private readonly wear = new Wear()
+  private wearLook: WearLook = {}
   /** Seconds since the last hit (health regen waits for a lull). */
   sinceHit = 99
   alive = true
@@ -142,6 +145,12 @@ export class Hero {
       const bindHand = findNamed(model, 'RightHand')
       const bindFore = findNamed(model, 'RightForeArm')
       const grip = bindHand && bindFore ? calibrateGrip(this.object, bindFore, bindHand) : null
+      this.bindWear(model, {
+        head: findNamed(model, 'Head'),
+        neck: findNamed(model, 'Spine02') ?? findNamed(model, 'Neck'),
+        lfoot: findNamed(model, 'LeftFoot'),
+        rfoot: findNamed(model, 'RightFoot'),
+      })
       this.mixer = new AnimationMixer(model)
       for (const clip of gltf.animations) plantFeet(clip)
       this.bindClip('idle', gltf.animations, 'Idle')
@@ -185,6 +194,8 @@ export class Hero {
       this.spine = this.puppet.spine
       this.spines = []
       this.head = this.puppet.head
+      this.object.updateMatrixWorld(true)
+      this.bindWear(this.puppet.root, { head: this.puppet.head, neck: this.puppet.spine })
       this.attachGun(this.puppet.hand)
       this.modelLabel = '임시 모습'
       return false
@@ -345,6 +356,7 @@ export class Hero {
         toonMat.emissiveIntensity = hot ? 0.28 : 0
       }
     }
+    this.wear.update(this.object)
   }
 
   hurt(amount: number, from: Vector3): boolean {
@@ -387,6 +399,25 @@ export class Hero {
     death?.fadeOut(0.2)
     this.current = ''
     this.startLocomotion()
+  }
+
+  /** Hat, outfit and shoes on the model (procedural meshes riding her bones). */
+  setWear(look: WearLook): void {
+    this.wearLook = look
+    this.wear.set(look)
+  }
+
+  /** Worn piece names (QA). */
+  get wearPieces(): string[] {
+    return this.wear.pieces
+  }
+
+  private bindWear(model: Object3D, bones: Parameters<Wear['bind']>[1]): void {
+    const box = new Box3().setFromObject(model, true)
+    const top = this.object.worldToLocal(new Vector3(0, box.max.y, 0)).y
+    this.wear.bind(this.object, bones, top)
+    this.object.add(this.wear.group)
+    this.wear.set(this.wearLook)
   }
 
   /**

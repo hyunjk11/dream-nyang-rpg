@@ -104,7 +104,7 @@ describe('성장과 가방', () => {
     const hat = makeItem('hat_beret', 'common', () => 0, 1)
     addItem(save, hat, true)
     save.equipment.hat = hat.uid
-    expect(computeStats(save).maxHp).toBe(before + 14)
+    expect(computeStats(save).maxHp).toBe(before + 40)
     expect(learnSkill(save, 'shield').ok).toBe(true)
     expect(learnSkill(save, 'focus').ok).toBe(false)
     expect(learnSkill(save, 'sense').reason).toContain('먼저')

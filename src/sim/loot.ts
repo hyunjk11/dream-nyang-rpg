@@ -1,4 +1,5 @@
-import { AFFIX_COUNT, AFFIXES, PERCENT_STATS } from '../data/affixes'
+import { AFFIX_COUNT, AFFIXES, GEAR_AFFIX, PERCENT_STATS } from '../data/affixes'
+import { GUN_PROFILES, gunDps } from '../data/guns'
 import { GEAR_IDS, ITEMS, WEAPON_IDS } from '../data/items'
 import type { EnemyDef } from '../data/enemies'
 import {
@@ -74,7 +75,7 @@ export function rollAffixes(slot: EquipSlot, rarity: Rarity, rng: () => number, 
   const count = AFFIX_COUNT[rarity] ?? 0
   const gun = slot === 'weapon'
   const bag = AFFIXES.filter((spec) => (gun ? !spec.gearOnly : !spec.weaponOnly))
-  const scale = levelScale(itemLevel) * RARITY_POWER[rarity]
+  const scale = levelScale(itemLevel) * RARITY_POWER[rarity] * (gun ? 1 : GEAR_AFFIX)
   const out: Affix[] = []
   for (let i = 0; i < count && bag.length; i += 1) {
     const index = Math.min(bag.length - 1, Math.floor(rng() * bag.length))
@@ -127,11 +128,47 @@ export function rerollCost(item: ItemInstance): number {
   return 30 + RARITIES.indexOf(item.rarity) * 28 + item.itemLevel * 6
 }
 
-export function itemName(item: ItemInstance): string {
+/** Name pieces: first affix as the prefix, second as a "~의" suffix word, the base, the upgrade. */
+export function itemNameParts(item: ItemInstance): { prefix: string; suffix: string; base: string; plus: string } {
   const def = ITEMS[item.defId]
-  const prefix = item.affixes[0]?.name
+  const second = item.affixes[1]
+  const suffix = second ? (AFFIXES.find((a) => a.id === second.id)?.suffix ?? '') : ''
   const plus = plusOf(item)
-  return `${prefix ? `${prefix} ` : ''}${def?.name ?? item.defId}${plus ? ` +${plus}` : ''}`
+  return { prefix: item.affixes[0]?.name ?? '', suffix, base: def?.name ?? item.defId, plus: plus ? `+${plus}` : '' }
+}
+
+/** "힘찬 바람의 별빛 물총 +3". */
+export function itemName(item: ItemInstance): string {
+  const p = itemNameParts(item)
+  return [p.prefix, p.suffix, p.base, p.plus].filter(Boolean).join(' ')
+}
+
+/** Item power per stat point (hp 1, 1% armour 6, ...): one number to compare any two items. */
+export const POWER_WEIGHT: Partial<Record<StatKey, number>> = {
+  hp: 1,
+  armor: 600,
+  moveSpeed: 500,
+  damage: 500,
+  fireRate: 450,
+  attackSpeed: 450,
+  critChance: 700,
+  critDamage: 120,
+  lifesteal: 1500,
+  luck: 2,
+  pierce: 30,
+  sparkle: 150,
+  ice: 150,
+  candy: 150,
+}
+
+/** Item power: implicit + affix stats by POWER_WEIGHT; guns add half their base DPS at this level. */
+export function itemPower(item: ItemInstance): number {
+  const def = ITEMS[item.defId]
+  let p = 0
+  if (def?.gun) p += gunDps(GUN_PROFILES[def.gun], gunLevelScale(item.itemLevel) * GUN_RARITY[item.rarity] * upgradeMul(plusOf(item))) * 0.5
+  for (const [key, value] of Object.entries(implicitStats(item)) as [StatKey, number][]) p += value * (POWER_WEIGHT[key] ?? 0)
+  for (const a of item.affixes) p += a.value * (POWER_WEIGHT[a.stat] ?? 0)
+  return Math.round(p)
 }
 
 export function formatStat(stat: StatKey, value: number): string {

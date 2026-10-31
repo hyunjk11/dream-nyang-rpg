@@ -9,10 +9,11 @@
 import { ITEMS, MATERIAL_KO } from '../data/items'
 import { boardOf, claimContract, contractTitle, dropContract, rewardText, takeContract, type Contract } from '../sim/contracts'
 import { addItem, bagItems, findItem, isEquipped } from '../sim/inventory'
-import { itemLines, itemName, plusOf, sellValue, upgradeMul } from '../sim/loot'
+import { itemLines, itemName, itemPower, plusOf, sellValue, upgradeMul } from '../sim/loot'
+import { fillCell, nameTitle } from './itemcell'
 import { buyBack, buyConsumable, buyStock, consumableCount, CONSUMABLES, RESTOCK_COST, restock, sellItem, shopStock, STASH_CAP, stashPut, stashTake, townOf } from '../sim/town'
 import { canPay, changeElement, ELEMENT_COST, elementOf, MAX_PLUS, rerollAffix, rerollAffixCost, rerollChoices, upgradeCost, upgradeGun, type Cost } from '../sim/workshop'
-import { BAG_CAP, RARITY_COLOR, type Element, type ItemInstance, type SaveData } from '../sim/types'
+import { BAG_CAP, type Element, type ItemInstance, type SaveData } from '../sim/types'
 import { compareEquip } from './inventory'
 
 export type TownPanel = 'shop' | 'workshop' | 'board' | 'stash'
@@ -41,7 +42,6 @@ const SUB: Record<TownPanel, string> = {
   stash: '가방이 꽉 차면 여기에 넣어 둬.',
 }
 
-const ICON: Record<string, string> = { gun: '물', shotgun: '방', rifle: '별', dart: '꿈', hat: '모', pin: '핀', outfit: '옷', shoes: '발', ring: '링', charm: '참', collar: '목' }
 const ELEMENT_KO: Record<Element, string> = { sparkle: '반짝', ice: '서늘', candy: '끈적' }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -153,18 +153,12 @@ export class TownUI {
       b.classList.add('empty')
       return b
     }
-    const def = ITEMS[item.defId]
-    b.style.setProperty('--rar', RARITY_COLOR[item.rarity])
-    b.dataset.rarity = item.rarity
-    b.dataset.uid = item.uid
+    fillCell(b, item, this.host.save())
     b.dataset.from = from
-    b.append(el('i', 'icon', ICON[def?.icon ?? ''] ?? '?'))
-    b.append(el('em', 'ilvl', `${item.itemLevel}`))
     if (plusOf(item) > 0) b.append(el('small', 'plus', `+${plusOf(item)}`))
     if (price !== undefined) b.append(el('small', 'price', sold ? '팔림' : `${price}`))
     if (sold) b.classList.add('sold')
     if (this.picked?.from === from && this.picked.key === item.uid) b.classList.add('picked')
-    b.title = itemName(item)
     b.addEventListener('click', () => {
       this.picked = { from, key: item.uid }
       this.host.sfx('ui')
@@ -190,9 +184,8 @@ export class TownUI {
 
   private itemCard(item: ItemInstance, save: SaveData): HTMLElement {
     const box = el('div', 'town-detail')
-    const h = el('h3', '', itemName(item))
-    h.style.color = RARITY_COLOR[item.rarity]
-    box.append(h, el('p', 'inv-sub', `아이템 레벨 ${item.itemLevel}${plusOf(item) ? ` · 강화 +${plusOf(item)} (총 피해 ×${upgradeMul(plusOf(item)).toFixed(2)})` : ''}`))
+    const h = nameTitle('h3', item)
+    box.append(h, el('p', 'inv-sub', `아이템 레벨 ${item.itemLevel} · 파워 ${itemPower(item)}${plusOf(item) ? ` · 강화 +${plusOf(item)} (총 피해 ×${upgradeMul(plusOf(item)).toFixed(2)})` : ''}`))
     const ul = el('ul', 'inv-lines')
     for (const line of itemLines(item)) ul.append(el('li', '', line))
     box.append(ul)

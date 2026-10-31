@@ -287,12 +287,37 @@ body.touch #bag-btn { display: inline-flex; top: 96px; bottom: auto; right: 78px
   border: 2px solid var(--rar, transparent); display: grid; place-items: center; cursor: pointer;
 }
 .inv-cell.empty { background: #f6f0f8; border: 2px dashed #e2d4ea; cursor: default; }
-.inv-cell .icon { font: normal 20px "Jua", sans-serif; color: var(--rar); text-shadow: 0 1px 0 rgba(58, 36, 72, 0.35); }
-.inv-cell[data-rarity="common"] .icon { color: #6a5a78; }
-.inv-cell .ilvl { position: absolute; right: 4px; bottom: 2px; font: normal 10px "Jua", sans-serif; color: #9a7aa8; }
+.inv-cell .icon { display: block; width: 58%; margin-top: -14%; line-height: 0; filter: drop-shadow(0 1px 0 rgba(58, 36, 72, 0.25)); }
+.inv-cell .icon svg { width: 100%; height: auto; }
+.inv-cell.item {
+  background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--rar) 38%, #fff) 0%, color-mix(in srgb, var(--rar) 14%, #f6eef8) 62%, color-mix(in srgb, var(--rar) 26%, #efe4f2) 100%);
+  overflow: hidden;
+}
+.inv-cell.item[data-rarity="common"] { background: linear-gradient(#fbf7fc, #efe6f2); border-color: #d9cbe0; }
+.inv-cell.item[data-rarity="uncommon"] { border-width: 2px; }
+.inv-cell.item[data-rarity="rare"] { border-width: 3px; }
+.inv-cell.item[data-rarity="epic"], .inv-cell.item[data-rarity="legendary"] { border-width: 3px; box-shadow: inset 0 0 10px var(--rar), 0 0 6px color-mix(in srgb, var(--rar) 70%, transparent); }
+.inv-cell.item[data-rarity="legendary"]::after {
+  content: ""; position: absolute; inset: -40%; pointer-events: none;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.75) 50%, transparent 60%);
+  animation: legend-shine 2.6s ease-in-out infinite;
+}
+@keyframes legend-shine { 0% { transform: translateX(-60%); } 55%, 100% { transform: translateX(60%); } }
+.inv-cell .name {
+  position: absolute; left: 2px; right: 2px; bottom: 11px; font: normal 9px/1.05 "Jua", sans-serif; color: #4a3358;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-align: center; word-break: keep-all;
+}
+.inv-cell .power { position: absolute; left: 3px; top: 2px; font: normal 10px "Jua", sans-serif; color: #4a3358; background: rgba(255, 255, 255, 0.7); border-radius: 6px; padding: 0 3px; }
+.inv-cell .cmp { position: absolute; right: 3px; top: 2px; font: normal 11px "Jua", sans-serif; }
+.inv-cell .cmp.up { color: #22a05a; }
+.inv-cell .cmp.down { color: #e0506a; }
+.inv-cell .ilvl { position: absolute; right: 4px; bottom: 1px; font: normal 8px "Jua", sans-serif; color: #9a7aa8; }
+.inv-cell .slot-name + .icon { margin-top: 0; }
+.item-title .pre { color: #2f9fd8; }
+.item-title .suf { color: #d0569a; }
+.item-title .plus { color: #2a7a40; }
 .inv-cell .slot-name { position: absolute; left: 0; right: 0; top: 2px; font-size: 9px; color: #9a7aa8; }
 .inv-cell.picked { box-shadow: 0 0 0 3px #8a4fb0; }
-.inv-cell[data-rarity="epic"], .inv-cell[data-rarity="legendary"] { box-shadow: inset 0 0 10px var(--rar); }
 #inv-mats { font-size: 12px; color: #7a5a88; margin: 8px 0 0; }
 #inv-stats { margin-top: 10px; font-size: 12px; }
 .inv-level { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; }
@@ -360,7 +385,7 @@ body.touch #bag-btn { display: inline-flex; top: 96px; bottom: auto; right: 78px
 .town-col h3:first-child { margin-top: 0; }
 .town-side { background: #fbf4fd; border-radius: 18px; padding: 10px 12px; align-self: start; }
 .town-grid { display: grid; grid-template-columns: repeat(8, minmax(40px, 1fr)); gap: 5px; margin-bottom: 6px; }
-.town-grid .inv-cell .price { position: absolute; left: 3px; top: 1px; font: normal 10px "Jua", sans-serif; color: #b07a10; }
+.town-grid .inv-cell .price { position: absolute; right: 3px; top: 15px; font: normal 10px "Jua", sans-serif; color: #8a5a00; background: rgba(255, 236, 170, 0.85); border-radius: 6px; padding: 0 3px; }
 .town-grid .inv-cell .plus { position: absolute; left: 3px; bottom: 1px; font: normal 10px "Jua", sans-serif; color: #2a7a40; }
 .town-grid .inv-cell.sold { opacity: 0.4; }
 .town-sweets { display: grid; gap: 6px; }
@@ -411,3 +436,5 @@ body.touch #candy { top: 96px; bottom: auto; right: 140px; }
   #contract-hud { top: 96px; right: 8px; }
 }
 body.touch #contract-hud { top: 150px; }
+.inv-cell .slot-name ~ .power { top: 13px; }
+.town-grid .inv-cell .plus { bottom: auto; top: 14px; left: auto; right: 3px; }

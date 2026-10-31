@@ -9,11 +9,12 @@ import { ITEMS, MATERIAL_KO } from '../data/items'
 import { BRANCH_KO, TIER_LEVEL, TREE, type Branch, type TreeSkill } from '../data/tree'
 import { xpToNext } from '../sim/formulas'
 import { bagItems, findItem, isEquipped, slotFor, equipItem } from '../sim/inventory'
-import { itemLines, itemName, sellValue, dismantleYield } from '../sim/loot'
+import { itemLines, itemName, itemPower, sellValue, dismantleYield } from '../sim/loot'
+import { fillCell, nameTitle } from './itemcell'
 import { dismantleOwned, sellOwned, tryEquip, tryUnequip } from '../sim/mutate'
 import { buildOf, learn, learnBlock, rank, respec, respecCost } from '../sim/skilltree'
 import { computeStats, type ComputedStats } from '../sim/stats'
-import { BAG_CAP, EQUIP_SLOTS, RARITY_COLOR, RARITY_KO, SLOT_KO, type EquipSlot, type ItemInstance, type SaveData } from '../sim/types'
+import { BAG_CAP, EQUIP_SLOTS, RARITY_KO, SLOT_KO, type EquipSlot, type ItemInstance, type SaveData } from '../sim/types'
 import { LEVEL_CAP } from '../data/tree'
 
 export type InvTab = 'bag' | 'skills'
@@ -30,19 +31,6 @@ export interface InventoryHost {
   closed(): void
 }
 
-const ICON: Record<string, string> = {
-  gun: '물',
-  shotgun: '방',
-  rifle: '별',
-  dart: '꿈',
-  hat: '모',
-  pin: '핀',
-  outfit: '옷',
-  shoes: '발',
-  ring: '링',
-  charm: '참',
-  collar: '목',
-}
 
 const pct = (v: number, d = 0) => `${(v * 100).toFixed(d)}%`
 
@@ -173,14 +161,8 @@ export class InventoryUI {
       b.classList.add('empty')
       return b
     }
-    const def = ITEMS[item.defId]
-    b.style.setProperty('--rar', RARITY_COLOR[item.rarity])
-    b.dataset.rarity = item.rarity
-    b.dataset.uid = item.uid
-    b.append(el('i', 'icon', ICON[def?.icon ?? ''] ?? '?'))
-    b.append(el('em', 'ilvl', `${item.itemLevel}`))
+    fillCell(b, item, this.host.save())
     if (item.uid === this.picked) b.classList.add('picked')
-    b.title = itemName(item)
     b.addEventListener('click', () => {
       this.picked = item.uid
       this.host.sfx('ui')
@@ -246,10 +228,8 @@ export class InventoryUI {
     }
     const def = ITEMS[item.defId]
     const worn = isEquipped(save, item.uid)
-    const title = el('h3', '', itemName(item))
-    title.style.color = RARITY_COLOR[item.rarity]
-    box.append(title)
-    box.append(el('p', 'inv-sub', `${RARITY_KO[item.rarity]} · 아이템 레벨 ${item.itemLevel}${def?.gun ? ` · ${GUN_KO[def.gun]}` : ''}`))
+    box.append(nameTitle('h3', item))
+    box.append(el('p', 'inv-sub', `${RARITY_KO[item.rarity]} · 아이템 레벨 ${item.itemLevel} · 파워 ${itemPower(item)}${def?.gun ? ` · ${GUN_KO[def.gun]}` : ''}`))
     if (def?.description) box.append(el('p', 'inv-desc', def.description))
     const ul = el('ul', 'inv-lines')
     for (const line of itemLines(item).slice(2, -1)) ul.append(el('li', '', line))
@@ -257,7 +237,7 @@ export class InventoryUI {
     if (!worn && def?.slot) {
       const target = slotFor(save, item)
       const current = target ? findItem(save, save.equipment[target]) : undefined
-      box.append(el('h4', '', current ? `지금 ${SLOT_KO[target!]}: ${itemName(current)}` : `${SLOT_KO[target ?? def.slot]} 비어 있음`))
+      box.append(el('h4', '', current ? `지금 ${SLOT_KO[target!]}: ${itemName(current)} (파워 ${itemPower(current)} → ${itemPower(item)})` : `${SLOT_KO[target ?? def.slot]} 비어 있음`))
       const diff = compareEquip(save, item.uid, target)
       const table = el('ul', 'inv-compare')
       if (!diff.length) table.append(el('li', 'same', '능력치 변화 없음'))

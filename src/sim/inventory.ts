@@ -60,3 +60,23 @@ export function removeItem(save: SaveData, id: string): ItemInstance | undefined
   }
   return item
 }
+
+/**
+ * Item power against what she wears in that slot: +n better, −n worse, 0 same, null when it is
+ * worn or not wearable. Accessories compare with the weaker of the two (that is the one it replaces).
+ */
+export function powerVsWorn(save: SaveData, item: ItemInstance, power: (i: ItemInstance) => number): number | null {
+  const slot = ITEMS[item.defId]?.slot
+  if (!slot || isEquipped(save, item.uid)) return null
+  const worn = (s: EquipSlot) => findItem(save, save.equipment[s])
+  let now = 0
+  if (slot === 'accessory') {
+    const a = worn('accessory')
+    const b = worn('accessory2')
+    now = a && b ? Math.min(power(a), power(b)) : 0
+  } else {
+    const w = worn(slot)
+    now = w ? power(w) : 0
+  }
+  return power(item) - now
+}
