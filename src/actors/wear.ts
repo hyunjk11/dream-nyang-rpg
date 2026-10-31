@@ -66,15 +66,15 @@ export function wearMesh(id: string, rarity: Rarity, size: number): { anchor: An
       return { anchor: 'head', mesh: g }
     }
     case 'hat_pin': {
-      const star = add(new SphereGeometry(r * 0.2, 5, 2), m(0xffe066), r * 0.78, -r * 0.35, r * 0.35)
+      const star = add(new SphereGeometry(r * 0.26, 5, 2), m(0xffe066), r * 0.62, -r * 0.1, r * 0.72)
       star.scale.set(1, 1, 0.4)
       star.rotation.y = -0.8
-      add(new CylinderGeometry(r * 0.03, r * 0.03, r * 0.6, 6), m(0xd8d0ff), r * 0.82, -r * 0.5, r * 0.15).rotation.x = 1.2
+      add(new CylinderGeometry(r * 0.03, r * 0.03, r * 0.6, 6), m(0xd8d0ff), r * 0.7, -r * 0.25, r * 0.5).rotation.x = 1.2
       return { anchor: 'head', mesh: g }
     }
     case 'outfit_hoodie': {
       // A soft hood folded behind her neck.
-      const hood = add(new TorusGeometry(r * 0.62, r * 0.26, 8, 18, Math.PI), m(0xc7b2ff), 0, 0, -r * 0.42)
+      const hood = add(new TorusGeometry(r * 0.78, r * 0.34, 8, 18, Math.PI), m(0xc7b2ff), 0, -r * 0.1, -r * 0.78)
       hood.rotation.set(-0.35, 0, Math.PI)
       add(new SphereGeometry(r * 0.12, 8, 6), m(0xffffff), r * 0.26, -r * 0.55, r * 0.42)
       add(new SphereGeometry(r * 0.12, 8, 6), m(0xffffff), -r * 0.26, -r * 0.55, r * 0.42)
