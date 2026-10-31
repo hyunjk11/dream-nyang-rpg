@@ -31,7 +31,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        three: resolve(__dirname, '3d/index.html'),
+        // Old /3d/ links land on a tiny page that forwards to the root game.
+        legacy3d: resolve(__dirname, '3d/index.html'),
       },
     },
   },
