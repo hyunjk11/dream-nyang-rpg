@@ -6,7 +6,7 @@ import type { EquipSlot, ItemInstance, SaveData, StatKey, WeaponKind } from './t
 import { emptyResult, type MutationResult } from './types'
 import { findItem } from './inventory'
 import { clamp, xpToNext } from './formulas'
-import { GUN_RARITY, gunLevelScale, implicitStats } from './loot'
+import { GUN_RARITY, gunLevelScale, implicitStats, plusOf, upgradeMul } from './loot'
 import { buildOf, rank } from './skilltree'
 
 /**
@@ -77,7 +77,7 @@ export function computeStats(save: SaveData, items: ItemInstance[] = equippedIte
   const gunItem = items.find((i) => ITEMS[i.defId]?.slot === 'weapon')
   const kind: WeaponKind = (gunItem && ITEMS[gunItem.defId]?.gun) || 'water'
   const base = GUN_PROFILES[kind]
-  const gunScale = gunItem ? gunLevelScale(gunItem.itemLevel) * GUN_RARITY[gunItem.rarity] : 1
+  const gunScale = gunItem ? gunLevelScale(gunItem.itemLevel) * GUN_RARITY[gunItem.rarity] * upgradeMul(plusOf(gunItem)) : 1
   const damageMul = (1 + (level - 1) * LEVEL_GROWTH.damage) * (1 + (g.damage ?? 0) + rank(save, 'polish') * 0.05)
   const hpMul = 1 + (level - 1) * LEVEL_GROWTH.hp + rank(save, 'fluffy') * 0.06
   const st = rank(save, 'star_eye')

@@ -84,6 +84,29 @@ interface Rush {
 }
 
 export const SKILL_RANGE = { bomb: 16, rush: 6.5 }
+
+/** Half-angle of the rush's aim-assist cone (radians, about 22°). */
+export const RUSH_CONE = 0.38
+
+/** The rush target: the body nearest the aim line within the cone and range (null = none). */
+export function rushLock(bodies: SkillBody[], x: number, z: number, dx: number, dz: number, range: number): { x: number; z: number; d: number } | null {
+  let best: { x: number; z: number; d: number } | null = null
+  let score = Infinity
+  for (const b of bodies) {
+    const vx = b.x - x
+    const vz = b.z - z
+    const d = Math.hypot(vx, vz)
+    if (d < 0.3 || d > range + b.r) continue
+    const ang = Math.acos(Math.max(-1, Math.min(1, (vx * dx + vz * dz) / d)))
+    if (ang > RUSH_CONE) continue
+    const s = ang * 4 + d * 0.15
+    if (s < score) {
+      score = s
+      best = { x: b.x, z: b.z, d }
+    }
+  }
+  return best
+}
 export const AURA_TIME = 6
 
 export class SkillRunner {
@@ -204,8 +227,16 @@ export class SkillRunner {
     const dir = new Vector3(target.x - from.x, 0, target.z - from.z)
     if (dir.lengthSq() < 0.01) dir.set(Math.sin(hero.yaw), 0, Math.cos(hero.yaw))
     dir.normalize()
+    // Aim assist: lock onto the foe closest to the aim line inside a narrow cone, and run
+    // just through it, so the rush lands in town and in the sewer alike.
+    const lock = rushLock(world.bodies(), from.x, from.z, dir.x, dir.z, SKILL_RANGE.rush)
+    let reach = SKILL_RANGE.rush
+    if (lock) {
+      dir.set(lock.x - from.x, 0, lock.z - from.z).normalize()
+      reach = Math.min(SKILL_RANGE.rush, lock.d + 1.2)
+    }
     const wall = world.solid(from.x, 0.4, from.z, dir.x, 0, dir.z, SKILL_RANGE.rush)
-    const len = Math.max(1.2, Math.min(SKILL_RANGE.rush, wall - 0.45))
+    const len = Math.max(Math.min(1.2, wall), Math.min(reach, wall - 0.45))
     this.rush = { from, dir, len, t: 0, dur: 0.34, amount: rushDamage(r) * this.host.damageMul(), hit: new Set() }
     this.host.sfx('dash', 1)
     vfx.ring(from.clone().setY(0.05), 0xffd36b, 0.2, 1.6, 0.35)

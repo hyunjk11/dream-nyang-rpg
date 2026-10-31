@@ -19,6 +19,7 @@ import type { ZoneFoe } from '../world/town/zones3d'
 import type { CueName } from '../audio/soundplan'
 import type { Vfx } from '../core/vfx'
 import { DIFFICULTY } from './difficulty'
+import { freshElements, speedMul, tickElements } from './elements'
 import { rayCapsule, type AimTarget } from '../core/tps'
 
 const TOWN = DIFFICULTY.town
@@ -53,6 +54,10 @@ export interface Foe {
   elite?: string
   /** Zone foes sleep for good once beaten (until she comes back to the zone). */
   once: boolean
+  /** 서늘 / 끈적 timers (same rules as the sewer horde). */
+  chill: number
+  goo: number
+  gooDps: number
 }
 
 interface Shot {
@@ -205,14 +210,17 @@ export class Combat {
   }
 
   /** A hitscan droplet from the shoulder gun landed: damage, flash, shove, and the kill. */
-  strikeFoe(foe: Foe, damage: number, dir: Vector3): boolean {
+  strikeFoe(foe: Foe, damage: number, dir: Vector3 | null, knock = 1): boolean {
     const spec = FOE_SPECS[foe.kind]
+    if (!foe.alive) return false
     foe.hp -= damage
-    foe.flash = 0.1
-    foe.hurt = 1
-    const shove = foe.kind === 'bloom' ? 0.25 : 1.4
-    foe.knock.addScaledVector(new Vector3(dir.x, 0, dir.z).normalize(), shove)
-    if (foe.knock.length() > 3.2) foe.knock.setLength(3.2)
+    foe.flash = dir ? 0.1 : Math.max(foe.flash, 0.04)
+    foe.hurt = dir ? 1 : Math.max(foe.hurt, 0.4)
+    if (dir && dir.lengthSq() > 1e-8) {
+      const shove = (foe.kind === 'bloom' ? 0.25 : 1.4) * knock
+      foe.knock.addScaledVector(new Vector3(dir.x, 0, dir.z).normalize(), shove)
+      if (foe.knock.length() > 3.2) foe.knock.setLength(3.2)
+    }
     if (foe.kind === 'bloom') this.sound('boss_hit')
     if (foe.hp > 0) return false
     foe.alive = false
@@ -264,6 +272,7 @@ export class Combat {
       tags,
       elite,
       once,
+      ...freshElements(),
     })
   }
 
@@ -354,6 +363,7 @@ export class Combat {
         if (foe.respawn <= 0) {
           foe.alive = true
           foe.hp = foe.maxHp
+          Object.assign(foe, freshElements())
           foe.spawn = 0
           foe.windup = 0
           foe.object.visible = true
@@ -361,6 +371,9 @@ export class Combat {
         }
         continue
       }
+      const goo = tickElements(foe, dt)
+      if (goo > 0 && this.strikeFoe(foe, goo, null)) continue
+      const slow = speedMul(foe)
       const to = heroPos.clone().sub(foe.object.position)
       to.y = 0
       const dist = to.length()
@@ -376,11 +389,11 @@ export class Combat {
           // The bloom is rooted near its bed; it only shuffles a few steps out.
           if (foe.kind === 'bloom' && foe.object.position.clone().addScaledVector(step, 0.3).distanceTo(foe.home) > 3.5) step.set(0, 0, 0)
           if (step.lengthSq() > 0.01) {
-            foe.object.position.addScaledVector(step, spec.speed * TOWN.speed * dt)
+            foe.object.position.addScaledVector(step, spec.speed * TOWN.speed * slow * dt)
             moving = true
           }
         } else if (dist > 1.15) {
-          foe.object.position.addScaledVector(to, spec.speed * TOWN.speed * foe.stride * dt)
+          foe.object.position.addScaledVector(to, spec.speed * TOWN.speed * foe.stride * slow * dt)
           moving = true
         }
       }
@@ -627,8 +640,10 @@ function paintHurt(foe: Foe): void {
     const base = (mat.userData.lift as number | undefined) ?? 0
     // Meshy bodies carry their texture as emissiveMap, so the flash reads as a bright tint.
     const hasMap = Boolean(mat.emissiveMap)
-    mat.emissive.set(hot ? 0xfff6ea : warn > 0 ? 0xff7ab4 : hasMap ? 0xffffff : 0x000000)
-    mat.emissiveIntensity = hot ? (hasMap ? 1.4 : 0.55) : warn > 0 ? base + 0.45 * warn : base
+    // 서늘 reads as a frosty blue tint, 끈적 as candy pink (below the hit flash and telegraph).
+    const tint = foe.chill > 0 ? 0x9fdcff : foe.goo > 0 ? 0xff9fd2 : 0
+    mat.emissive.set(hot ? 0xfff6ea : warn > 0 ? 0xff7ab4 : tint ? tint : hasMap ? 0xffffff : 0x000000)
+    mat.emissiveIntensity = hot ? (hasMap ? 1.4 : 0.55) : warn > 0 ? base + 0.45 * warn : tint ? (hasMap ? Math.max(base, 1) : base + 0.35) : base
   }
 }
 

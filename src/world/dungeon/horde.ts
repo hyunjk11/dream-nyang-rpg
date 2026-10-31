@@ -7,6 +7,7 @@
  * at the centre of the next tile downhill, or straight at her when it shares her tile or the next.
  * Crowding: a uniform spatial hash pushes overlapping bodies apart; walls via collideCircle.
  */
+import { ELEMENTS, speedMul, tickElements } from '../../combat/elements'
 import { DIFFICULTY } from '../../combat/difficulty'
 import { TILE, tileCentre, walkable, worldToTile, type Maze } from './maze'
 import { collideCircle } from './walls'
@@ -108,7 +109,7 @@ export interface HordeFoe {
 }
 
 /** How much a chilled foe slows (share of speed kept). */
-export const CHILL_SLOW = 0.55
+export const CHILL_SLOW = ELEMENTS.slow
 
 /** BFS distances (in tiles) from one target tile, rebuilt when the target moves. */
 export class FlowField {
@@ -290,11 +291,8 @@ export class Horde {
         continue
       }
       f.age += dt
-      if (f.chill > 0) f.chill = Math.max(0, f.chill - dt)
-      if (f.goo > 0) {
-        f.goo = Math.max(0, f.goo - dt)
-        if (this.damage(f, f.gooDps * dt)) continue
-      }
+      const goo = tickElements(f, dt)
+      if (goo > 0 && this.damage(f, goo)) continue
       const dx = target.x - f.x
       const dz = target.z - f.z
       const d = Math.hypot(dx, dz)
@@ -394,7 +392,7 @@ export class Horde {
     if (d < f.radius + 0.75) want = 0
     if (f.windup > 0) want *= 0.15
     if (f.age < SPAWN_TIME) want *= 0.5
-    if (f.chill > 0) want *= CHILL_SLOW
+    want *= speedMul(f)
     const wx = gl > 1e-4 ? (gx / gl) * want : 0
     const wz = gl > 1e-4 ? (gz / gl) * want : 0
     const k = Math.min(1, dt * 7)

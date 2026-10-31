@@ -13,7 +13,7 @@ import { Shooter, type ShotWorld } from './combat/shooter'
 import { TPS, loadSens, rayCapsule, setSens, SENS, type AimTarget } from './core/tps'
 import { WALK_RADIUS } from './world/town/island'
 import { Hero } from './actors/hero'
-import { axis, clearQueued, consumeDash, consumeMenu, consumeSkill, consumeTalk, installInput, pad, runningHeld, shoulder } from './core/input'
+import { axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, installInput, pad, runningHeld, shoulder } from './core/input'
 import { Landmarks } from './world/town/landmarks'
 import { Mochi } from './actors/mochi'
 import { killLoot, GameState, type Storageish } from './core/loop'
@@ -28,7 +28,8 @@ import type { DungeonRun } from './world/dungeon/run'
 import { Delve, portalChoices, type DelveEnd, type DelveSummary, type FloorPlan } from './sim/delve'
 import { showSummary } from './ui/summary'
 import { playChime, type Chime } from './audio/chime'
-import { SkillRunner, type SkillBody, type SkillWorld } from './combat/skills'
+import { blast, SkillRunner, type SkillBody, type SkillWorld } from './combat/skills'
+import { applyProcs, chill, ELEMENTS, procBursts } from './combat/elements'
 import { ACTIVES, TREE_BY_ID } from './data/tree'
 import { GUN_PROFILES } from './data/guns'
 import { rank } from './sim/skilltree'
@@ -38,7 +39,12 @@ import { xpToNext } from './sim/formulas'
 import { findItem } from './sim/inventory'
 import { itemName, makeItem } from './sim/loot'
 import { RARITY_COLOR, type ItemInstance } from './sim/types'
-import { InventoryUI, dpsOf } from './ui/inventory'
+import { InventoryUI, compareEquip, dpsOf } from './ui/inventory'
+import { TownUI, type TownPanel, type TownSuccess } from './ui/town'
+import { activeContracts, contractEvent, contractLine, type ContractEvent } from './sim/contracts'
+import { eatCandy, townOf, useScroll } from './sim/town'
+import { tryEquip } from './sim/mutate'
+import { isEquipped } from './sim/inventory'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -87,8 +93,8 @@ function loadDungeon(): Promise<typeof import('./world/dungeon/run')> {
 }
 const crosshair = document.getElementById('crosshair')
 const hint = document.getElementById('hint')
-const TPS_HINT_MOUSE = '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · 1–4 스킬 · I 가방 · K 스킬 · Esc 해제'
-const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · 공격 길게 눌러 연사 · 대시'
+const TPS_HINT_MOUSE = '클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · 1–4 스킬 · Q 사탕 · G 새 장비 장착 · I 가방 · K 스킬 · Esc 해제'
+const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · 공격 길게 눌러 연사 · 대시 · 사탕 버튼으로 회복'
 /** Same controls everywhere now, so one hint; it fades after a few seconds like the sewer's. */
 function showHint(): void {
   if (!hint) return
@@ -157,11 +163,16 @@ const townWorld: ShotWorld = {
   strike: (o, d, max, amount, procs) => {
     const hit = combat.raycast(o, d, max)
     if (!hit) return null
-    let kill = combat.strikeFoe(hit.foe, amount, d)
-    if (!kill && procs?.sparkle) {
-      // Town foes are few and simple: a sparkle proc is a little bonus pop on the same foe.
-      vfx.burst(hit.foe.object.position.clone().setY(1), 0xfff2a0, { count: 8, speed: 3, up: 1.2, life: 0.35, size: 0.1, gravity: 2, drag: 2, additive: true })
-      kill = combat.strikeFoe(hit.foe, amount * 0.6, d)
+    const kill = combat.strikeFoe(hit.foe, amount, d)
+    // Same element rules as the sewer: ice chills, candy goos, sparkle pops everyone nearby.
+    const at = o.clone().addScaledVector(d, hit.t)
+    // The bloom, like the sewer's nightmare flower, only takes the sparkle pop.
+    if (!kill && hit.foe.kind !== 'bloom') procBursts(vfx, at, applyProcs(hit.foe, procs, amount))
+    if (procs?.sparkle) {
+      procBursts(vfx, at, { sparkle: true })
+      const x = at.x
+      const z = at.z
+      queueMicrotask(() => blast(townSkillWorld.bodies(), x, z, ELEMENTS.sparkleRadius, amount * ELEMENTS.sparkleShare, 0, 0, (n, p, tone) => shooter.hudFx.number(n, p, tone)))
     }
     const tone = hit.foe.kind === 'bloom' ? 'boss' : hit.foe.elite ? 'elite' : 'n'
     return { t: hit.t, kill, tone, color: 0xffc6e8, floor: hit.foe.object.position.clone().setY(0.02) }
@@ -189,7 +200,7 @@ const townWorld: ShotWorld = {
 function armTown(): void {
   shoulder.on = true
   shoulder.look = (dx, dy, touch) => {
-    if (mode === 'play' && !talk.open && !run) rig.look(dx, dy, touch)
+    if (mode === 'play' && !talk.open && !run && !menuUp()) rig.look(dx, dy, touch)
   }
 }
 /** Hand the mouse back (talk, quest log, down screen); a click on the world takes it again. */
@@ -213,8 +224,21 @@ const skills = new SkillRunner({
 })
 const townBodies: SkillBody[] = []
 /** Skill targets on the island: the awake foes of this zone. */
+/** How far a flat ray from (ox, oz) travels before it leaves a circle of radius r round the plaza. */
+function rimDistance(ox: number, oz: number, dx: number, dz: number, r: number, max: number): number {
+  const l = Math.hypot(dx, dz)
+  if (l < 1e-4) return max
+  const ux = dx / l
+  const uz = dz / l
+  const b = ox * ux + oz * uz
+  const c = ox * ox + oz * oz - r * r
+  if (c >= 0) return b >= 0 ? 0 : max
+  const t = -b + Math.sqrt(b * b - c)
+  return Math.max(0, Math.min(max, t / l))
+}
 const townSkillWorld: SkillWorld = {
-  solid: (ox, oy, oz, dx, dy, dz, max) => townRay(ox, oy, oz, dx, dy, dz, max),
+  // Landmarks and the island's rim both stop skills: Mochi's rush no longer runs off into the sea.
+  solid: (ox, oy, oz, dx, dy, dz, max) => Math.min(townRay(ox, oy, oz, dx, dy, dz, max), rimDistance(ox, oz, dx, dz, WALK_RADIUS - 0.4, max)),
   bodies: () => {
     townBodies.length = 0
     for (const foe of combat.foes) {
@@ -226,7 +250,10 @@ const townSkillWorld: SkillWorld = {
         z: p.z,
         r: foe.kind === 'bloom' ? 1.4 : 0.55,
         tone: foe.kind === 'bloom' ? 'boss' : foe.elite ? 'elite' : 'n',
-        hit: (amount, dx, dz) => combat.strikeFoe(foe, amount, new Vector3(dx, 0, dz)),
+        hit: (amount, dx, dz, knock, slow) => {
+          chill(foe, slow)
+          return combat.strikeFoe(foe, amount, new Vector3(dx, 0, dz), 1 + knock)
+        },
       })
     }
     return townBodies
@@ -322,19 +349,170 @@ const inventory = new InventoryUI({
   },
   toast: (text) => toast(text, 'info'),
   sfx: (cue) => audio.sfx(cue),
+  // The bag pauses the sewer (foes everywhere) but not the island: in town the world keeps
+  // living (NPCs, Mochi, water, lanterns) while Byeolha stands still; zone foes hold their ground.
   opened: () => {
-    mode = 'menu'
+    bagPaused = Boolean(run)
+    if (bagPaused) mode = 'menu'
     pad.fire = false
     releaseLook()
     document.body.classList.add('bag-open')
   },
   closed: () => {
-    mode = 'play'
+    if (bagPaused && mode === 'menu') mode = 'play'
+    bagPaused = false
     clearQueued()
     document.body.classList.remove('bag-open')
     paintHotbar()
+    paintCandy()
   },
 })
+let bagPaused = false
+
+const townUI = new TownUI({
+  save: () => game.save,
+  changed: () => {
+    applyBuild()
+    game.persist(store)
+    paintStats(game.save)
+    paintContracts()
+    paintCandy()
+  },
+  toast: (text) => toast(text, 'info'),
+  sfx: (cue) => audio.sfx(cue),
+  success: (kind, item) => townSuccess(kind, item),
+  openStory: () => {
+    mode = 'menu'
+    releaseLook()
+    openQuestLog(game.save, () => {
+      mode = 'play'
+    })
+  },
+  opened: () => {
+    pad.fire = false
+    releaseLook()
+    talk.close()
+    document.body.classList.add('bag-open')
+  },
+  closed: () => {
+    clearQueued()
+    document.body.classList.remove('bag-open')
+    paintHotbar()
+    paintContracts()
+  },
+})
+
+/** Any town panel or the bag is up (she stands still; the island keeps living). */
+function menuUp(): boolean {
+  return inventory.isOpen || townUI.isOpen
+}
+
+function openTown(panel: TownPanel): void {
+  if (run || inventory.isOpen) return
+  townUI.open(panel)
+}
+
+/** The little fanfare when a town job goes well. */
+function townSuccess(kind: TownSuccess, item?: ItemInstance): void {
+  const at = hero.object.position.clone().setY(1.3)
+  const card = document.querySelector('#town .town-card')
+  if (card && kind !== 'take' && kind !== 'stash') {
+    card.classList.remove('flash')
+    void (card as HTMLElement).offsetWidth
+    card.classList.add('flash')
+  }
+  if (kind === 'upgrade') {
+    chime('forge')
+    audio.sfx('coin')
+    vfx.ring(hero.object.position.clone().setY(0.06), 0xffd66b, 0.3, 2.4, 0.5)
+    vfx.burst(at, 0xffe9a0, { count: 26, speed: 3.4, up: 2.4, life: 0.7, size: 0.14, gravity: 2, drag: 1.6, additive: true })
+    if (item) float(`+${item.plus ?? 0} 강화 성공!`, at.clone().setY(1.9), '#ffe08a')
+  } else if (kind === 'reroll' || kind === 'element') {
+    chime('reroll')
+    vfx.burst(at, kind === 'element' ? 0x9fdcff : 0xd7b8ff, { count: 18, speed: 2.6, up: 1.8, life: 0.6, size: 0.12, gravity: 1.5, drag: 1.8, additive: true })
+  } else if (kind === 'claim') {
+    chime('contract')
+    audio.sfx('coin')
+    vfx.burst(at, 0xffd66b, { count: 22, speed: 3, up: 2.2, life: 0.7, size: 0.13, gravity: 2.5, drag: 1.6, additive: true })
+    paintTracker(game.tracker())
+  } else if (kind === 'buy' || kind === 'sell') audio.sfx('coin')
+  else audio.sfx(kind === 'take' ? 'quest' : 'ui')
+}
+
+const contractHud = document.getElementById('contract-hud')
+/** Taken contracts in the HUD (town and sewer). */
+function paintContracts(): void {
+  if (!contractHud) return
+  const list = mode === 'title' ? [] : activeContracts(game.save)
+  contractHud.classList.toggle('hidden', list.length === 0)
+  contractHud.innerHTML = ''
+  for (const c of list) {
+    const row = document.createElement('div')
+    row.className = c.status === 'done' ? 'done' : ''
+    row.dataset.id = c.id
+    const b = document.createElement('b')
+    b.textContent = '의뢰'
+    row.append(b, document.createTextNode(contractLine(c)))
+    contractHud.append(row)
+  }
+}
+
+/** Push a sewer happening into the taken contracts; cheer for any it finishes. */
+function contractHit(e: ContractEvent): void {
+  const done = contractEvent(game.save, e)
+  for (const _ of done) {
+    toast('의뢰 완료! 마을 게시판에서 보상을 받아.', 'quest')
+    chime('contract')
+  }
+  paintContracts()
+}
+
+const candyBtn = document.getElementById('candy')
+const candyCount = document.getElementById('candy-count')
+function paintCandy(): void {
+  if (candyCount) candyCount.textContent = ` ${game.save.potions}`
+  candyBtn?.classList.toggle('empty', game.save.potions <= 0)
+}
+
+/** Q / 사탕: a heart candy from the pocket. */
+function eatCandyNow(): void {
+  if (!hero.alive) return
+  const r = eatCandy(game.save, hero.hp, hero.maxHp)
+  if (!r.ok || !r.heal) {
+    toast(r.reason ?? '지금은 못 먹어.', 'info')
+    return
+  }
+  hero.hp = Math.min(hero.maxHp, hero.hp + r.heal)
+  const at = hero.object.position.clone().setY(1.5)
+  float(`+${r.heal}`, at, '#ffb8d6')
+  vfx.burst(at, 0xff9fd2, { count: 12, speed: 1.6, up: 1.8, life: 0.6, size: 0.14, gravity: -0.5, drag: 1.6 })
+  audio.sfx('heal')
+  paintCandy()
+  game.persist(store)
+}
+
+/** The newest gear pickup (G / the toast's 장착 button wears it). */
+let lastPickup: string | null = null
+function quickEquip(uid: string | null = lastPickup): void {
+  if (!uid || mode !== 'play' || talk.open) return
+  const item = findItem(game.save, uid)
+  if (!item) return
+  if (isEquipped(game.save, uid)) {
+    toast('이미 장착했어.', 'info')
+    return
+  }
+  const r = tryEquip(game.save, uid)
+  if (!r.ok) {
+    toast(r.reason ?? '장착할 수 없어.', 'info')
+    return
+  }
+  applyBuild()
+  game.persist(store)
+  audio.sfx('ui')
+  toast(`${itemName(item)} 장착!`, 'reward')
+  if (lastPickup === uid) lastPickup = null
+  document.querySelectorAll(`.loot-toast[data-uid="${uid}"] .quick`).forEach((b) => b.remove())
+}
 
 const hotbar = document.getElementById('hotbar')
 const hotSlots = hotbar ? [...hotbar.querySelectorAll<HTMLElement>('[data-slot]')] : []
@@ -361,13 +539,15 @@ function paintHotbar(): void {
 /** 1–4 and I / Tab / K while playing. */
 function handleKeys(): void {
   const menu = consumeMenu()
-  if (menu && (mode === 'play' || inventory.isOpen) && !talk.open && !travelling) inventory.toggle(menu)
+  if (menu && (mode === 'play' || inventory.isOpen) && !talk.open && !travelling && !townUI.isOpen) inventory.toggle(menu)
   if (mode !== 'play') {
     clearQueued()
     return
   }
+  if (consumeCandy() && !menuUp() && !travelling) eatCandyNow()
+  if (consumeQuickEquip() && !menuUp() && !travelling) quickEquip()
   for (let slot = consumeSkill(); slot >= 0; slot = consumeSkill()) {
-    if (talk.open || travelling) continue
+    if (talk.open || travelling || menuUp()) continue
     const id = ACTIVES[slot]
     if (id && skills.use(id, skillWorld())) chime('skill')
   }
@@ -410,7 +590,7 @@ document.getElementById('retry')?.addEventListener('click', () => restart())
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, get lastPickup() { return lastPickup } } })
 
 void bootGame()
 
@@ -484,6 +664,8 @@ function beginPlay(): void {
   applyBuild()
   hero.hp = hero.maxHp
   skills.reset()
+  paintCandy()
+  paintContracts()
   hotbar?.classList.remove('hidden')
   paintHotbar()
   crosshair?.classList.remove('hidden')
@@ -579,9 +761,21 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
       kill: (elite) => {
         delve?.kill(elite)
         giveXp(killXp(plan.depth, elite))
+        contractHit({ type: 'kill', depth: plan.depth, elite })
       },
-      nestDown: () => giveXp(nestXp(plan.depth)),
-      objectiveDone: () => giveXp(objectiveXp(plan.depth)),
+      nestDown: () => {
+        giveXp(nestXp(plan.depth))
+        contractHit({ type: 'nest', depth: plan.depth })
+      },
+      objectiveDone: () => {
+        giveXp(objectiveXp(plan.depth))
+        if (plan.objective !== 'boss') contractHit({ type: 'floor', depth: plan.depth })
+      },
+      scroll: () => {
+        if (!useScroll(game.save)) return false
+        game.persist(store)
+        return true
+      },
       runKills: () => delve?.kills ?? 0,
       luck: () => stats.luck,
       foeDied: (x, z) => skills.onKill(x, z, run?.skillWorld ?? null),
@@ -594,6 +788,7 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
         if (!delve) return
         delveUnlocked = delve.bossCleared(game.save)
         giveXp(bossXp(plan.depth))
+        contractHit({ type: 'boss', depth: plan.depth })
         game.persist(store)
       },
       runGold: () => delve?.gold ?? 0,
@@ -629,12 +824,36 @@ function lootToast(item: ItemInstance): void {
   const el = document.createElement('div')
   el.className = `loot-toast r-${item.rarity}`
   el.style.setProperty('--rar', RARITY_COLOR[item.rarity])
+  el.dataset.uid = item.uid
   el.innerHTML = `<b></b><small></small>`
   ;(el.firstChild as HTMLElement).textContent = itemName(item)
   ;(el.lastChild as HTMLElement).textContent = `아이템 레벨 ${item.itemLevel} · I 가방에서 비교`
+  // Quick equip: what it would change, and a button (G) to wear it right away.
+  if (findItem(game.save, item.uid) && !isEquipped(game.save, item.uid)) {
+    lastPickup = item.uid
+    const rows = compareEquip(game.save, item.uid)
+    const key = rows.find((r) => r.key === 'dps') ?? rows.find((r) => r.key === 'maxHp') ?? rows[0]
+    if (key) {
+      const gain = document.createElement('span')
+      gain.className = 'gain'
+      gain.textContent = `${key.label} ${key.from} → ${key.to}`
+      if (key.delta < 0) gain.style.color = '#ffb0c0'
+      el.append(gain)
+    }
+    const quick = document.createElement('button')
+    quick.type = 'button'
+    quick.className = 'quick'
+    quick.textContent = stage.touch ? '바로 장착' : 'G 바로 장착'
+    quick.addEventListener('pointerdown', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      quickEquip(item.uid)
+    })
+    el.append(quick)
+  }
   box.prepend(el)
   while (box.children.length > 4) box.lastElementChild?.remove()
-  window.setTimeout(() => el.remove(), 4200)
+  window.setTimeout(() => el.remove(), 6200)
 }
 
 /** Stairs portal: on to the next floor (checkpoint saved there). */
@@ -643,7 +862,10 @@ function nextFloor(): void {
   travelling = true
   audio.sfx('windup', 0.8)
   const trip = delve
-  if (trip.plan.objective === 'exit') giveXp(objectiveXp(trip.depth))
+  if (trip.plan.objective === 'exit') {
+    giveXp(objectiveXp(trip.depth))
+    contractHit({ type: 'floor', depth: trip.depth })
+  }
   void loadDungeon().then((mod) => fadeThrough(() => {
     run?.dispose()
     run = null
@@ -734,16 +956,10 @@ function talkDone(actions: Action[], choice: TalkChoice | null, id: string | Tal
     float('+기운', hero.object.position.clone().setY(1.7), '#b8f0c8')
     audio.sfx('heal')
   }
-  if (out.openTinker) toast('키키의 총 공방은 곧 문을 열어. 조금만 기다려 줘!', 'info')
-  if (out.openShop) toast('포포 상점은 곧 문을 열어. 조금만 기다려 줘!', 'info')
   game.persist(store)
-  if (out.openQuests) {
-    mode = 'menu'
-    releaseLook()
-    openQuestLog(game.save, () => {
-      mode = 'play'
-    })
-  }
+  if (out.openTinker) openTown('workshop')
+  else if (out.openShop) openTown('shop')
+  else if (out.openQuests) openTown('board')
   const dive = choice?.go?.match(/^sewer:(\d+):(\d+)$/)
   if (dive) enterSewer(Number(dive[1]), Number(dive[2]))
   else if (choice?.go === 'sewer') enterSewer()
@@ -797,7 +1013,8 @@ function frame(): void {
   }
   combat.shake = Math.max(0, combat.shake - raw * 1.5)
   countFps(raw)
-  const talking = talk.open
+  const frozen = menuUp()
+  const talking = talk.open || frozen
   // Dialogue and menus need the cursor: hand it back while one is up.
   if (talking) releaseLook()
   const move = talking ? { x: 0, y: 0 } : axis()
@@ -826,7 +1043,7 @@ function frame(): void {
   const heroPos = hero.object.position
   if (!skills.rushing) mochiFollow(dt, heroPos)
   landmarks.update(dt, heroPos)
-  const notes = combat.update(dt, heroPos, 0.7, (amount, from) => {
+  const notes = combat.update(frozen ? 0 : dt, heroPos, 0.7, (amount, from) => {
     const hurt = hero.hurt(amount, from)
     if (!hurt) return
     audio.sfx('hurt')
@@ -862,6 +1079,7 @@ function frame(): void {
   skills.update(dt, townSkillWorld)
   paintHotbar()
   if (import.meta.env.DEV && view.on) inspectCamera(heroPos)
+  if (frozen) consumeTalk()
   // Tags are projected after the camera moved this frame, so they sit on the heads instead of trailing.
   stage.camera.updateMatrixWorld()
   updateTalk()
@@ -901,6 +1119,7 @@ function sewerFrame(dt: number, raw: number): void {
     talkTip.textContent = stage.touch ? run.portalHint : `E ${run.portalHint}`
   }
   talkBtn?.classList.toggle('hidden', !run.nearPortal)
+  if (talkBtn && run.nearPortal) talkBtn.textContent = '포털'
   stage.camera.updateMatrixWorld()
   tickFloats(dt)
   stage.render()
@@ -958,6 +1177,8 @@ function updateTalk(): void {
     if (talk.open) {
       talk.advance()
       audio.sfx('talk_next')
+    } else if (near?.talk && DIRECT[near.talk]) {
+      openTown(DIRECT[near.talk]!)
     } else if (near?.talk) {
       talk.start(near.talk === 'gate' ? gateTalk() : game.dialogueFor(near.talk))
       audio.sfx('talk_open')
@@ -965,16 +1186,20 @@ function updateTalk(): void {
   }
   const showTip = Boolean(near && !talk.open)
   talkTip?.classList.toggle('hidden', !showTip)
-  talkBtn?.classList.toggle('hidden', !near)
+  talkBtn?.classList.toggle('hidden', !near || menuUp())
+  if (talkBtn && near) talkBtn.textContent = VERB[near.talk ?? ''] ?? '대화'
   if (!showTip || !near || !talkTip) return
   tipAt.set(near.x, TIP_HEIGHT[near.kind] ?? 2.2, near.z).project(stage.camera)
   talkTip.style.left = `${(tipAt.x * 0.5 + 0.5) * window.innerWidth}px`
   talkTip.style.top = `${(-tipAt.y * 0.5 + 0.5) * window.innerHeight}px`
-  const verb = near.talk === 'gate' ? '별문' : near.talk === 'well' ? '우물' : near.talk === 'board' ? '게시판' : '대화'
+  const verb = VERB[near.talk ?? ''] ?? '대화'
   talkTip.textContent = stage.touch ? verb : `E ${verb}`
 }
 
-const TIP_HEIGHT: Partial<Record<Place['kind'], number>> = { kiki: 1.75, luna: 1.95, board: 1.95, portal: 2.6 }
+const TIP_HEIGHT: Partial<Record<Place['kind'], number>> = { kiki: 1.75, luna: 1.95, board: 1.95, portal: 2.6, popo: 2.6, stash: 1.2 }
+/** Talk spots that open a town panel straight away (no dialogue first). */
+const DIRECT: Record<string, TownPanel | undefined> = { popo: 'shop', board: 'board', stash: 'stash' }
+const VERB: Record<string, string> = { gate: '별문', well: '우물', board: '게시판', popo: '상점', stash: '보관함' }
 const markAt = new Vector3()
 /** Quest markers (! new errand, ? ready to report) over the villagers. */
 function paintMarkers(): void {
@@ -1027,7 +1252,7 @@ function mochiFollow(dt: number, heroPos: Vector3): void {
   mochi.update(dt, heroPos.x, heroPos.z, vx, vz, cam.x - heroPos.x, cam.z - heroPos.z, WALK_RADIUS)
   mochiCd -= dt
   const prey = nearestFoe()
-  if (prey && mochiCd <= 0 && hero.alive) {
+  if (prey && mochiCd <= 0 && hero.alive && !menuUp()) {
     mochiCd = 1.35
     const from = mochi.fishMuzzle.getWorldPosition(new Vector3())
     const dir = combat.centre(prey).sub(from)
@@ -1111,6 +1336,7 @@ function sewerHurt(amount: number, from: Vector3): void {
   float(`-${hero.lastDamage}`, at.clone().setY(1.6), '#ff9eb8')
   if (hero.alive) return
   audio.sfx('down')
+  contractHit({ type: 'down' })
   if (document.pointerLockElement) document.exitPointerLock?.()
   const text = document.getElementById('down-text')
   if (text) text.textContent = '별하가 꿈 하수도에서 잠시 눈을 감았다. 이번 탐험 골드를 조금 흘렸지만, 주운 물건과 층 기록은 그대로야. 마을 광장에서 다시 일어나자.'

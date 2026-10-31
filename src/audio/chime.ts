@@ -1,5 +1,5 @@
 /** Little synth jingles that have no sample: the level-up arpeggio and the rare-loot twinkle. */
-export type Chime = 'levelup' | 'loot_rare' | 'loot_epic' | 'loot_legendary' | 'skill'
+export type Chime = 'levelup' | 'loot_rare' | 'loot_epic' | 'loot_legendary' | 'skill' | 'forge' | 'reroll' | 'contract'
 
 const NOTES: Record<Chime, { f: number[]; step: number; len: number; type: OscillatorType; gain: number }> = {
   levelup: { f: [784, 988, 1175, 1568, 1976], step: 0.075, len: 0.42, type: 'triangle', gain: 0.22 },
@@ -7,6 +7,11 @@ const NOTES: Record<Chime, { f: number[]; step: number; len: number; type: Oscil
   loot_epic: { f: [1047, 1319, 1568, 2093], step: 0.055, len: 0.34, type: 'triangle', gain: 0.17 },
   loot_legendary: { f: [880, 1109, 1319, 1760, 2217, 2637], step: 0.06, len: 0.5, type: 'triangle', gain: 0.2 },
   skill: { f: [660, 990], step: 0.04, len: 0.16, type: 'sine', gain: 0.12 },
+  /** Kiki's anvil: a bright rising sparkle when a gun goes up a level. */
+  forge: { f: [523, 784, 1047, 1568, 2093], step: 0.05, len: 0.38, type: 'triangle', gain: 0.2 },
+  reroll: { f: [988, 1319, 1175, 1568], step: 0.045, len: 0.26, type: 'sine', gain: 0.15 },
+  /** A contract reward claimed at the board. */
+  contract: { f: [659, 880, 1109, 1319], step: 0.07, len: 0.36, type: 'triangle', gain: 0.18 },
 }
 
 export function playChime(ctx: AudioContext, bus: AudioNode, chime: Chime): void {
