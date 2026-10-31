@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { FOE_HOMES } from '../src/3d/combat'
-import { WALK_RADIUS, pathEdgeDistance } from '../src/3d/island'
-import { PLACES, PLACE_MODELS, insidePlace, nearestTalk, pushOutOfPlaces } from '../src/3d/places'
-import { talkStep } from '../src/3d/talk'
+import { FOE_HOMES } from '../src/combat/combat'
+import { WALK_RADIUS, pathEdgeDistance } from '../src/world/town/island'
+import { PLACES, PLACE_MODELS, insidePlace, nearestTalk, pushOutOfPlaces } from '../src/world/town/places'
+import { talkStep } from '../src/ui/talk'
 
 const shipped = Object.keys(import.meta.glob('../public/models/3d/*_mobile.glb', { query: '?url' })).map((p) => p.split('/').pop())
 

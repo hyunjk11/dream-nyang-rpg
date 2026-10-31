@@ -1,37 +1,42 @@
 import { PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { CAMERA_PITCH_DEG, CAMERA_YAW, cameraOffset, cameraRelativeWish, wrapAngle } from '../src/3d/feel'
+import { wrapAngle } from '../src/core/feel'
 import {
-  GAIT, KNOCK, MOVE, ORBIT, createOrbit, gaitBlend, gaitRate, knockDecay, knockDistance, legYaw, orbitDrag, orbitStep, turnToward,
-} from '../src/3d/motion'
+  GAIT, KNOCK, MOVE, gaitBlend, gaitRate, knockDecay, knockDistance, legYaw, turnToward,
+} from '../src/core/motion'
+import { createView, pose, wishFrom } from '../src/core/tps'
 
-function screenOf(x: number, z: number, yaw: number, pitch = CAMERA_PITCH_DEG): { x: number; y: number } {
-  const offset = cameraOffset(yaw, pitch)
-  const camera = new PerspectiveCamera(42, 16 / 9, 0.1, 100)
-  camera.position.set(offset.x, offset.y, offset.z)
-  camera.lookAt(0, 0, 0)
+/** The shared shoulder camera at view yaw `yaw`, standing behind her at the origin. */
+function shoulderCamera(yaw: number): PerspectiveCamera {
+  const p = pose(createView(yaw, 0.1), null, 0, 0, 0, 1 / 60)
+  const camera = new PerspectiveCamera(68, 16 / 9, 0.1, 100)
+  camera.position.set(p.x, p.y, p.z)
+  camera.lookAt(p.x + p.fx, p.y + p.fy, p.z + p.fz)
   camera.updateMatrixWorld()
-  const p = new Vector3(x, 0, z).project(camera)
-  return { x: p.x, y: p.y }
+  return camera
 }
 
-describe('시점을 돌려도 방향키는 화면 기준', () => {
-  const yaws = [0, CAMERA_YAW, Math.PI / 2, 2.2, Math.PI, -2, -0.9]
+describe('시점을 돌려도 방향키는 화면 기준 (숄더 카메라)', () => {
+  const yaws = [0, 0.62, Math.PI / 2, 2.2, Math.PI, -2, -0.9]
   const keys: [string, number, number, number, number][] = [
     ['W', 0, 1, 0, 1], ['S', 0, -1, 0, -1], ['A', -1, 0, -1, 0], ['D', 1, 0, 1, 0],
   ]
   for (const yaw of yaws) {
     for (const [name, ax, ay, sx, sy] of keys) {
       it(`yaw ${yaw.toFixed(2)}: ${name}`, () => {
-        const wish = cameraRelativeWish(ax, ay, yaw)
+        const wish = wishFrom(ax, ay, yaw)
         expect(Math.hypot(wish.x, wish.z)).toBeCloseTo(1, 5)
-        const s = screenOf(wish.x, wish.z, yaw)
+        const camera = shoulderCamera(yaw)
+        const forward = camera.getWorldDirection(new Vector3()).setY(0).normalize()
+        const right = new Vector3().crossVectors(forward, new Vector3(0, 1, 0)).normalize()
+        const along = wish.x * forward.x + wish.z * forward.z
+        const side = wish.x * right.x + wish.z * right.z
         if (sx !== 0) {
-          expect(Math.sign(s.x)).toBe(sx)
-          expect(Math.abs(s.y)).toBeLessThan(Math.abs(s.x) * 0.05)
+          expect(Math.sign(side)).toBe(sx)
+          expect(Math.abs(along)).toBeLessThan(0.05)
         } else {
-          expect(Math.sign(s.y)).toBe(sy)
-          expect(Math.abs(s.x)).toBeLessThan(Math.abs(s.y) * 0.05)
+          expect(Math.sign(along)).toBe(sy)
+          expect(Math.abs(side)).toBeLessThan(0.05)
         }
       })
     }
@@ -112,34 +117,5 @@ describe('회전', () => {
     expect(legYaw(Math.PI, 0)).toBeCloseTo(0, 6)
     const side = legYaw(Math.PI / 2, 0)
     expect(side).toBeCloseTo(MOVE.legOffsetMax, 6)
-  })
-})
-
-describe('우클릭 시점 회전', () => {
-  it('오른쪽으로 끌면 시야가 오른쪽으로 돈다', () => {
-    const o = createOrbit(CAMERA_YAW, CAMERA_PITCH_DEG)
-    const right = cameraRelativeWish(1, 0, o.yaw)
-    const before = screenOf(right.x * 3, right.z * 3, o.yaw)
-    orbitDrag(o, 80, 0)
-    for (let i = 0; i < 60; i++) orbitStep(o, 1 / 60)
-    const after = screenOf(right.x * 3, right.z * 3, o.yaw)
-    // A point on the right drifts left on screen when the view turns right.
-    expect(after.x).toBeLessThan(before.x)
-    // ...and swings up toward the new forward.
-    expect(after.y).toBeGreaterThan(before.y)
-  })
-
-  it('피치는 제한되고 부드럽게 따라간다 (점프 없음)', () => {
-    const o = createOrbit(0, CAMERA_PITCH_DEG)
-    orbitDrag(o, 0, 10000)
-    expect(o.pitchTarget).toBe(ORBIT.pitchMax)
-    orbitDrag(o, 0, -10000)
-    expect(o.pitchTarget).toBe(ORBIT.pitchMin)
-    orbitDrag(o, 300, 0)
-    const total = Math.abs(o.yawTarget)
-    orbitStep(o, 1 / 60)
-    expect(Math.abs(o.yaw)).toBeLessThan(total * 0.25)
-    for (let i = 0; i < 90; i++) orbitStep(o, 1 / 60)
-    expect(o.yaw).toBeCloseTo(o.yawTarget, 3)
   })
 })

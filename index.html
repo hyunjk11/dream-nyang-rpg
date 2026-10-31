@@ -2,19 +2,88 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
-    />
-    <meta name="description" content="꿈냥 RPG — 별하와 모찌가 꿈속에서 장난감 총으로 몽환 괴물과 싸우는 액션 RPG" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="description" content="꿈냥 RPG — 별하와 모찌가 장난감 총으로 꿈속 괴물과 싸우는 귀여운 3D 슈팅 RPG" />
     <meta name="theme-color" content="#1b1030" />
     <title>꿈냥 RPG</title>
-    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   </head>
   <body>
-    <div id="game-root"></div>
-    <div id="ui-root"></div>
-    <div id="boot-screen" role="status">꿈을 모으는 중…</div>
+    <canvas id="view"></canvas>
+    <div id="ui">
+      <div class="top">
+        <div class="hp" aria-label="체력"><span id="hp-fill"></span></div>
+        <span class="tag" id="lv">Lv 1</span>
+        <span class="tag" id="dust">골드 0</span>
+        <span class="tag" id="mats">꿈가루 0 · 부품 0</span>
+        <span id="fps">FPS</span>
+      </div>
+      <div id="tracker" class="hidden"></div>
+      <p id="note" class="hidden"></p>
+      <div id="toasts"></div>
+      <div id="zone-banner"></div>
+      <div id="markers"><span id="mk-kiki" class="marker hidden"></span><span id="mk-luna" class="marker hidden"></span></div>
+      <p id="hint">클릭: 시점 고정 · 마우스 시점 · WASD 이동 · 클릭 사격 · E 대화 · Space 대시 · Esc 해제</p>
+      <div class="stick" id="stick"><div id="knob"></div></div>
+      <div class="actions">
+        <button id="dash" type="button">대시</button>
+        <button id="talk" class="hidden" type="button">대화</button>
+        <button id="fire" type="button">공격</button>
+      </div>
+      <div class="bottom">
+        <button id="fps-toggle" type="button">FPS</button>
+        <button id="mute" type="button">소리</button>
+        <label>음량 <input id="vol" type="range" min="0" max="100" value="35" /></label>
+        <label title="마우스·터치 시점 감도 (저장됨)">감도 <input id="sens" type="range" min="0.3" max="2.5" step="0.05" value="1" /> <output id="sens-out">1.00</output></label>
+      </div>
+      <div id="crosshair" class="hidden"><i></i><i></i><i></i><i></i><b></b></div>
+      <div id="hurt-flash"></div>
+      <div id="floats"></div>
+      <span id="talk-tip" class="hidden">E 대화</span>
+      <div id="dialog" class="hidden">
+        <img id="dlg-face" alt="" />
+        <div><b id="dlg-name"></b><p id="dlg-text"></p><div id="dlg-choices"></div><small id="dlg-help">E · Enter · 탭으로 넘기기</small></div>
+      </div>
+    </div>
+    <div id="fade"></div>
+    <div id="title" class="hidden">
+      <div class="title-shade"></div>
+      <div class="title-top">
+        <p class="eyebrow">별하와 모찌</p>
+        <h1>꿈냥 RPG</h1>
+        <p class="tagline">장난감 총으로 지키는, 달콤하고 위험한 꿈</p>
+      </div>
+      <div class="title-actions">
+        <button class="primary" id="btn-new" type="button" disabled>새 게임</button>
+        <button id="btn-continue" type="button" disabled>이어하기</button>
+        <small id="title-status">꿈을 입체로 모으는 중…</small>
+      </div>
+    </div>
+    <div id="intro" class="hidden">
+      <div class="intro-card">
+        <p id="intro-text"></p>
+        <div class="row"><button class="ghost" id="intro-skip" type="button">건너뛰기</button><button class="primary" id="intro-next" type="button">다음</button></div>
+      </div>
+    </div>
+    <div id="quest-log" class="hidden">
+      <div class="card wide"><h2>꿈의 게시판</h2><div id="quest-body"></div><button id="quest-close" type="button">닫기</button></div>
+    </div>
+    <div id="ending" class="hidden">
+      <div class="card">
+        <h2>오늘 밤의 꿈, 끝</h2>
+        <p>제단의 별이 다시 고르게 뛴다. 별하와 모찌는 내일 밤에도 이 길을 걸을 것이다.</p>
+        <p id="ending-stats"></p>
+        <button id="ending-continue" type="button">조금 더 걷기</button>
+      </div>
+    </div>
+    <div id="boot" class="hidden">꿈을 입체로 모으는 중…</div>
+    <div id="down" class="hidden">
+      <div class="card">
+        <h2>꿈이 흐려진다…</h2>
+        <p id="down-text">별하가 잠시 눈을 감았다. 다시 일어나 볼까?</p>
+        <button id="retry" type="button">다시 일어나기</button>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { INTRO } from '../src/data/story'
 import { ZONES } from '../src/data/zones'
-import { WALK_RADIUS } from '../src/3d/island'
-import { GameState, SAVE_KEY_3D, killLoot } from '../src/3d/loop'
-import { insidePlace, placesFor } from '../src/3d/places'
-import { finishActions, talkStep } from '../src/3d/talk'
-import { PORTAL_ARRIVAL, ZONE_IDS, destinations, zone3d } from '../src/3d/zones3d'
+import { WALK_RADIUS } from '../src/world/town/island'
+import { GameState, SAVE_KEY_3D, killLoot } from '../src/core/loop'
+import { insidePlace, placesFor } from '../src/world/town/places'
+import { finishActions, talkStep } from '../src/ui/talk'
+import { PORTAL_ARRIVAL, ZONE_IDS, destinations, zone3d } from '../src/world/town/zones3d'
 
 const intro = Object.keys(import.meta.glob('../public/assets/*.jpg', { query: '?url' })).map((p) => p.split('/').pop())
 

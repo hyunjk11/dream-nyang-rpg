@@ -1,32 +1,14 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { calcDamage, xpToNext } from '../src/sim/formulas'
 import { makeItem, rarityWeights, rollAffixes, rollDrops, rollRarity, sellValue } from '../src/sim/loot'
 import { freshSave, learnSkill, onDeath, rerollWeapon, sellOwned, usePotion } from '../src/sim/mutate'
 import { buyEntry } from '../src/sim/mutate'
-import { clearGame, loadGame, loadSettings, saveGame, saveSettings } from '../src/sim/persist'
 import { DEFAULT_SETTINGS } from '../src/sim/types'
 import { addMaterial, onEnter, onKill, onTalk, startQuest, turnIn } from '../src/sim/quests'
 import { mulberry32 } from '../src/sim/rng'
 import { computeStats, gainXp } from '../src/sim/stats'
 import { RARITIES, type Rarity } from '../src/sim/types'
 import { addItem } from '../src/sim/inventory'
-
-const mem = new Map<string, string>()
-const storage = {
-  getItem: (key: string) => mem.get(key) ?? null,
-  setItem: (key: string, value: string) => {
-    mem.set(key, String(value))
-  },
-  removeItem: (key: string) => {
-    mem.delete(key)
-  },
-  clear: () => mem.clear(),
-  key: (index: number) => [...mem.keys()][index] ?? null,
-  get length() {
-    return mem.size
-  },
-}
-Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true })
 
 describe('피해 계산', () => {
   it('방어력으로 줄고 치명타는 배율이 붙으며 최소 1이다', () => {
@@ -172,10 +154,8 @@ describe('퀘스트', () => {
   })
 })
 
-describe('상점과 세이브', () => {
-  beforeEach(() => mem.clear())
-
-  it('골드가 부족하면 사지 못하고 저장이 왕복된다', () => {
+describe('상점', () => {
+  it('골드가 부족하면 사지 못하고, 재조정·포션·사망 페널티가 맞다', () => {
     const save = freshSave()
     save.gold = 10
     expect(buyEntry(save, 0).ok).toBe(false)
@@ -196,35 +176,13 @@ describe('상점과 세이브', () => {
     expect(lost).toBe(Math.floor(beforeDeath * 0.1))
     expect(save.gold).toBe(beforeDeath - lost)
     expect(save.zoneId).toBe('meadow')
-    saveGame(save)
-    const loaded = loadGame()
-    expect(loaded?.gold).toBe(save.gold)
-    expect(loaded?.items.length).toBe(save.items.length)
-    clearGame()
-    expect(loadGame()).toBeNull()
   })
 
-  it('기본 음량은 낮고, 예전 큰 기본값은 조용한 값으로 바뀐다', () => {
+  it('기본 음량은 낮다', () => {
     expect(DEFAULT_SETTINGS.master).toBeLessThanOrEqual(0.4)
     expect(DEFAULT_SETTINGS.sfx).toBeLessThanOrEqual(0.55)
     expect(DEFAULT_SETTINGS.bgm).toBeLessThan(DEFAULT_SETTINGS.sfx)
     const fresh = freshSave()
     expect(fresh.settings.master).toBe(DEFAULT_SETTINGS.master)
-    saveSettings({ master: 1, bgm: 0.55, sfx: 0.85, vibration: true, shake: true, showTouch: false })
-    expect(loadSettings().master).toBe(DEFAULT_SETTINGS.master)
-    expect(loadSettings().sfx).toBe(DEFAULT_SETTINGS.sfx)
-    const loud = freshSave()
-    loud.settings = { master: 1, bgm: 0.55, sfx: 0.85, vibration: false, shake: true, showTouch: true }
-    saveGame(loud)
-    const loaded = loadGame()
-    expect(loaded?.settings.master).toBe(DEFAULT_SETTINGS.master)
-    expect(loaded?.settings.bgm).toBe(DEFAULT_SETTINGS.bgm)
-    expect(loaded?.settings.sfx).toBe(DEFAULT_SETTINGS.sfx)
-    expect(loaded?.settings.vibration).toBe(false)
-    expect(loaded?.settings.showTouch).toBe(true)
-    loud.settings = { ...DEFAULT_SETTINGS, master: 0.8, sfx: 0.2, bgm: 0.1 }
-    saveGame(loud)
-    expect(loadGame()?.settings.master).toBe(0.8)
-    expect(loadGame()?.settings.sfx).toBe(0.2)
   })
 })

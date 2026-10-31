@@ -1,37 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { AIM_LEAD, AIM_PITCH_MIN, CAMERA_DISTANCE, CAMERA_DISTANCE_MAX, CAMERA_DISTANCE_MIN, CAMERA_PITCH_DEG, HOLD_POSES, MASTER_DEFAULT, UPPER_TWIST_LIMIT, aimPitchDeg, cameraOffset, cameraRelativeWish, characterScreenFraction, clampCameraDistance, focusPoint, sliceTimes, upperTwist } from '../src/3d/feel'
-import { ISLAND_RADIUS, WALK_RADIUS, islandBudget, islandPaths, pathEdgeDistance, rimRadius, scatterSpots } from '../src/3d/island'
-
-describe('3D 카메라와 음량', () => {
-  it('쿼터뷰는 위에서 내려다보고 별하 앞을 조금 본다', () => {
-    const offset = cameraOffset()
-    expect(CAMERA_PITCH_DEG).toBeGreaterThan(40)
-    expect(CAMERA_PITCH_DEG).toBeLessThan(60)
-    expect(offset.y).toBeGreaterThan(Math.hypot(offset.x, offset.z) * 0.8)
-    const focus = focusPoint(0, 0, 0, 2, 0, AIM_LEAD)
-    const cat = { x: -1.4, z: 0.2 }
-    const toFocus = Math.hypot(focus.x, focus.z)
-    const focusToCat = Math.hypot(focus.x - cat.x, focus.z - cat.z)
-    expect(focus.x).toBeGreaterThan(0.4)
-    expect(toFocus).toBeLessThan(focusToCat)
-    // Byeolha's silhouette fills about 1/5 to 1/4 of the screen height at the default distance.
-    const fraction = characterScreenFraction(CAMERA_DISTANCE)
-    expect(fraction).toBeGreaterThanOrEqual(0.2)
-    expect(fraction).toBeLessThanOrEqual(0.26)
-    // Zoom stays in a readable band both ways.
-    expect(characterScreenFraction(CAMERA_DISTANCE_MIN)).toBeLessThan(0.33)
-    expect(characterScreenFraction(CAMERA_DISTANCE_MAX)).toBeGreaterThan(0.19)
-    expect(clampCameraDistance(1)).toBe(CAMERA_DISTANCE_MIN)
-    expect(clampCameraDistance(20)).toBe(CAMERA_DISTANCE_MAX)
-  })
-
-  it('조준을 가까이 하면 카메라가 거의 움직이지 않는다', () => {
-    const near = focusPoint(0, 0, 0, 0.5, 0)
-    const far = focusPoint(0, 0, 0, 8, 0)
-    expect(near.x).toBeLessThan(0.2)
-    expect(far.x).toBeCloseTo(AIM_LEAD)
-  })
-})
+import { AIM_PITCH_MIN, HOLD_POSES, MASTER_DEFAULT, UPPER_TWIST_LIMIT, aimPitchDeg, upperTwist } from '../src/core/feel'
+import { ISLAND_RADIUS, WALK_RADIUS, islandBudget, islandPaths, pathEdgeDistance, rimRadius, scatterSpots } from '../src/world/town/island'
 
 describe('별하 총 잡기', () => {
   it('모든 클립에서 손이 가슴 앞에 있고 총구가 바닥을 향하지 않는다', () => {
@@ -54,19 +23,9 @@ describe('별하 총 잡기', () => {
   })
 })
 
-describe('3D 입력과 음량', () => {
-  it('W는 카메라가 보는 쪽으로 걷는다', () => {
-    const wish = cameraRelativeWish(0, 1)
-    const back = cameraOffset()
-    const dot = wish.x * -back.x + wish.z * -back.z
-    expect(dot).toBeGreaterThan(0.9)
-  })
-
-  it('기본 음량은 낮고 클립 구간만 남긴다', () => {
+describe('음량', () => {
+  it('기본 음량은 낮다', () => {
     expect(MASTER_DEFAULT).toBeLessThanOrEqual(0.35)
-    const sliced = sliceTimes([0, 0.5, 1.2, 2], [0, 1, 2, 3], 1, 0.5, 1.2)
-    expect(sliced.times).toEqual([0, 0.7])
-    expect(sliced.values).toEqual([1, 2])
   })
 })
 

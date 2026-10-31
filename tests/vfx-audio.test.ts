@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { CUES, MUSIC, type MusicState, musicGains, pickVariant, stepMusic } from '../src/3d/soundplan'
-import { particleAlpha, stepParticle } from '../src/3d/vfx'
+import { CUES, MUSIC, type MusicState, musicGains, pickVariant, stepMusic } from '../src/audio/soundplan'
+import { particleAlpha, stepParticle } from '../src/core/vfx'
 
 const assets = Object.keys(import.meta.glob('../public/assets/**/*.{mp3,wav}', { query: '?url' })).map((p) => p.replace('../public/assets/', ''))
 const credits = Object.values(import.meta.glob('../CREDITS.md', { query: '?raw', import: 'default', eager: true }))[0] as string

@@ -28,10 +28,22 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: false,
+    // three's core is one 575 kB module (three.module.js) that cannot be split further; every game
+    // chunk stays well under 500 kB, so the warning only guards against the game code growing.
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        three: resolve(__dirname, '3d/index.html'),
+        // Old /3d/ links land on a tiny page that forwards to the root game.
+        legacy3d: resolve(__dirname, '3d/index.html'),
+      },
+      output: {
+        // three.js changes far less often than the game, so it gets its own long-cached chunk.
+        manualChunks(id) {
+          if (id.includes('/node_modules/three/examples/')) return 'three-addons'
+          if (id.includes('/node_modules/three/')) return 'three'
+          return undefined
+        },
       },
     },
   },

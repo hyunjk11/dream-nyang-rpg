@@ -14,7 +14,6 @@
   "dependencies": {
     "@fontsource/jua": "^5.2.5",
     "@fontsource/noto-sans-kr": "^5.2.6",
-    "phaser": "^3.88.2",
     "three": "^0.170.0"
   },
   "devDependencies": {

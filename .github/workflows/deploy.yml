@@ -29,9 +29,12 @@ jobs:
         run: npm ci
       - name: Lint, test, and build
         run: npm run lint && npm test && npm run build
-      - name: Check 2D and 3D pages
+      - name: Check game page and /3d/ redirect
         run: |
           test -f dist/index.html && test -f dist/3d/index.html
+          grep -q 'id="view"' dist/index.html
+          grep -q "location.replace" dist/3d/index.html
+          ls dist/assets/run-*.js dist/assets/three-*.js
           test -f dist/models/3d/byeolha_animated_mobile.glb
           test ! -f dist/models/3d/byeolha_animated.glb
       - name: Upload Pages artifact

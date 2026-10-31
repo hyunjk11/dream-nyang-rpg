@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { FOE_HOMES } from '../src/3d/combat'
-import { FOE_KINDS, FOE_SPECS, foePose, popIn, type PoseInput } from '../src/3d/foes'
-import { WALK_RADIUS } from '../src/3d/island'
+import { FOE_HOMES } from '../src/combat/combat'
+import { FOE_KINDS, FOE_SPECS, foePose, popIn, type PoseInput } from '../src/combat/foes'
+import { WALK_RADIUS } from '../src/world/town/island'
 
 const shipped = import.meta.glob('../public/models/3d/*_mobile.glb', { query: '?url' })
 const idle: PoseInput = { t: 0.3, phase: 0.2, moving: false, windup: 0, hurt: 0, spawn: 1, dying: 0 }

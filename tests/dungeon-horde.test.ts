@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { generateMaze, tileCentre, walkable, worldToTile } from '../src/3d/dungeon/maze'
-import { solidAt } from '../src/3d/dungeon/walls'
-import { FlowField, HORDE_CAP, Horde } from '../src/3d/dungeon/horde'
-import { DRAIN, Director, LIVE_CAP, waveFor } from '../src/3d/dungeon/waves'
-import { BOSS, Boss } from '../src/3d/dungeon/boss'
+import { generateMaze, tileCentre, walkable, worldToTile } from '../src/world/dungeon/maze'
+import { solidAt } from '../src/world/dungeon/walls'
+import { FlowField, HORDE_CAP, Horde } from '../src/world/dungeon/horde'
+import { DRAIN, Director, LIVE_CAP, waveFor } from '../src/world/dungeon/waves'
+import { BOSS, Boss } from '../src/world/dungeon/boss'
 
 const maze = generateMaze(20261030)
 const start = tileCentre(maze, maze.start.x, maze.start.y)
