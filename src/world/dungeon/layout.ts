@@ -8,7 +8,7 @@
 import { waveFor } from './waves'
 import type { HordeKind } from './horde'
 import { Tile, distances, generateMaze, walkable, type Maze, type Nest, type Rect } from './maze'
-import type { FloorPlan } from '../../sim/delve'
+import { depthStep, rosterShift, type FloorPlan } from '../../sim/delve'
 import { fieldMaze } from './field'
 
 /** Every explore-floor knob in one place (numbers from the approved audit plan). */
@@ -170,7 +170,7 @@ export function floorMaze(plan: Pick<FloorPlan, 'seed' | 'cells' | 'bossRoom' | 
 
 /** Room kinds for a pack: the roster this deep, harder kinds further from the start. */
 function kindsFor(depth: number, floor: number, r: number, rand: () => number): HordeKind[] {
-  const tier = 1 + (depth - 1) * 2 + (floor - 1) + (r > 0.55 ? 1 : 0)
+  const tier = Math.max(1, 1 + (depth - 1) * 2 + (floor - 1) + rosterShift(depth, floor) + (r > 0.55 ? 1 : 0))
   const pool = waveFor(tier).kinds
   // A pack is themed: one or two kinds, favouring the newest unlocks.
   const a = pool[Math.max(0, pool.length - 1 - Math.floor(rand() * Math.min(pool.length, 4)))]
@@ -294,7 +294,7 @@ export function planLayout(maze: Maze, plan: Pick<FloorPlan, 'depth' | 'floor'>,
   shuffle(cands, rand)
   // Chambers (and the exit room centre) are the natural lairs: try them first.
   const lairs = [...m.chambers.map((c) => ({ x: c.x + 1, y: c.y + 1 })), { x: exit.x + Math.floor(exit.w / 2), y: exit.y + Math.floor(exit.h / 2) }]
-  const want = Math.round(between(EXPLORE.packs, rand) * (1 + EXPLORE.packGrowth * Math.max(0, plan.depth - 1)))
+  const want = Math.round(between(EXPLORE.packs, rand) * (1 + EXPLORE.packGrowth * depthStep(plan.depth, plan.floor)))
   const homes: Spot[] = []
   const spacing = [5, 4, 3]
   for (const gap of spacing) {
@@ -324,7 +324,7 @@ export function planLayout(maze: Maze, plan: Pick<FloorPlan, 'depth' | 'floor'>,
   shuffle(elitePool, rand)
   const affixes = Object.keys(ELITE_AFFIXES) as EliteAffix[]
   for (const p of elitePool.slice(0, nElites)) {
-    const k = plan.depth >= 2 ? 2 : 1
+    const k = depthStep(plan.depth, plan.floor) >= 0.8 ? 2 : 1
     const a = shuffle([...affixes], rand).slice(0, k)
     p.elite = a
     p.size = 1 + EXPLORE.minions

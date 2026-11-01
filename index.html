@@ -46,17 +46,25 @@
         <button id="fire" type="button">공격</button>
       </div>
       <div id="settings" class="settings hidden" role="dialog" aria-label="설정">
-        <button id="fps-toggle" type="button">FPS</button>
-        <button id="auto-candy" type="button" aria-pressed="true" title="체력이 30% 아래로 떨어지면 하트 사탕을 알아서 먹어 (저장됨)">자동 사탕: 켬 (30%)</button>
-        <button id="auto-sell" type="button" aria-pressed="false" title="던전에서 주운 일반(흰색) 장비 중 지금보다 안 좋은 건 바로 골드로 바꿔 (저장됨)">일반 자동 판매: 끔</button>
-        <button id="auto-aim" type="button" aria-pressed="false" title="조준선 근처에서 가장 가까운 괴물에게 총알이 붙어 (모바일 기본 켬 · 저장됨)">자동 조준: 끔</button>
-        <button id="auto-quality" type="button" aria-pressed="true" title="프레임이 떨어지면 해상도·빛번짐·그림자·파티클을 잠깐 낮춰 (저장됨)">자동 품질: 켬</button>
-        <button id="mute" type="button">소리</button>
-        <label>음량 <input id="vol" type="range" min="0" max="100" value="35" /></label>
-        <label title="배경음악 크기 (저장됨)">배경음 <input id="bgm" type="range" min="0" max="100" value="80" /></label>
-        <label title="마우스·터치 시점 감도 (저장됨)">감도 <input id="sens" type="range" min="0.3" max="2.5" step="0.05" value="1" /> <output id="sens-out">1.00</output></label>
-        <button id="alt-mode" type="button" title="Alt 키로 마우스 커서 꺼내기: 누르는 동안 / 눌러서 전환 (저장됨)">Alt: 누르는 동안 커서</button>
-        <button id="guide-skip" type="button" title="가이드 챕터를 건너뛰고 챕터 2 열기">가이드 건너뛰기</button>
+        <fieldset class="set-group"><legend>전투</legend>
+          <button id="auto-aim" type="button" aria-pressed="false" title="조준선 근처에서 가장 가까운 괴물에게 총알이 붙어 (모바일 기본 켬 · 저장됨)">자동 조준: 끔</button>
+          <button id="auto-candy" type="button" aria-pressed="true" title="체력이 30% 아래로 떨어지면 하트 사탕을 알아서 먹어 (저장됨)">자동 사탕: 켬 (30%)</button>
+          <button id="auto-sell" type="button" aria-pressed="false" title="던전에서 주운 일반(흰색) 장비 중 지금보다 안 좋은 건 바로 골드로 바꿔 (저장됨)">일반 자동 판매: 끔</button>
+        </fieldset>
+        <fieldset class="set-group"><legend>화면</legend>
+          <button id="fps-toggle" type="button">FPS</button>
+          <button id="auto-quality" type="button" aria-pressed="true" title="프레임이 떨어지면 해상도·빛번짐·그림자·파티클을 잠깐 낮춰 (저장됨)">자동 품질: 켬</button>
+        </fieldset>
+        <fieldset class="set-group"><legend>소리</legend>
+          <button id="mute" type="button">소리</button>
+          <label>음량 <input id="vol" type="range" min="0" max="100" value="35" /></label>
+          <label title="배경음악 크기 (저장됨)">배경음 <input id="bgm" type="range" min="0" max="100" value="80" /></label>
+        </fieldset>
+        <fieldset class="set-group"><legend>조작</legend>
+          <label title="마우스·터치 시점 감도 (저장됨)">감도 <input id="sens" type="range" min="0.3" max="2.5" step="0.05" value="1" /> <output id="sens-out">1.00</output></label>
+          <button id="alt-mode" type="button" title="Alt 키로 마우스 커서 꺼내기: 누르는 동안 / 눌러서 전환 (저장됨)">Alt: 누르는 동안 커서</button>
+          <button id="guide-skip" type="button" title="가이드 챕터를 건너뛰고 챕터 2 열기">가이드 건너뛰기</button>
+        </fieldset>
       </div>
       <div id="crosshair" class="hidden"><i></i><i></i><i></i><i></i><b></b></div>
       <div id="hurt-flash"></div>

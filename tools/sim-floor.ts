@@ -4,7 +4,7 @@ import { Horde, type HordeFoe } from '../src/world/dungeon/horde'
 import { EXPLORE, floorMaze, planLayout } from '../src/world/dungeon/layout'
 import { ExploreDirector } from '../src/world/dungeon/explore'
 import { floorPlan } from '../src/sim/delve'
-import { DIFFICULTY } from '../src/combat/difficulty'
+import { DIFFICULTY, setDiffMode, type DiffMode } from '../src/combat/difficulty'
 import { rng } from '../src/world/dungeon/maze'
 
 type Behaviour = 'thorough' | 'rusher'
@@ -175,14 +175,21 @@ const people = [
   { name: '새 플레이어', acc: 0.3, duty: 0.6 },
   { name: '숙련', acc: 0.55, duty: 0.85 },
 ]
-const seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+const seeds = Array.from({ length: Number(process.env.SEEDS || 10) }, (_, i) => i + 1)
 const rows: [number, number, string, Behaviour, Partial<Opts>][] = []
 for (const [d, f] of [[1, 1], [1, 2], [1, 3], [2, 1], [2, 2], [2, 3], [3, 1], [3, 3]]) for (const pp of people) for (const b of ['thorough'] as Behaviour[]) rows.push([d, f, pp.name, b, { acc: pp.acc, duty: pp.duty }])
-for (const [d, f] of [[2, 1], [2, 3], [3, 1], [3, 3]]) rows.push([d, f, '새+깊이1 장비', 'thorough', { acc: 0.3, duty: 0.6, gunDmg: 14, maxHp: 190 }])
+for (const [d, f] of [[2, 1], [2, 2], [2, 3], [3, 1], [3, 3]]) rows.push([d, f, '새+깊이1 장비', 'thorough', { acc: 0.3, duty: 0.6, gunDmg: 14, maxHp: 190 }])
 for (const [d, f] of [[2, 3], [3, 1], [3, 3]]) rows.push([d, f, '숙련+좋은 장비', 'thorough', { acc: 0.55, duty: 0.85, gunDmg: 20, maxHp: 240 }])
 for (const [d, f] of [[1, 3]]) rows.push([d, f, '새 플레이어', 'rusher', { acc: 0.3, duty: 0.6 }])
+// ONLY=d2f1,d2f3 runs just those floors; EASE=0.4,0.7,0.85 tries another depth-2 entry ease.
+if (process.env.EASE) (DIFFICULTY.delve as { entryEase: readonly number[] }).entryEase = process.env.EASE.split(',').map(Number)
+if (process.env.TIER) (DIFFICULTY.delve as { entryRoster: readonly number[] }).entryRoster = process.env.TIER.split(',').map(Number)
+// MODE=hard / easy runs the floors in that difficulty (default 보통).
+if (process.env.MODE) setDiffMode(process.env.MODE as DiffMode)
+const only = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null
 const med = (v: number[]) => (v.length ? v[Math.floor(v.length / 2)] : NaN)
 for (const [d, f, who, b, extra] of rows) {
+  if (only && !only.has(`d${d}f${f}`)) continue
   const res = seeds.map((salt) => simulate({ depth: d, floor: f, behaviour: b, salt, acc: 0.3, duty: 0.6, ...extra }))
   const deaths = res.filter((r) => r.deathAt !== null).length
   const done = res.filter((r) => r.doneAt !== null).map((r) => r.doneAt as number).sort((a, c) => a - c)

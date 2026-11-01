@@ -19,6 +19,23 @@ h1, h2, button, .tag { font-family: "Jua", sans-serif; font-weight: 400; }
   max-height: calc(100% - var(--edge-t) - 54px); max-width: calc(100% - 24px); overflow: auto; pointer-events: auto;
 }
 .settings > button { align-self: flex-start; }
+/* Grouped: 전투 · 화면 · 소리 · 조작. On a small screen each group is a two-column grid so the
+   whole popover fits 360x640 with 44 px buttons (and still scrolls if a phone is shorter). */
+.set-group { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.set-group legend { padding: 0 0 2px; font: 12px "Jua", sans-serif; color: #8a6a9c; }
+.set-group label { align-self: stretch; }
+body.compact .settings { gap: 6px; padding: 10px; width: min(340px, calc(100% - 24px)); box-sizing: border-box; }
+body.compact .set-group { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: stretch; }
+body.compact .set-group legend { grid-column: 1 / -1; }
+body.compact .set-group > button { font-size: 13px; line-height: 1.15; padding: 6px 8px; white-space: normal; }
+body.compact .set-group > label { grid-column: 1 / -1; min-height: 32px; }
+body.touch .set-group > label { min-height: 44px; }
+body.compact .set-group > label input[type="range"] { flex: 1; width: auto; min-width: 0; }
+/* Short landscape phones: the four groups flow into two columns so nothing needs scrolling. */
+@media (orientation: landscape) and (max-height: 500px) {
+  body.compact .settings { display: block; columns: 2; column-gap: 10px; width: min(640px, calc(100% - 24px)); }
+  body.compact .set-group { break-inside: avoid; margin-bottom: 6px; }
+}
 .settings label { color: #241433; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: "Jua", sans-serif; }
 button, .tag {
   border: 0; border-radius: 999px; color: #241433; background: rgba(255, 248, 252, 0.92);
