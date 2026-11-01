@@ -28,6 +28,7 @@ import { Color, Fog, HemisphereLight } from 'three'
 import type { Action, MutationResult } from './sim/types'
 import { Vfx } from './core/vfx'
 import { HitStop } from './core/hitstop'
+import { AUTO_RISE, LAST_GATE_KEY, QOL_KEY, autoSellPick, loadQol, rememberFirst, shouldAutoCandy, type QolPrefs } from './sim/qol'
 import { DETAIL, Quality } from './core/quality'
 import type { DungeonRun } from './world/dungeon/run'
 import { Delve, portalChoices, type DelveEnd, type DelveSummary, type FloorPlan } from './sim/delve'
@@ -94,6 +95,24 @@ const quality = new Quality((level) => {
   vfx.density = DETAIL[level].particles
 })
 quality.enabled = safeStore()?.getItem(QUALITY_KEY) !== '0'
+/** 편의성 prefs (auto candy, auto-sell commons); saved apart from the game save, so they stick. */
+const qol: QolPrefs = loadQol(safeStore()?.getItem(QOL_KEY))
+function saveQol(): void {
+  try {
+    safeStore()?.setItem(QOL_KEY, JSON.stringify(qol))
+  } catch {
+    /* private mode */
+  }
+}
+let autoCandyClock = 99
+/** Low HP and a candy in the pocket: she eats one by herself (⚙ 자동 사탕). */
+function autoCandy(raw: number): void {
+  autoCandyClock += raw
+  if (!hero.alive || !shouldAutoCandy(hero.hp, hero.maxHp, game.save.potions, autoCandyClock, qol)) return
+  autoCandyClock = 0
+  eatCandyNow()
+  toast('체력이 낮아서 하트 사탕을 먹었어! (⚙ 자동 사탕)', 'info')
+}
 combat.sound = (cue, gain) => audio.sfx(cue, gain)
 const landmarks = new Landmarks(stage.scene)
 const talk = new TalkBox(base, (actions, choice, id) => talkDone(actions, choice, id))
@@ -849,6 +868,32 @@ const paintQuality = () => {
   }
 }
 paintQuality()
+const autoCandyBtn = document.getElementById('auto-candy')
+const autoSellBtn = document.getElementById('auto-sell')
+const paintQol = () => {
+  if (autoCandyBtn) {
+    autoCandyBtn.textContent = `자동 사탕: ${qol.autoCandy ? `켬 (${Math.round(qol.autoCandyAt * 100)}%)` : '끔'}`
+    autoCandyBtn.setAttribute('aria-pressed', String(qol.autoCandy))
+  }
+  if (autoSellBtn) {
+    autoSellBtn.textContent = `일반 자동 판매: ${qol.autoSellCommon ? '켬' : '끔'}`
+    autoSellBtn.setAttribute('aria-pressed', String(qol.autoSellCommon))
+  }
+}
+paintQol()
+autoCandyBtn?.addEventListener('click', () => {
+  qol.autoCandy = !qol.autoCandy
+  saveQol()
+  paintQol()
+  audio.sfx('ui')
+})
+autoSellBtn?.addEventListener('click', () => {
+  qol.autoSellCommon = !qol.autoSellCommon
+  saveQol()
+  paintQol()
+  audio.sfx('ui')
+  if (qol.autoSellCommon) toast('던전에서 주운 일반 장비는 (더 좋은 게 아니면) 바로 골드가 돼.', 'info')
+})
 qualityBtn?.addEventListener('click', () => {
   quality.setEnabled(!quality.enabled)
   try {
@@ -1130,8 +1175,9 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
       luck: () => stats.luck,
       foeDied: (x, z) => skills.onKill(x, z, run?.skillWorld ?? null),
       pickup: (drop) => {
-        const r = delve ? delve.pickup(game.save, drop) : { heal: 0, text: '' }
-        if (drop.kind === 'item' && drop.item) lootPing(drop.item)
+        const sold = delve?.autoSold ?? 0
+        const r = delve ? delve.pickup(game.save, drop, Math.random, (item) => autoSellPick(game.save, item, qol)) : { heal: 0, text: '' }
+        if (drop.kind === 'item' && drop.item && (delve?.autoSold ?? 0) === sold) lootPing(drop.item)
         if (drop.kind === 'material' && drop.matId === FLUFF) questHit({ type: 'collect', amount: drop.amount })
         return r
       },
@@ -1321,6 +1367,13 @@ function talkDone(actions: Action[], choice: TalkChoice | null, id: string | Tal
   else if (out.openShop) openTown('shop')
   else if (out.openQuests) openTown('board')
   const dive = choice?.go?.match(/^sewer:(\d+):(\d+)$/)
+  if (dive || choice?.go === 'field') {
+    try {
+      safeStore()?.setItem(LAST_GATE_KEY, choice?.go ?? '')
+    } catch {
+      /* private mode */
+    }
+  }
   if (dive) enterSewer(Number(dive[1]), Number(dive[2]))
   else if (choice?.go === 'sewer') enterSewer()
   else if (choice?.go === 'field') enterField()
@@ -1342,8 +1395,13 @@ function gateTalk(): TalkDef {
     lines: [{ speaker: '별문', portrait: 'prop_portal', text: '별빛 문이 일렁인다. 어디로 갈까?' }],
     choices: [
       ...dests.map((d) => ({ text: d.label, go: d.to })),
-      ...(game.zone === 'village' ? portalChoices(game.save).map((c) => ({ text: c.label, go: `sewer:${c.depth}:${c.floor}` })) : []),
-      ...(game.zone === 'village' && chapter2Open(game.save) ? [{ text: '챕터 2 · 몽실 들판 (퀘스트 사냥)', go: 'field' }] : []),
+      ...rememberFirst(
+        [
+          ...(game.zone === 'village' ? portalChoices(game.save).map((c) => ({ text: c.label, go: `sewer:${c.depth}:${c.floor}` })) : []),
+          ...(game.zone === 'village' && chapter2Open(game.save) ? [{ text: '챕터 2 · 몽실 들판 (퀘스트 사냥)', go: 'field' }] : []),
+        ],
+        safeStore()?.getItem(LAST_GATE_KEY),
+      ),
       { text: '그만두기' },
     ],
   }
@@ -1427,7 +1485,7 @@ function frame(): void {
       const text = document.getElementById('down-text')
       if (text) text.textContent = `별하가 잠시 눈을 감았다.${lost ? ` 골드 ${lost}을 흘렸어.` : ''} ${zone3d(home).name}에서 다시 일어나자.`
       game.persist(store)
-      document.getElementById('down')?.classList.remove('hidden')
+      showDown()
     }
   })
   for (const item of notes) {
@@ -1439,6 +1497,7 @@ function frame(): void {
   audio.setScene('town')
   audio.update(dt, threatNear(heroPos))
   vfx.update(dt)
+  if (!frozen) autoCandy(raw)
   if (hpFill) hpFill.style.width = `${Math.max(0, (hero.hp / hero.maxHp) * 100)}%`
   // Camera on her shoulder, then the crosshair ray from it, then the gun (same order as the sewer).
   if (combat.shake > 0.02) rig.shake = Math.max(rig.shake, combat.shake * 0.35)
@@ -1477,6 +1536,7 @@ function sewerFrame(dt: number, raw: number): void {
     skills.update(step, run.skillWorld)
   }
   if (!run) return
+  autoCandy(raw)
   paintHotbar()
   if (delve && hero.alive) delve.seconds += raw
   saveClock += raw
@@ -1723,10 +1783,38 @@ function sewerHurt(amount: number, from: Vector3): void {
   if (document.pointerLockElement) document.exitPointerLock?.()
   const text = document.getElementById('down-text')
   if (text) text.textContent = '별하가 꿈 하수도에서 잠시 눈을 감았다. 이번 탐험 골드를 조금 흘렸지만, 주운 물건과 층 기록은 그대로야. 마을 광장에서 다시 일어나자.'
+  showDown()
+}
+
+/** The down card, then she gets up by herself after AUTO_RISE seconds (or on the button). */
+let riseTimer = 0
+function showDown(): void {
   document.getElementById('down')?.classList.remove('hidden')
+  const btn = document.getElementById('retry')
+  let left = AUTO_RISE
+  const paint = () => {
+    if (btn) btn.textContent = `다시 일어나기 (${left})`
+  }
+  paint()
+  window.clearInterval(riseTimer)
+  riseTimer = window.setInterval(() => {
+    if (document.getElementById('down')?.classList.contains('hidden')) {
+      window.clearInterval(riseTimer)
+      return
+    }
+    left -= 1
+    paint()
+    if (left <= 0) {
+      window.clearInterval(riseTimer)
+      restart()
+    }
+  }, 1000)
 }
 
 function restart(): void {
+  window.clearInterval(riseTimer)
+  const retryBtn = document.getElementById('retry')
+  if (retryBtn) retryBtn.textContent = '다시 일어나기'
   if (run) {
     hero.hp = hero.maxHp
     hero.revive()

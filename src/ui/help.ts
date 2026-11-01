@@ -12,6 +12,7 @@ export const HELP_KEYS: [string, string][] = [
   ['Q', '하트 사탕 먹기'],
   ['E', '대화 · 상자 열기'],
   ['G', '방금 주운 장비 바로 입기'],
+  ['Alt', '마우스 커서 꺼내기'],
   ['I / Tab', '가방 · 장비'],
   ['K', '스킬 나무'],
   ['M', '큰 지도 (던전)'],
@@ -19,6 +20,15 @@ export const HELP_KEYS: [string, string][] = [
   ['J', '가이드 펼치기 · 접기'],
   ['H', '이 도움말'],
   ['Esc', '마우스 풀기 · 창 닫기'],
+]
+
+/** Convenience features, listed under the keys (H). */
+export const HELP_QOL: [string, string][] = [
+  ['가방', '정렬 · 좋은 장비 입기(▲ 한 번에) · 잡동사니 판매(마을)'],
+  ['판매', '희귀 이상은 한 번 더 눌러야 팔리거나 분해돼'],
+  ['⚙', '자동 사탕(체력 30%↓) · 일반 자동 판매 · 자동 품질'],
+  ['포털', '지난번 간 곳이 맨 위에'],
+  ['쓰러짐', '3초 뒤 자동으로 다시 일어나'],
 ]
 
 export class Help {
@@ -32,10 +42,11 @@ export class Help {
     this.root.setAttribute('role', 'dialog')
     this.root.setAttribute('aria-label', '도움말')
     const keys = HELP_KEYS.map(([k, v]) => `<dt><kbd>${k}</kbd></dt><dd>${v}</dd>`).join('')
+    const qol = HELP_QOL.map(([k, v]) => `<dt><b>${k}</b></dt><dd>${v}</dd>`).join('')
     const mats = Object.entries(MATERIAL_KO)
       .map(([id, name]) => `<dt><b class="mat mat-${id}">${name}</b></dt><dd>${MATERIAL_HELP[id] ?? ''}</dd>`)
       .join('')
-    this.root.innerHTML = `<div class="help-card"><h2>도움말</h2><div class="help-cols"><section><h3>조작</h3><dl>${keys}</dl></section><section><h3>재료</h3><dl class="help-mats">${mats}</dl><h3>장비 칸 읽기</h3><p>테두리 색 = 희귀도 (일반·고급·희귀·영웅·전설). 왼쪽 위 숫자 = 파워, ▲▼ = 입은 장비보다 좋음/나쁨, 오른쪽 아래 = 아이템 레벨.</p></section></div><button type="button" class="help-close">닫기 (H)</button></div>`
+    this.root.innerHTML = `<div class="help-card"><h2>도움말</h2><div class="help-cols"><section><h3>조작</h3><dl>${keys}</dl><h3>편의 기능</h3><dl class="help-qol">${qol}</dl></section><section><h3>재료</h3><dl class="help-mats">${mats}</dl><h3>장비 칸 읽기</h3><p>테두리 색 = 희귀도 (일반·고급·희귀·영웅·전설). 왼쪽 위 숫자 = 파워, ▲▼ = 입은 장비보다 좋음/나쁨, 오른쪽 아래 = 아이템 레벨.</p></section></div><button type="button" class="help-close">닫기 (H)</button></div>`
     this.root.querySelector('.help-close')?.addEventListener('click', () => this.toggle(false))
     parent.append(this.root)
     window.addEventListener('keydown', (event) => {
