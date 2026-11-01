@@ -13,7 +13,7 @@ import { Shooter, type ShotWorld } from './combat/shooter'
 import { TPS, loadSens, rayCapsule, setSens, SENS, type AimTarget } from './core/tps'
 import { WALK_RADIUS } from './world/town/island'
 import { Hero } from './actors/hero'
-import { axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, installInput, pad, relockView, runningHeld, shoulder, syncCursor } from './core/input'
+import { autoRunOn, onAutoRun, setAutoRun, axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, installInput, pad, relockView, runningHeld, shoulder, syncCursor } from './core/input'
 import { ALT_LABEL, cursor, installAlt, saveAltMode, setAlt } from './core/cursor'
 import { hudArena, installLayout, placePocket } from './ui/layout'
 import { installTooltips } from './ui/tooltip'
@@ -31,6 +31,9 @@ import { HitStop } from './core/hitstop'
 import { AUTO_RISE, LAST_GATE_KEY, QOL_KEY, autoSellPick, loadQol, rememberFirst, shouldAutoCandy, type QolPrefs } from './sim/qol'
 import { DETAIL, Quality } from './core/quality'
 import type { DungeonRun } from './world/dungeon/run'
+import { Portal } from './world/dungeon/portal'
+import { WaypointView } from './world/waypoint-view'
+import { WAYPOINT_REACH, distanceText, goalForContract, goalForQuest, trailDots, type Waypoint, type WaypointGoal } from './sim/waypoint'
 import { Delve, portalChoices, type DelveEnd, type DelveSummary, type FloorPlan } from './sim/delve'
 import { showSummary } from './ui/summary'
 import { playChime, type Chime } from './audio/chime'
@@ -53,7 +56,7 @@ import { activeContracts, contractEvent, contractLine, type ContractEvent } from
 import { eatCandy, townOf, useScroll } from './sim/town'
 import { tryEquip } from './sim/mutate'
 import { isEquipped } from './sim/inventory'
-import { FLUFF, chapter2Open, chaptersOf, fieldNeeds, guideEvent, guideStep, keepGuide, questEvent, questHud, skipGuide, type ChapterOut, type FieldEvent, type GuideEvent } from './sim/chapters'
+import { CHAPTER2, FLUFF, chapter2Open, chaptersOf, fieldNeeds, guideEvent, guideStep, keepGuide, questEvent, questHud, skipGuide, type ChapterOut, type FieldEvent, type GuideEvent } from './sim/chapters'
 import { ChapterUI } from './ui/chapters'
 
 const base = import.meta.env.BASE_URL
@@ -96,7 +99,7 @@ const quality = new Quality((level) => {
 })
 quality.enabled = safeStore()?.getItem(QUALITY_KEY) !== '0'
 /** 편의성 prefs (auto candy, auto-sell commons); saved apart from the game save, so they stick. */
-const qol: QolPrefs = loadQol(safeStore()?.getItem(QOL_KEY))
+const qol: QolPrefs = loadQol(safeStore()?.getItem(QOL_KEY), stage.touch)
 function saveQol(): void {
   try {
     safeStore()?.setItem(QOL_KEY, JSON.stringify(qol))
@@ -137,10 +140,78 @@ let run: DungeonRun | null = null
 let delve: Delve | null = null
 /** Boss of this trip beaten: the depth it opened (0 = none). Set the moment it falls. */
 let delveUnlocked = -1
+/**
+ * 편의성: the floor she recalled from, left standing behind a return portal in the village
+ * (this session only). Walking back in puts her on the same spot with the cleared foes gone.
+ */
+let parked: { run: DungeonRun; mod: typeof import('./world/dungeon/run'); depth: number; floor: number; salt: number; field: FloorPlan | null } | null = null
+/** Where the return portal stands in the village (beside the 별문). */
+const RETURN_SPOT = { x: -7.6, z: 6.4 }
+const returnPortal = new Portal(new Vector3(RETURN_SPOT.x, 0, RETURN_SPOT.z), 0xffc46b)
+returnPortal.active = false
+const RETURN_PLACE: Place = { kind: 'portal', x: RETURN_SPOT.x, z: RETURN_SPOT.z, turn: 0, height: 2.4, solid: 0, talk: 'return' }
+
+/** The return portal stands only in the village while a floor is parked. */
+function paintReturnPortal(): void {
+  const on = !!parked && !run && game.zone === 'village'
+  if (on && returnPortal.group.parent !== stage.scene) stage.scene.add(returnPortal.group)
+  returnPortal.active = on
+}
+
+/** Throw the parked floor away (a new trip started, or it can no longer be reached). */
+function dropParked(): void {
+  if (!parked) return
+  parked.run.dispose()
+  parked = null
+  paintReturnPortal()
+}
+
+/** Through the return portal: back onto the parked floor, same spot. */
+function returnThrough(): void {
+  if (!parked || run || travelling) return
+  const p = parked
+  const trip = p.field ? Delve.reopenField(game.save, p.field) : Delve.reopen(game.save, p.depth, p.floor, p.salt)
+  if (!trip) {
+    dropParked()
+    return
+  }
+  travelling = true
+  audio.sfx('windup', 0.7)
+  void fadeThrough(() => {
+    talk.close()
+    combat.setRoster([])
+    combat.places = []
+    landmarks.group.visible = false
+    const theme = p.mod.themeFor(p.depth)
+    stage.setWorld('sewer', p.field ? { ...p.mod.themeFog(1), near: 14, far: 62 } : p.mod.themeFog(p.depth))
+    setMood({ fog: theme.fog, sky: theme.sky, clear: theme.fog })
+    zonePlaces = []
+    delve = trip
+    delveUnlocked = -1
+    hero.hp = hero.maxHp
+    parked = null
+    paintReturnPortal()
+    run = p.run
+    run.unpark()
+    skills.reset()
+    game.persist(store)
+    document.body.classList.add('sewer')
+    if (p.field) document.body.classList.add('field')
+    showHint()
+    if (waypoint) refreshWaypoint(true)
+  }).finally(() => {
+    travelling = false
+  })
+}
 /** The sewer lives in its own chunk: fetched (with its horde art) while the title shows, awaited on entry. */
 let dungeonModule: Promise<typeof import('./world/dungeon/run')> | null = null
+/** The loaded dungeon module (parking a floor needs it to come back). */
+let dungeonMod: typeof import('./world/dungeon/run') | null = null
 function loadDungeon(): Promise<typeof import('./world/dungeon/run')> {
-  dungeonModule ??= import('./world/dungeon/run')
+  dungeonModule ??= import('./world/dungeon/run').then((m) => {
+    dungeonMod = m
+    return m
+  })
   return dungeonModule
 }
 const crosshair = document.getElementById('crosshair')
@@ -185,6 +256,7 @@ const shooter = new Shooter(
   stage.scene,
 )
 const rig = shooter.rig
+rig.autoAim = qol.autoAim
 const aim = rig.aim
 let townColliders: CameraCollider[] = []
 const townTargets: AimTarget[] = []
@@ -509,6 +581,119 @@ function townSuccess(kind: TownSuccess, item?: ItemInstance): void {
 }
 
 const contractHud = document.getElementById('contract-hud')
+/** 편의성: the tracked quest's waypoint (glowing trail on the ground, minimap pin, distance chip). */
+let waypoint: Waypoint | null = null
+const waypointView = new WaypointView()
+waypointView.attach(stage.scene)
+const wpChip = document.getElementById('waypoint')
+let wpGoal: { x: number; z: number } | null = null
+let wpLine: { x: number; z: number }[] = []
+let wpClock = 0
+let wpTile = ''
+
+/** Track (or untrack, on a second click) one tracker row. */
+function setWaypoint(next: Waypoint | null): void {
+  waypoint = next
+  wpClock = 0
+  wpTile = ''
+  if (!next) {
+    wpGoal = null
+    wpLine = []
+    waypointView.hide()
+    run?.showWaypoint(null)
+    wpChip?.classList.add('hidden')
+    paintContracts()
+    return
+  }
+  refreshWaypoint(true)
+  paintContracts()
+}
+
+/** The tracker row → a waypoint (chapter-2 quests and board contracts). */
+function waypointFor(id: string): Waypoint | null {
+  const quest = CHAPTER2.find((d) => d.id === id)
+  if (quest) {
+    const row = questHud(game.save).find((q) => q.id === id)
+    return { id, label: quest.title, goal: goalForQuest(quest.kind, quest.target, !!row?.done, !!run) }
+  }
+  const c = activeContracts(game.save).find((k) => k.id === id)
+  if (!c) return null
+  return { id, label: `의뢰 · ${contractLine(c).replace(/ (\d|완료).*$/, '')}`, goal: goalForContract(c.kind, c.status === 'done', !!run) }
+}
+
+/** Where a goal sits in the town (the board, the 별문, or the return portal). */
+function townGoal(goal: WaypointGoal): { x: number; z: number } | null {
+  if (goal.kind === 'return' || (goal.kind === 'gate' && returnPortal.active)) return returnPortal.active ? RETURN_SPOT : null
+  const want = goal.kind === 'board' ? 'board' : 'portal'
+  const spot = zonePlaces.find((p) => p.kind === want) ?? zonePlaces.find((p) => p.kind === 'portal')
+  return spot ? { x: spot.x, z: spot.z } : null
+}
+
+/** Re-aim the waypoint (a few times a second, or when she steps onto a new tile). */
+function refreshWaypoint(force = false): void {
+  if (!waypoint) return
+  const p = hero.object.position
+  // A quest that changed state (done → back to the board) re-targets itself.
+  const fresh = waypointFor(waypoint.id)
+  if (!fresh) {
+    // The quest was handed in (or dropped): nothing left to walk to.
+    setWaypoint(null)
+    return
+  }
+  waypoint = fresh
+  if (run) {
+    const g = waypoint.goal.kind === 'board' || waypoint.goal.kind === 'gate' || waypoint.goal.kind === 'return' ? ({ kind: 'exit' } as const) : waypoint.goal
+    wpGoal = run.goalPoint(g, p.x, p.z)
+    const tile = `${Math.round(p.x / 2)},${Math.round(p.z / 2)}`
+    if (wpGoal && (force || tile !== wpTile || wpLine.length < 2)) {
+      wpTile = tile
+      const way = run.waypointRoute(p.x, p.z, wpGoal)
+      wpLine = way.line
+      run.showWaypoint(wpGoal, way.tiles)
+    } else if (wpGoal) run.showWaypoint(wpGoal)
+    else run.showWaypoint(null)
+  } else {
+    wpGoal = townGoal(waypoint.goal)
+    wpLine = wpGoal ? [{ x: p.x, z: p.z }, wpGoal] : []
+  }
+  paintWaypointChip()
+}
+
+function waypointDistance(): number {
+  if (wpLine.length < 2) return wpGoal ? Math.hypot(wpGoal.x - hero.object.position.x, wpGoal.z - hero.object.position.z) : 0
+  let d = 0
+  for (let i = 1; i < wpLine.length; i++) d += Math.hypot(wpLine[i]!.x - wpLine[i - 1]!.x, wpLine[i]!.z - wpLine[i - 1]!.z)
+  return d
+}
+
+function paintWaypointChip(): void {
+  if (!wpChip) return
+  const on = !!waypoint && mode === 'play'
+  wpChip.classList.toggle('hidden', !on)
+  if (!on || !waypoint) return
+  const label = wpChip.querySelector('span')
+  const text = `${waypoint.label} · ${wpGoal ? distanceText(waypointDistance()) : '—'}`
+  if (label && label.textContent !== text) label.textContent = text
+}
+
+/** Per frame: follow her with the trail head, pulse the dots, clear on arrival. */
+function waypointFrame(dt: number): void {
+  if (!waypoint) return
+  wpClock -= dt
+  if (wpClock <= 0) {
+    wpClock = 0.25
+    refreshWaypoint()
+  }
+  const p = hero.object.position
+  if (wpLine.length >= 2) wpLine[0] = { x: p.x, z: p.z }
+  if (wpGoal && Math.hypot(wpGoal.x - p.x, wpGoal.z - p.z) < WAYPOINT_REACH) {
+    toast(`도착! ${waypoint.label}`, 'quest')
+    setWaypoint(null)
+    return
+  }
+  const time = performance.now() / 1000
+  waypointView.show(wpGoal ? trailDots(wpLine, 1.4, 16, (time * 1.8) % 1.4) : [], wpGoal, time)
+}
 /** Taken contracts in the HUD (town and sewer). */
 function paintContracts(): void {
   if (!contractHud) return
@@ -526,9 +711,9 @@ function paintContracts(): void {
   contractHud.append(chip)
   for (const q of chapter) {
     const row = document.createElement('div')
-    row.className = q.done ? 'ch done' : 'ch'
+    row.className = (q.done ? 'ch done' : 'ch') + (waypoint?.id === q.id ? ' wp' : '')
     row.dataset.id = q.id
-    row.dataset.tip = `챕터 2 · ${q.title}\n진행 ${q.prog}${q.done ? '\n완료! 마을 게시판에서 보상을 받아.' : ''}\n${run ? '눌러서 길 안내 보기' : '눌러서 게시판 열기'}`
+    row.dataset.tip = `챕터 2 · ${q.title}\n진행 ${q.prog}${q.done ? '\n완료! 마을 게시판에서 보상을 받아.' : ''}\n${waypoint?.id === q.id ? '다시 누르면 길 안내 끄기' : '눌러서 길 안내'}`
     const b = document.createElement('b')
     b.textContent = '챕터 2'
     row.append(b, document.createTextNode(`${q.title} ${q.prog}`))
@@ -536,9 +721,9 @@ function paintContracts(): void {
   }
   for (const c of list) {
     const row = document.createElement('div')
-    row.className = c.status === 'done' ? 'done' : ''
+    row.className = (c.status === 'done' ? 'done' : '') + (waypoint?.id === c.id ? ' wp' : '')
     row.dataset.id = c.id
-    row.dataset.tip = `의뢰\n${contractLine(c)}\n${run ? '꿈 하수도에서 진행 중' : '눌러서 게시판 열기'}`
+    row.dataset.tip = `의뢰\n${contractLine(c)}\n${waypoint?.id === c.id ? '다시 누르면 길 안내 끄기' : '눌러서 길 안내'}`
     const b = document.createElement('b')
     b.textContent = '의뢰'
     row.append(b, document.createTextNode(contractLine(c)))
@@ -694,6 +879,7 @@ function enterField(): void {
     toast('가이드 챕터를 마치면 열리는 들판이야.', 'info')
     return
   }
+  dropParked()
   travelling = true
   audio.sfx('windup', 0.7)
   const trip = Delve.field(game.save, fieldNeeds(game.save))
@@ -870,7 +1056,12 @@ const paintQuality = () => {
 paintQuality()
 const autoCandyBtn = document.getElementById('auto-candy')
 const autoSellBtn = document.getElementById('auto-sell')
+const autoAimBtn = document.getElementById('auto-aim')
 const paintQol = () => {
+  if (autoAimBtn) {
+    autoAimBtn.textContent = `자동 조준: ${qol.autoAim ? '켬' : '끔'}`
+    autoAimBtn.setAttribute('aria-pressed', String(qol.autoAim))
+  }
   if (autoCandyBtn) {
     autoCandyBtn.textContent = `자동 사탕: ${qol.autoCandy ? `켬 (${Math.round(qol.autoCandyAt * 100)}%)` : '끔'}`
     autoCandyBtn.setAttribute('aria-pressed', String(qol.autoCandy))
@@ -886,6 +1077,18 @@ autoCandyBtn?.addEventListener('click', () => {
   saveQol()
   paintQol()
   audio.sfx('ui')
+})
+autoAimBtn?.addEventListener('click', () => {
+  qol.autoAim = !qol.autoAim
+  rig.autoAim = qol.autoAim
+  saveQol()
+  paintQol()
+  audio.sfx('ui')
+  toast(qol.autoAim ? '자동 조준: 조준선 근처 가장 가까운 괴물에게 착 붙어.' : '자동 조준을 껐어 (살짝 끌리는 보정만 남아).', 'info')
+})
+onAutoRun((on) => {
+  document.body.classList.toggle('autorun', on)
+  if (mode === 'play') toast(on ? `자동 달리기 켜짐 · ${stage.touch ? '스틱을 움직이면' : 'WASD를 누르면'} 멈춰` : '자동 달리기 꺼짐', 'info')
 })
 autoSellBtn?.addEventListener('click', () => {
   qol.autoSellCommon = !qol.autoSellCommon
@@ -940,13 +1143,18 @@ contractHud?.addEventListener('click', (event) => {
     return
   }
   const row = t.closest<HTMLElement>('#contract-hud > div')
-  if (!row) return
-  if (!run) {
-    if (mode === 'play' && !talk.open && !menuUp()) openTown('board')
+  if (!row?.dataset.id || mode !== 'play') return
+  // 편의성: a click tracks the quest (trail on the ground, minimap pin, distance); again clears it.
+  if (waypoint?.id === row.dataset.id) {
+    setWaypoint(null)
     return
   }
-  toast(row.dataset.tip?.split('\n').slice(0, 2).join(' · ') ?? '', 'quest')
+  const next = waypointFor(row.dataset.id)
+  if (!next) return
+  setWaypoint(next)
+  toast(`길 안내: ${next.label}`, 'quest')
 })
+wpChip?.querySelector('button')?.addEventListener('click', () => setWaypoint(null))
 document.getElementById('retry')?.addEventListener('click', () => restart())
 document.getElementById('guide-skip')?.addEventListener('click', () => {
   showSettings(false)
@@ -962,7 +1170,7 @@ document.getElementById('guide-skip')?.addEventListener('click', () => {
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), get guideView() { return chapterUI.view() } } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() } } })
 
 void bootGame()
 
@@ -1011,6 +1219,8 @@ async function bootGame(): Promise<void> {
 }
 
 function newGame(): void {
+  dropParked()
+  setWaypoint(null)
   audio.sfx('ui')
   game = new GameState()
   hideTitle()
@@ -1090,6 +1300,7 @@ function enterZone(id: ZoneId, at: { x: number; z: number } = PORTAL_ARRIVAL): v
   showResult(result)
   zoneBanner(zone.name, zone.bgm === 'battle' ? '괴물들이 꿈을 갉고 있어' : '평온한 꿈결')
   game.persist(store)
+  paintReturnPortal()
   if (id === 'altar' && !game.save.flags.bossIntro && combat.bossAwake) window.setTimeout(() => talk.start('boss_intro'), 900)
 }
 
@@ -1104,6 +1315,7 @@ function enterSewer(depth = 1, floor = 1, seed?: number): void {
     toast('아직 열리지 않은 깊이야. 앞 깊이의 보스를 먼저 쓰러뜨려 줘.', 'info')
     return
   }
+  dropParked()
   travelling = true
   audio.sfx('windup', 0.7)
   void loadDungeon().then((mod) => fadeThrough(() => {
@@ -1299,9 +1511,16 @@ function leaveSewer(why: DelveEnd = 'recall'): void {
   if (!run || travelling) return
   travelling = true
   audio.sfx('windup', 0.7)
+  // 편의성: a recall mid-floor leaves a return portal (not after the boss, not when she fell).
+  const keep = why === 'recall' && delveUnlocked < 0 && !!delve && !delve.bossBeaten && !!dungeonMod
+  const parkAs = keep && delve && run && dungeonMod ? { run, mod: dungeonMod, depth: delve.depth, floor: delve.floor, salt: delve.salt, field: delve.fieldPlan } : null
   const sum = endDelve(why)
   void fadeThrough(() => {
-    run?.dispose()
+    if (parkAs) {
+      dropParked()
+      parkAs.run.park()
+      parked = parkAs
+    } else run?.dispose()
     run = null
     document.body.classList.remove('sewer', 'field')
     landmarks.group.visible = true
@@ -1309,8 +1528,10 @@ function leaveSewer(why: DelveEnd = 'recall'): void {
     armTown()
     enterZone('village', PLAZA)
     showHint()
+    paintReturnPortal()
   }).then(() => {
     travelling = false
+    if (parkAs) toast(`별문 옆에 돌아가기 포털이 열렸어 (${parkAs.field ? '몽실 들판' : `깊이 ${parkAs.depth} · ${parkAs.floor}층`})`, 'quest')
     if (!sum) return
     mode = 'menu'
     releaseLook()
@@ -1377,6 +1598,7 @@ function talkDone(actions: Action[], choice: TalkChoice | null, id: string | Tal
   if (dive) enterSewer(Number(dive[1]), Number(dive[2]))
   else if (choice?.go === 'sewer') enterSewer()
   else if (choice?.go === 'field') enterField()
+  else if (choice?.go === 'return') returnThrough()
   else if (choice?.go) travel(choice.go as ZoneId)
   if (id === 'luna_bloom_done' && game.finished && !game.save.flags.ending) {
     game.save.flags.ending = true
@@ -1394,6 +1616,7 @@ function gateTalk(): TalkDef {
   return {
     lines: [{ speaker: '별문', portrait: 'prop_portal', text: '별빛 문이 일렁인다. 어디로 갈까?' }],
     choices: [
+      ...(parked && game.zone === 'village' ? [{ text: `돌아가기 포털 · ${parked.field ? '몽실 들판' : `깊이 ${parked.depth} · ${parked.floor}층`} (그 자리로)`, go: 'return' }] : []),
       ...dests.map((d) => ({ text: d.label, go: d.to })),
       ...rememberFirst(
         [
@@ -1422,6 +1645,8 @@ function frame(): void {
   dt *= hitStop.step(raw)
   quality.frame(raw)
   handleKeys()
+  // Auto-run stops for trips, a fall, talks and menus.
+  if (autoRunOn() && (travelling || !hero.alive || talk.open || menuUp() || mode !== 'play')) setAutoRun(false)
   relockBtn?.classList.toggle('hidden', !syncCursor(shoulder.on && mode === 'play', stage.touch))
   if (mode !== 'play') {
     stage.render()
@@ -1470,6 +1695,7 @@ function frame(): void {
   const heroPos = hero.object.position
   if (!skills.rushing) mochiFollow(dt, heroPos)
   landmarks.update(dt, heroPos)
+  if (returnPortal.active) returnPortal.update(performance.now() / 1000)
   const notes = combat.update(frozen ? 0 : dt, heroPos, 0.7, (amount, from) => {
     const hurt = hero.hurt(amount, from)
     if (!hurt) return
@@ -1514,6 +1740,7 @@ function frame(): void {
   stage.camera.updateMatrixWorld()
   updateTalk()
   paintMarkers()
+  waypointFrame(dt)
   tickFloats(dt)
   stage.render()
 }
@@ -1559,6 +1786,7 @@ function sewerFrame(dt: number, raw: number): void {
   }
   talkBtn?.classList.toggle('hidden', !run.nearPortal)
   if (talkBtn && run.nearPortal) talkBtn.textContent = '포털'
+  waypointFrame(raw)
   stage.camera.updateMatrixWorld()
   tickFloats(dt)
   stage.render()
@@ -1611,11 +1839,14 @@ function hurtFlash(): void {
 const tipAt = new Vector3()
 function updateTalk(): void {
   const p = hero.object.position
-  const near = hero.alive && !travelling ? nearestTalk(p.x, p.z, 2.4, zonePlaces) : null
+  const spots = returnPortal.active ? [...zonePlaces, RETURN_PLACE] : zonePlaces
+  const near = hero.alive && !travelling ? nearestTalk(p.x, p.z, 2.4, spots) : null
   if (consumeTalk()) {
     if (talk.open) {
       talk.advance()
       audio.sfx('talk_next')
+    } else if (near?.talk === 'return') {
+      returnThrough()
     } else if (near?.talk && DIRECT[near.talk]) {
       openTown(DIRECT[near.talk]!)
     } else if (near?.talk) {
@@ -1638,7 +1869,7 @@ function updateTalk(): void {
 const TIP_HEIGHT: Partial<Record<Place['kind'], number>> = { kiki: 1.75, luna: 1.95, board: 1.95, portal: 2.6, popo: 2.6, stash: 1.2 }
 /** Talk spots that open a town panel straight away (no dialogue first). */
 const DIRECT: Record<string, TownPanel | undefined> = { popo: 'shop', board: 'board', stash: 'stash' }
-const VERB: Record<string, string> = { gate: '별문', well: '우물', board: '게시판', popo: '상점', stash: '보관함' }
+const VERB: Record<string, string> = { return: '돌아가기 포털', gate: '별문', well: '우물', board: '게시판', popo: '상점', stash: '보관함' }
 const markAt = new Vector3()
 /** Quest markers (! new errand, ? ready to report) over the villagers. */
 function paintMarkers(): void {

@@ -291,6 +291,28 @@ export class Delve {
     return run
   }
 
+  /**
+   * Back through a return portal (편의성): a fresh trip on the very same floor (same maze salt),
+   * so the parked floor and the trip agree. Refuses depths that aren't open.
+   */
+  static reopen(save: SaveData, depth: number, floor: number, salt: number): Delve | null {
+    const d = delveOf(save)
+    if (depth < 1 || depth > d.unlocked) return null
+    d.runs += 1
+    const run = new Delve(depth, floor, salt)
+    d.checkpoint = { depth: run.depth, floor: run.floor }
+    run.sync(save)
+    return run
+  }
+
+  /** Back out to the same 몽실 들판 field through a return portal. */
+  static reopenField(save: SaveData, plan: FloorPlan): Delve {
+    delveOf(save).runs += 1
+    const run = new Delve(1, 1, 0)
+    run.fieldPlan = plan
+    return run
+  }
+
   /** Resume from the saved checkpoint (null when there is none). */
   static resume(save: SaveData): Delve | null {
     const cp = delveOf(save).checkpoint

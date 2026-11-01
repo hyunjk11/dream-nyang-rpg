@@ -47,6 +47,7 @@ import { FIELD, FieldDirector } from './field'
 import { NAMED } from '../../sim/chapters'
 import type { HordeKind } from './horde'
 import { Chest } from './chest'
+import { nearest, route, type WaypointGoal } from '../../sim/waypoint'
 
 /** What the sewer borrows from the hub game each frame. */
 export interface RunHost {
@@ -399,6 +400,135 @@ export class DungeonRun {
     this.homePortal.dispose()
     this.exitPortal.dispose()
     this.sewer.dispose()
+  }
+
+  // ---- 편의성: quest waypoint and the return portal ----
+
+  /** Where a tracked quest points on this floor right now (world m), or null when nothing fits. */
+  goalPoint(goal: WaypointGoal, x: number, z: number): { x: number; z: number } | null {
+    const liveFoes = this.horde.foes.filter((f) => f.dying <= 0 && f.hp > 0)
+    const objective = (): { x: number; z: number } | null => {
+      if (this.boss?.alive) return { x: this.boss.x, z: this.boss.z }
+      if (this.stairsPortal.active) return { x: this.stairsPortal.group.position.x, z: this.stairsPortal.group.position.z }
+      if (this.exitPortal.group.visible) return { x: this.exitPortal.group.position.x, z: this.exitPortal.group.position.z }
+      return nearest(liveFoes, x, z)
+    }
+    switch (goal.kind) {
+      case 'foe': {
+        const kind = goal.target
+        const pick = (kind && nearest(liveFoes.filter((f) => f.kind === kind), x, z)) || nearest(liveFoes, x, z)
+        return pick ? { x: pick.x, z: pick.z } : objective()
+      }
+      case 'named': {
+        const id = this.field?.namedId ?? 0
+        const f = id ? liveFoes.find((k) => k.id === id) : null
+        return f ? { x: f.x, z: f.z } : objective()
+      }
+      case 'boss': {
+        if (this.boss?.alive) return { x: this.boss.x, z: this.boss.z }
+        const b = this.maze.bossRoom
+        return tileCentre(this.maze, b.x + Math.floor(b.w / 2), b.y + Math.floor(b.h / 2))
+      }
+      case 'nest':
+        return nearest(this.nests.filter((n) => n.hp > 0), x, z) ?? objective()
+      case 'chest': {
+        const open = this.chests.filter((c) => !c.chest.opened && c.chest.group.visible).map((c) => ({ x: c.chest.group.position.x, z: c.chest.group.position.z }))
+        return nearest(open, x, z) ?? objective()
+      }
+      case 'exit':
+        return objective()
+      default:
+        return null
+    }
+  }
+
+  /** Walking line from (x, z) to the goal over the maze (world m, her spot first) and its tiles. */
+  waypointRoute(x: number, z: number, to: { x: number; z: number }): { line: { x: number; z: number }[]; tiles: { x: number; y: number }[]; length: number } {
+    const maze = this.maze
+    const a = worldToTile(maze, x, z)
+    const b = worldToTile(maze, to.x, to.z)
+    const open = (tx: number, ty: number) => maze.tiles[ty * maze.w + tx] !== Tile.Solid
+    const tiles = route(maze.w, maze.h, open, a.x, a.y, b.x, b.y)
+    if (tiles.length === 0) return { line: [{ x, z }, to], tiles: [], length: Math.hypot(to.x - x, to.z - z) }
+    const line = [{ x, z }, ...tiles.slice(1, -1).map((t) => tileCentre(maze, t.x, t.y)), to]
+    let length = 0
+    for (let i = 1; i < line.length; i += 1) length += Math.hypot(line[i].x - line[i - 1].x, line[i].z - line[i - 1].z)
+    return { line, tiles, length }
+  }
+
+  /** Waypoint pin + route on the minimap (null clears). */
+  showWaypoint(to: { x: number; z: number } | null, tiles: { x: number; y: number }[] = []): void {
+    if (!to) {
+      this.minimap.unmark('waypoint')
+      this.minimap.path = []
+      return
+    }
+    const t = worldToTile(this.maze, to.x, to.z)
+    this.minimap.mark(t.x, t.y, '#ffd36b', 'waypoint', true, 'waypoint')
+    this.minimap.path = tiles
+  }
+
+  /** Parked in town behind a return portal (편의성): nothing ticks, nothing shows. */
+  parked = false
+  private parkedAt = { x: 0, z: 0, yaw: 0, camYaw: 0, pitch: 0 }
+
+  /**
+   * Leave the floor standing (foes, loot, opened chests, the map) while she pops home; `unpark`
+   * puts her back on the same spot. The host owns the trip bookkeeping.
+   */
+  park(): void {
+    if (this.parked) return
+    this.parked = true
+    const p = this.host.hero.object.position
+    this.parkedAt = { x: p.x, z: p.z, yaw: this.host.hero.yaw, camYaw: this.view.yaw, pitch: this.view.pitch }
+    this.recallT = 0
+    this.sewer.group.removeFromParent()
+    for (const el of this.hudEls()) el.style.display = 'none'
+    this.minimap.toggle(false)
+    shoulder.on = false
+    shoulder.look = () => {}
+    this.host.hero.limit = 13.2
+    this.host.hero.boost = 1
+    this.shooter.reset()
+  }
+
+  /** Back through the return portal: same floor, same spot, the cleared foes stay cleared. */
+  unpark(): void {
+    if (!this.parked) return
+    this.parked = false
+    this.host.scene.add(this.sewer.group)
+    for (const el of this.hudEls()) el.style.display = ''
+    const at = this.parkedAt
+    // Foes that were right on top of her step back a little so she does not land in a bite.
+    for (const f of this.horde.foes) {
+      const d = Math.hypot(f.x - at.x, f.z - at.z)
+      if (d < 4 && d > 1e-3) {
+        const out = collideCircle(this.maze, at.x + ((f.x - at.x) / d) * 4, at.z + ((f.z - at.z) / d) * 4, f.radius)
+        f.x = out.x
+        f.z = out.z
+      }
+    }
+    const hero = this.host.hero
+    hero.limit = Infinity
+    hero.revive()
+    hero.object.position.set(at.x, 0, at.z)
+    hero.yaw = at.yaw
+    this.host.mochi.place(at.x - 0.9, at.z - 0.6)
+    this.lastHero.copy(hero.object.position)
+    this.host.camera.fov = TPS.fov
+    this.host.camera.updateProjectionMatrix()
+    this.shooter.reset()
+    this.view.yaw = at.camYaw
+    this.view.pitch = at.pitch
+    this.shooter.rig.place(1, at.x, 0, at.z, this.ray)
+    shoulder.on = true
+    shoulder.look = (dx, dy, touch) => this.look(dx, dy, touch)
+    consumeRecall()
+    this.host.banner(floorLabel(this.plan.depth, this.plan.floor), '돌아가기 포털로 그 자리에 돌아왔어')
+  }
+
+  private hudEls(): HTMLElement[] {
+    return [this.minimap.el, this.waveEl, this.bossBar, this.delveEl, this.tagEl, ...this.arrowEls].filter((e): e is HTMLElement => !!e) as HTMLElement[]
   }
 
   update(dt: number): void {

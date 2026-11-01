@@ -37,6 +37,7 @@
       <button id="bag-btn" type="button" title="가방 (I · Tab)">가방<kbd class="key-hint">I</kbd></button>
       <button id="candy" type="button" title="하트 사탕 먹기 (Q)">사탕<span id="candy-count"></span><kbd class="key-hint">Q</kbd></button>
       <div id="contract-hud" class="hidden" aria-label="맡은 의뢰"></div>
+      <div id="waypoint" class="hidden" aria-label="길 안내"><i></i><span></span><button type="button" aria-label="길 안내 끄기" title="길 안내 끄기">✕</button></div>
       <div class="stick" id="stick"><div id="knob"></div></div>
       <div class="actions" id="actions">
         <button id="dash" type="button">대시</button>
@@ -48,6 +49,7 @@
         <button id="fps-toggle" type="button">FPS</button>
         <button id="auto-candy" type="button" aria-pressed="true" title="체력이 30% 아래로 떨어지면 하트 사탕을 알아서 먹어 (저장됨)">자동 사탕: 켬 (30%)</button>
         <button id="auto-sell" type="button" aria-pressed="false" title="던전에서 주운 일반(흰색) 장비 중 지금보다 안 좋은 건 바로 골드로 바꿔 (저장됨)">일반 자동 판매: 끔</button>
+        <button id="auto-aim" type="button" aria-pressed="false" title="조준선 근처에서 가장 가까운 괴물에게 총알이 붙어 (모바일 기본 켬 · 저장됨)">자동 조준: 끔</button>
         <button id="auto-quality" type="button" aria-pressed="true" title="프레임이 떨어지면 해상도·빛번짐·그림자·파티클을 잠깐 낮춰 (저장됨)">자동 품질: 켬</button>
         <button id="mute" type="button">소리</button>
         <label>음량 <input id="vol" type="range" min="0" max="100" value="35" /></label>

@@ -32,6 +32,7 @@ export const ZONE_OF: Record<string, Zone> = {
   toasts: 'tc',
   minimap: 'tr',
   'contract-hud': 'tr',
+  waypoint: 'tr',
   'loot-toasts': 'bl',
   stick: 'bl',
   hotbar: 'br',
@@ -207,7 +208,7 @@ export function aimZone(w: number, h: number): Box {
 }
 
 /** Pieces that always stay (fixed HUD). */
-const SOLID = ['#ui .top', '#tracker', '#delve', '#wave', '#bossbar', '#guide', '#minimap', '#contract-hud', '#hud-pocket > *', '#stick', '#hotbar > *', '#actions > button', '#hint', '#relock', '#dialog']
+const SOLID = ['#ui .top', '#tracker', '#delve', '#wave', '#bossbar', '#guide', '#minimap', '#contract-hud', '#waypoint', '#hud-pocket > *', '#stick', '#hotbar > *', '#actions > button', '#hint', '#relock', '#dialog']
 let solidBoxes: Box[] = []
 
 function seen(el: Element): DOMRect | null {

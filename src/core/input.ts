@@ -1,3 +1,4 @@
+import { StickTaps, autoRunAfterKey } from '../sim/autorun'
 import { cursor, needsRelock, setAlt } from './cursor'
 
 export interface Pad {
@@ -11,6 +12,26 @@ export interface Pad {
 const keys = new Set<string>()
 
 export const pad: Pad = { x: 0, y: 0, fire: false }
+
+/** 편의성: auto-run (R / NumLock, or double-tap the stick); any move input cancels it. */
+let autoRun = false
+let autoRunListener: ((on: boolean) => void) | null = null
+const stickTaps = new StickTaps()
+
+export function autoRunOn(): boolean {
+  return autoRun
+}
+
+/** Turn auto-run on or off (world swaps, death and menus switch it off). */
+export function setAutoRun(on: boolean): void {
+  if (autoRun === on) return
+  autoRun = on
+  autoRunListener?.(on)
+}
+
+export function onAutoRun(fn: (on: boolean) => void): void {
+  autoRunListener = fn
+}
 
 let dashQueued = false
 let talkQueued = false
@@ -125,6 +146,7 @@ export function installInput(canvas: HTMLCanvasElement): void {
   window.addEventListener('keydown', (event) => {
     if (event.code === 'Space' || event.code.startsWith('Arrow')) event.preventDefault()
     keys.add(event.code)
+    setAutoRun(autoRunAfterKey(autoRun, event.code, event.repeat))
     if (event.code === 'Space' && !event.repeat) dashQueued = true
     if ((event.code === 'KeyE' || event.code === 'Enter') && !event.repeat) talkQueued = true
     if (event.code === 'KeyM' && !event.repeat) mapQueued = true
@@ -307,7 +329,7 @@ export function consumeDash(): boolean {
 }
 
 export function runningHeld(): boolean {
-  return keys.has('ShiftLeft') || keys.has('ShiftRight') || Math.hypot(pad.x, pad.y) > 0.9
+  return autoRun || keys.has('ShiftLeft') || keys.has('ShiftRight') || Math.hypot(pad.x, pad.y) > 0.9
 }
 
 export function axis(): { x: number; y: number } {
@@ -322,7 +344,7 @@ export function axis(): { x: number; y: number } {
   if (keys.has('KeyW') || keys.has('ArrowUp')) y += 1
   if (keys.has('KeyS') || keys.has('ArrowDown')) y -= 1
   const len = Math.hypot(x, y)
-  if (len === 0) return { x: 0, y: 0 }
+  if (len === 0) return autoRun ? { x: 0, y: 1 } : { x: 0, y: 0 }
   return { x: x / len, y: y / len }
 }
 
@@ -333,6 +355,10 @@ function bindStick(el: HTMLElement, knob: HTMLElement): void {
     const rect = el.getBoundingClientRect()
     const originX = rect.left + rect.width / 2
     const originY = rect.top + rect.height / 2
+    const downAt = performance.now()
+    const startX = event.clientX
+    const startY = event.clientY
+    let travel = 0
     const move = (ev: PointerEvent) => {
       let dx = ev.clientX - originX
       let dy = ev.clientY - originY
@@ -343,8 +369,13 @@ function bindStick(el: HTMLElement, knob: HTMLElement): void {
       knob.style.transform = `translate(${dx}px, ${dy}px)`
       pad.x = dx / radius
       pad.y = -dy / radius
+      travel = Math.max(travel, Math.hypot(ev.clientX - startX, ev.clientY - startY) / radius)
     }
     const up = () => {
+      // A double tap toggles auto-run; a real drag cancels it.
+      const kind = stickTaps.release(downAt, performance.now(), travel)
+      if (kind === 'double') setAutoRun(!autoRun)
+      else if (kind === 'drag') setAutoRun(false)
       knob.style.transform = 'translate(0px, 0px)'
       pad.x = 0
       pad.y = 0
