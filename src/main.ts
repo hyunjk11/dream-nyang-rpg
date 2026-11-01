@@ -87,6 +87,7 @@ const MAX_FRAME = 0.1
 /** Largest single sim step in the dungeon (s); a long frame is split into ≤ 2 of these. */
 const SIM_STEP = 0.05
 const QUALITY_KEY = 'dnr.autoQuality'
+const QUALITY_KO = ['높음', '보통', '낮음', '최저']
 /** Adaptive quality: drops resolution / bloom / shadow refresh / sparks when FPS sags. */
 const quality = new Quality((level) => {
   stage.setDetail(level)
@@ -1510,7 +1511,7 @@ function countFps(raw: number): void {
     fps = Math.round(frames / fpsTime)
     fpsTime = 0
     frames = 0
-    if (fpsEl && showFps) fpsEl.textContent = quality.level > 0 ? `${fps} FPS · 품질 ${3 - quality.level}` : `${fps} FPS`
+    if (fpsEl && showFps) fpsEl.textContent = quality.level > 0 ? `${fps} FPS · 품질 ${QUALITY_KO[quality.level]}` : `${fps} FPS`
   }
 }
 
