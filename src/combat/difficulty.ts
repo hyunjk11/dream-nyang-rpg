@@ -69,6 +69,15 @@ export const DIFFICULTY = {
     /** Floors start this many waves further into the roster (floor 1 of depth 1 = wave 1). */
     wavesPerFloor: 1,
     wavesPerDepth: 2,
+    /**
+     * Depth 2 comes in gently: floors 1, 2, 3 of depth 2 carry only this share of the depth step
+     * (foe hp/damage, extra packs, the second elite affix); the boss floor and
+     * every deeper depth carry all of it. The headless sim (tools/sim-floor.ts) showed new players
+     * hitting a wall there (0 → 8 deaths in 10 from floor 1 to floor 3 with depth-1 gear).
+     */
+    entryEase: [0.5, 0.7, 0.75] as readonly number[],
+    /** ...and their explore packs draw from the roster this many tiers back (floor 3 met wave-6 kinds). */
+    entryRoster: [0, 0, -1] as readonly number[],
     /** Survive floor: waves to outlast (floor 1 of depth 1 stays short and sweet). */
     surviveWaves: 3,
     /** Nest floor: pipes to plug. */

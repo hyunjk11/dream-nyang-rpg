@@ -131,17 +131,14 @@ export function installLayout(ui: HTMLElement | null): void {
     lastFit = performance.now()
     fitHud()
   }
-  const urgent = (r: MutationRecord) =>
-    (r.type === 'childList' && r.addedNodes.length > 0 && !!zones && zones.tc.contains(r.target)) ||
-    (r.type === 'attributes' && (r.target as Element).id === 'contract-hud')
   const watch = new MutationObserver((records) => {
-    if (records.some(urgent)) now()
+    if (zones && records.some((r) => urgentFit(r, zones!.tc))) now()
     else soon()
   })
   for (const z of [zones.tc, zones.tl, zones.tr, zones.bl]) watch.observe(z, { childList: true, subtree: true, characterData: true })
   for (const id of ['guide', 'bossbar', 'wave', 'delve', 'tracker', 'contract-hud', 'zone-banner', 'levelup', 'note']) {
     const el = document.getElementById(id)
-    if (el) watch.observe(el, { attributes: true, attributeFilter: ['class'] })
+    if (el) watch.observe(el, { attributes: true, attributeFilter: ['class'], attributeOldValue: true })
   }
   window.addEventListener('resize', () => {
     arenaCache.clear()
@@ -256,6 +253,21 @@ function seen(el: Element): DOMRect | null {
   }
   const r = el.getBoundingClientRect()
   return r.width > 1 && r.height > 1 ? r : null
+}
+
+type FitRecord = Pick<MutationRecord, 'type' | 'addedNodes' | 'oldValue'> & { target: Node }
+
+/**
+ * Mutations that must be fitted before the next paint, so nothing flashes over the crosshair: a
+ * toast or banner added to the top-centre column, a top-centre piece coming out of hiding (it
+ * pushes the toasts down), or the quest popover opening or closing. Text ticks stay throttled.
+ */
+export function urgentFit(r: FitRecord, tc: Node): boolean {
+  if (r.type === 'childList') return r.addedNodes.length > 0 && tc.contains(r.target)
+  if (r.type !== 'attributes') return false
+  const el = r.target as Element
+  if (el.id === 'contract-hud') return true
+  return tc.contains(el) && /\bhidden\b/.test(r.oldValue ?? '') && !el.classList.contains('hidden')
 }
 
 /** HUD boxes from the last fit (screen px): edge arrows steer around them. */

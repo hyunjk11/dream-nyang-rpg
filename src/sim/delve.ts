@@ -116,16 +116,32 @@ export function fieldPlan(salt: number, needs: FieldNeeds): FloorPlan {
   return { depth: 1, floor: 2, objective: 'field', goal: 1, key: false, seed: floorSeed(9, 1, salt), cells: 17, bossRoom: 7, scale: floorScale(1, 2), field: needs }
 }
 
+/**
+ * How many depth steps a floor carries: depth - 1, except that the normal floors of depth 2 take
+ * only `entryEase` of their step (the boss floor and deeper depths take it all).
+ */
+export function depthStep(depth: number, floor: number): number {
+  const d = Math.max(0, depth - 1)
+  if (d !== 1 || floor >= BOSS_FLOOR) return d
+  return DIFFICULTY.delve.entryEase[Math.max(0, floor - 1)] ?? 1
+}
+
+/** Roster tier offset for an explore floor's packs (≤ 0; only the normal floors of depth 2 have one). */
+export function rosterShift(depth: number, floor: number): number {
+  if (depth !== 2 || floor >= BOSS_FLOOR) return 0
+  return DIFFICULTY.delve.entryRoster[Math.max(0, floor - 1)] ?? 0
+}
+
 export function floorScale(depth: number, floor: number): FloorScale {
   const k = DIFFICULTY.delve
-  const d = Math.max(0, depth - 1)
+  const d = depthStep(depth, floor)
   const f = Math.max(0, Math.min(floor, BOSS_FLOOR) - 1)
   return {
     hp: 1 + d * k.hpPerDepth + f * k.hpPerFloor,
     damage: 1 + d * k.damagePerDepth + f * k.damagePerFloor,
-    firstWave: 1 + d * k.wavesPerDepth + Math.min(f, k.floors - 1) * k.wavesPerFloor,
+    firstWave: 1 + Math.max(0, depth - 1) * k.wavesPerDepth + Math.min(f, k.floors - 1) * k.wavesPerFloor,
     boss: { hp: 1 + d * k.bossHpPerDepth, damage: 1 + d * k.bossDamagePerDepth },
-    gold: 1 + d * k.goldPerDepth,
+    gold: 1 + Math.max(0, depth - 1) * k.goldPerDepth,
   }
 }
 
