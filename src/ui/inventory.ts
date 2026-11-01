@@ -17,6 +17,7 @@ import { computeStats, type ComputedStats } from '../sim/stats'
 import { BAG_CAP, EQUIP_SLOTS, RARITY_KO, SLOT_KO, type EquipSlot, type ItemInstance, type SaveData } from '../sim/types'
 import { LEVEL_CAP } from '../data/tree'
 import { skillSvg } from './skillicons'
+import { bestUpgrades, junkIds, needsConfirm, sortBag } from '../sim/qol'
 
 export type InvTab = 'bag' | 'skills'
 
@@ -94,6 +95,9 @@ export class InventoryUI {
   private readonly root = document.getElementById('inv')
   private tab: InvTab = 'bag'
   private picked: string | null = null
+  /** Rare+ sell/dismantle waits for a second press: `sell:<uid>` / `dismantle:<uid>`. */
+  private confirm: string | null = null
+  private confirmTimer = 0
   isOpen = false
 
   constructor(host: InventoryHost) {
@@ -255,6 +259,7 @@ export class InventoryUI {
     const bag = bagItems(save)
     for (let i = 0; i < BAG_CAP; i += 1) grid.append(this.cell(bag[i]))
     if (count) count.textContent = `${bag.length}/${BAG_CAP}`
+    this.renderTools(save)
     if (mats) {
       mats.replaceChildren()
       Object.entries(MATERIAL_KO).forEach(([id, name], i) => {
@@ -266,6 +271,94 @@ export class InventoryUI {
     }
     this.renderStats(save, stats)
     this.renderDetail(save, detail)
+  }
+
+  /** 정렬 · 좋은 장비 입기 · 잡동사니 판매 (마을). */
+  private renderTools(save: SaveData): void {
+    const tools = document.getElementById('inv-tools')
+    if (!tools) return
+    tools.replaceChildren()
+    const add = (id: string, text: string, tip: string, fn: () => void, disabled = false) => {
+      const b = el('button', '', text)
+      b.type = 'button'
+      b.id = id
+      b.dataset.tip = tip
+      b.disabled = disabled
+      b.addEventListener('click', fn)
+      tools.append(b)
+    }
+    add('inv-sort', '정렬', '가방 정렬\n부위 → 희귀도 → 파워 순으로', () => this.sortNow())
+    const ups = bestUpgrades(save)
+    add('inv-best', `좋은 장비 입기${ups.length ? ` (${ups.length})` : ''}`, '좋은 장비 입기\n▲ 표시된 것 중 부위마다 가장 센 걸 한 번에 장착 (총은 그대로)', () => this.wearBest(), !ups.length)
+    const junk = junkIds(save)
+    const gold = junk.reduce((sum, id) => sum + sellValue(findItem(save, id)!), 0)
+    const town = this.host.inTown()
+    add('inv-junk', town ? `잡동사니 판매${junk.length ? ` ${junk.length}개 +${gold}` : ''}` : '잡동사니 판매 (마을에서)', '잡동사니 판매\n일반·고급 장비 중 ▲가 아닌 것을 한 번에 팔아. 희귀 이상은 절대 안 팔아.', () => this.sellJunk(), !town || !junk.length)
+  }
+
+  /** Sort the bag (QA hook too). */
+  sortNow(): void {
+    sortBag(this.host.save())
+    this.host.sfx('ui')
+    this.host.changed()
+    this.render()
+  }
+
+  /** Wear every ▲ upgrade, best per slot. */
+  wearBest(): void {
+    const save = this.host.save()
+    const ids = bestUpgrades(save)
+    let n = 0
+    for (const id of ids) if (tryEquip(save, id).ok) n += 1
+    if (!n) {
+      this.host.toast('지금보다 좋은 장비가 없어.')
+      return
+    }
+    this.host.toast(`더 좋은 장비 ${n}개 장착!`)
+    this.host.sfx('pop')
+    this.host.changed()
+    this.render()
+  }
+
+  /** Town: sell all common/uncommon gear that is not an upgrade. */
+  sellJunk(): void {
+    if (!this.host.inTown()) return
+    const save = this.host.save()
+    let gold = 0
+    let n = 0
+    for (const id of junkIds(save)) {
+      const r = sellOwned(save, id)
+      if (r.ok) {
+        gold += r.gold ?? 0
+        n += 1
+      }
+    }
+    if (!n) return
+    if (this.picked && !findItem(save, this.picked)) this.picked = null
+    this.host.toast(`잡동사니 ${n}개 판매 · +${gold} 골드`)
+    this.host.sfx('coin')
+    this.host.changed()
+    this.render()
+  }
+
+  /** First press on a rare+ item arms the action; the second (within 4 s) does it. */
+  private armed(action: 'sell' | 'dismantle', item: ItemInstance): boolean {
+    if (!needsConfirm(item)) return true
+    const key = `${action}:${item.uid}`
+    if (this.confirm === key) {
+      this.confirm = null
+      return true
+    }
+    this.confirm = key
+    window.clearTimeout(this.confirmTimer)
+    this.confirmTimer = window.setTimeout(() => {
+      this.confirm = null
+      this.render()
+    }, 4000)
+    this.host.toast(`${RARITY_KO[item.rarity]} 장비야. 정말 ${action === 'sell' ? '팔려면' : '분해하려면'} 한 번 더 눌러.`)
+    this.host.sfx('ui')
+    this.render()
+    return false
   }
 
   private renderStats(save: SaveData, box: HTMLElement): void {
@@ -342,9 +435,13 @@ export class InventoryUI {
     }
     const gunWorn = save.equipment.weapon === item.uid
     const town = this.host.inTown()
-    btn(town ? `판매 +${sellValue(item)}` : '판매 (마을에서)', () => this.sell(item.uid), '', gunWorn || !town)
+    const sellArmed = this.confirm === `sell:${item.uid}`
+    const sellBtn = btn(town ? (sellArmed ? `정말 판매? +${sellValue(item)}` : `판매 +${sellValue(item)}`) : '판매 (마을에서)', () => this.sell(item.uid), sellArmed ? 'danger' : '', gunWorn || !town)
+    sellBtn.dataset.act = 'sell'
     const yieldText = Object.entries(dismantleYield(item)).map(([m, n]) => `${MATERIAL_KO[m] ?? m} ${n}`).join(', ')
-    btn(`분해 → ${yieldText}`, () => this.dismantle(item.uid), 'warn', gunWorn)
+    const disArmed = this.confirm === `dismantle:${item.uid}`
+    const disBtn = btn(disArmed ? `정말 분해? → ${yieldText}` : `분해 → ${yieldText}`, () => this.dismantle(item.uid), disArmed ? 'danger' : 'warn', gunWorn)
+    disBtn.dataset.act = 'dismantle'
     box.append(row)
   }
 
@@ -372,6 +469,8 @@ export class InventoryUI {
   }
 
   private sell(id: string): void {
+    const item = findItem(this.host.save(), id)
+    if (item && !this.armed('sell', item)) return
     const r = sellOwned(this.host.save(), id)
     if (!r.ok) this.host.toast(r.reason ?? '팔 수 없어.')
     else {
@@ -384,6 +483,8 @@ export class InventoryUI {
   }
 
   private dismantle(id: string): void {
+    const item = findItem(this.host.save(), id)
+    if (item && !this.armed('dismantle', item)) return
     const r = dismantleOwned(this.host.save(), id)
     if (!r.ok) this.host.toast(r.reason ?? '분해할 수 없어.')
     else {

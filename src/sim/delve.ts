@@ -254,6 +254,8 @@ export class Delve {
   elites = 0
   seconds = 0
   gold = 0
+  /** Commons sold on pickup this trip (편의성). */
+  autoSold = 0
   /** XP earned this trip (summary card). */
   xp = 0
   readonly loot: LootLine[] = []
@@ -338,7 +340,8 @@ export class Delve {
    * Pick up a drop. Gold is held as run gold; items go to the bag (a full bag sells them on the
    * spot, as run gold); materials go to the save. Potions heal on touch, so return their share.
    */
-  pickup(save: SaveData, drop: Drop, rng: () => number = Math.random): { heal: number; text: string } {
+  /** `autoSell` (편의성: 일반 자동 판매) turns a gear pickup straight into run gold when it says so. */
+  pickup(save: SaveData, drop: Drop, rng: () => number = Math.random, autoSell?: (item: ItemInstance) => boolean): { heal: number; text: string } {
     if (drop.kind === 'gold') {
       this.gold += drop.amount
       return { heal: 0, text: `+${drop.amount} 골드` }
@@ -353,7 +356,15 @@ export class Delve {
       this.loot.push({ name: `${name} ×${drop.amount}`, rarity: 'material' })
       return { heal: 0, text: `+${drop.amount} ${name}` }
     }
-    if (drop.kind === 'item' && drop.item) return this.takeItem(save, drop.item)
+    if (drop.kind === 'item' && drop.item) {
+      if (autoSell?.(drop.item)) {
+        const v = sellValue(drop.item)
+        this.gold += v
+        this.autoSold += 1
+        return { heal: 0, text: `${itemName(drop.item)} → 자동 판매 +${v} 골드` }
+      }
+      return this.takeItem(save, drop.item)
+    }
     return { heal: 0, text: '' }
   }
 

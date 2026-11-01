@@ -367,6 +367,13 @@ body.compact #loot-toasts > :nth-last-child(n+3) { display: none; }
 .inv-actions button.primary { background: #8a4fb0; color: #fff; }
 .inv-actions button.warn { background: #ffe1c2; }
 .inv-actions button:disabled { opacity: 0.45; }
+.inv-actions button.danger { background: #e0506a; color: #fff; }
+.inv-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.inv-tools button { background: #efe4f2; font-size: 12.5px; padding: 5px 10px; }
+.inv-tools button:disabled { opacity: 0.45; }
+/* Touch: comfortable tap targets (≥ 44 px) in panels and settings. */
+body.touch .inv-actions button, body.touch .inv-tools button, body.touch #settings button, body.touch .inv-tabs button, body.touch #inv-close { min-height: 44px; min-width: 44px; }
+body.touch .inv-tools button { padding: 6px 12px; font-size: 13.5px; }
 .inv-empty { color: #9a7aa8; font-size: 13px; }
 #inv-skills { display: block; }
 #tree-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 13px; }
@@ -669,3 +676,7 @@ body.alt-free #crosshair { display: none; }
 #tip span { font-family: "Noto Sans KR", sans-serif; font-size: 12px; opacity: 0.92; }
 .inv-cell.drop-on, #inv-grid.drop-on { outline: 3px dashed #ff9cc8; outline-offset: 2px; }
 #inv.dragging #inv-slots .inv-cell { box-shadow: 0 0 0 2px rgba(255, 156, 200, 0.6); }
+
+/* Shortcut hints on the pocket buttons (desktop only). */
+.key-hint { font: normal 10px "Jua", sans-serif; margin-left: 5px; padding: 0 4px; border-radius: 4px; background: rgba(138, 79, 176, 0.14); color: #8a4fb0; line-height: 15px; }
+body.touch .key-hint, body.compact .key-hint { display: none; }

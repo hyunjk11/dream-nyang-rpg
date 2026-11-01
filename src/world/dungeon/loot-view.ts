@@ -52,7 +52,7 @@ export const BEAM_HEIGHT: Record<string, number> = { common: 0, uncommon: 1.4, r
 /** Pickups beyond this are folded into the oldest coin pile (no runaway mesh count). */
 const CAP = 70
 /** She draws pickups in from this far (m)... */
-export const MAGNET = 2.4
+export const MAGNET = 3.4
 /** ...and collects them here. */
 const GRAB = 0.55
 /** Seconds a pickup lies about before it fades. */
