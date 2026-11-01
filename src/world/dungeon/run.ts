@@ -22,7 +22,7 @@ import { ExploreDirector, type ExploreEvent } from './explore'
 import { CrackedWall, Shrine, StarDoor } from './props'
 import { Decor } from './dream'
 import { Minimap } from './minimap'
-import { hudArena, hudBoxes, nudgeIn } from '../../ui/layout'
+import { aimZone, hudArena, hudBoxes, nudgeIn } from '../../ui/layout'
 import { Portal } from './portal'
 import { Sewer } from './sewer'
 import { TPS, type AimTarget, type RayFn, type TpsView } from '../../core/tps'
@@ -1072,6 +1072,13 @@ export class DungeonRun {
     this.view.reach = kind === Tile.Corridor ? 0.72 : 1
   }
 
+  /** Foes are on her (chasing within 20 m): the guide card stays folded. */
+  inCombat(): boolean {
+    const p = this.host.hero.object.position
+    for (const f of this.horde.foes) if (f.dying <= 0 && f.mode === 'chase' && Math.hypot(f.x - p.x, f.z - p.z) < 20) return true
+    return false
+  }
+
   /** Chasing foes and the key holder on the minimap. */
   private mapFoes(): void {
     if (!this.explore) return
@@ -1157,6 +1164,8 @@ export class DungeonRun {
     }
     off.sort((a, b) => a.d - b.d)
     const arena = off.length ? hudArena() : { cx: 0, cy: 0, rx: 0, ry: 0 }
+    // HUD, the crosshair keep-out and arrows already placed (two foes the same way show one arrow).
+    const keepOut = off.length ? [...hudBoxes(), aimZone(window.innerWidth, window.innerHeight)] : []
     this.arrowEls.forEach((el, i) => {
       const o = off[i]
       if (!o) {
@@ -1167,11 +1176,12 @@ export class DungeonRun {
       el.classList.remove('hidden')
       el.classList.toggle('elite', o.f.elite)
       // Ring inside the free middle of the screen, clear of the top columns and thumb buttons.
-      const spot = nudgeIn(arena.cx + Math.sin(a) * arena.rx, arena.cy - Math.cos(a) * arena.ry, arena.cx, arena.cy, 20, hudBoxes())
+      const spot = nudgeIn(arena.cx + Math.sin(a) * arena.rx, arena.cy - Math.cos(a) * arena.ry, arena.cx, arena.cy, 20, keepOut)
       if (!spot.clear) {
         el.classList.add('hidden')
         return
       }
+      keepOut.push({ left: spot.x - 20, top: spot.y - 20, right: spot.x + 20, bottom: spot.y + 20 })
       el.style.left = `${spot.x}px`
       el.style.top = `${spot.y}px`
       el.style.transform = `translate(-50%, -50%) rotate(${a}rad)`

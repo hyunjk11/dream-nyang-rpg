@@ -613,9 +613,21 @@ let guideLast: { x: number; z: number } | null = null
 let guideFired = 0
 let guideDashing = false
 let guideGear = ''
+/** Last time she fired or foes chased her: the guide stays folded through a fight and a moment after. */
+let fightAt = -1e9
+let fightFired = 0
+function inFight(now: number): boolean {
+  if (shooter.fired !== fightFired) {
+    fightFired = shooter.fired
+    fightAt = now
+  }
+  if (run?.inCombat()) fightAt = now
+  return now - fightAt < 2500
+}
 function chapterTick(): void {
   const step = mode === 'play' ? guideStep(game.save) : null
-  chapterUI.paint(game.save, stage.touch, !!step && !travelling)
+  const now = performance.now()
+  chapterUI.paint(game.save, stage.touch, !!step && !travelling, inFight(now), now)
   if (!step) return
   const p = hero.object.position
   if (step.id === 'move' && guideLast) {
@@ -872,7 +884,7 @@ document.getElementById('guide-skip')?.addEventListener('click', () => {
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, cursor, hudArena, levelUpFx } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), get guideView() { return chapterUI.view() } } })
 
 void bootGame()
 
