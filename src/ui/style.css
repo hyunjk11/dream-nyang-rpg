@@ -519,3 +519,35 @@ body.compact #wave { top: 48px; font-size: 12px; padding: 4px 10px; }
 @media (max-width: 480px) {
   body.compact #wave { top: auto; bottom: 172px; }
 }
+
+/* 챕터: guide prompt (top centre), 별하/모찌 line, skip/clear cards, board section */
+#guide { position: fixed; top: 92px; left: 50%; transform: translateX(-50%); z-index: 3; min-width: min(340px, 86vw); max-width: min(480px, 92vw); padding: 9px 16px 10px; border-radius: 18px; background: rgba(255, 248, 252, 0.92); color: #4a3358; box-shadow: 0 4px 0 rgba(58, 36, 72, 0.22); display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; pointer-events: none; border: 2px solid #f6b8dc; }
+#guide.hidden { display: none; }
+#guide.pop { animation: guide-pop 0.45s ease-out; }
+@keyframes guide-pop { 0% { transform: translateX(-50%) scale(0.86); } 60% { transform: translateX(-50%) scale(1.05); } 100% { transform: translateX(-50%) scale(1); } }
+#guide > b { font-family: "Jua", sans-serif; font-weight: 400; color: #8a4fb0; font-size: 16px; }
+#guide > span { grid-column: 1; font-size: 13px; font-weight: 600; }
+#guide > em { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-style: normal; font-family: "Jua", sans-serif; color: #d0548f; font-size: 18px; }
+#guide > em:empty { display: none; }
+#guide .guide-line { grid-column: 1 / -1; margin: 5px 0 0; padding-top: 5px; border-top: 1px dashed #f0c4de; font-size: 13px; }
+#guide .guide-line.hidden { display: none; }
+#guide .guide-line b { font-family: "Jua", sans-serif; font-weight: 400; }
+#guide .guide-line b.byeolha { color: #8a4fb0; }
+#guide .guide-line b.mochi { color: #e07a2e; }
+body.sewer #guide { top: 86px; }
+.chapter-card { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; background: rgba(20, 10, 30, 0.5); }
+.chapter-box { background: rgba(255, 248, 252, 0.97); color: #4a3358; border-radius: 28px; padding: 22px 24px; text-align: center; width: min(420px, calc(100% - 32px)); box-shadow: 0 6px 0 rgba(58, 36, 72, 0.28); animation: guide-card 0.4s ease-out; }
+@keyframes guide-card { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.chapter-box h2 { color: #8a4fb0; margin: 4px 0 10px; font-size: 28px; }
+.chapter-box p { margin: 6px 0; font-size: 14px; }
+.chapter-kicker { font-family: "Jua", sans-serif; color: #d0548f; letter-spacing: 0.08em; }
+.chapter-actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+.chapter-actions button { padding: 10px 18px; border: 0; border-radius: 999px; font-size: 16px; cursor: pointer; background: #efe2f6; color: #4a3358; }
+.chapter-actions button.primary { background: #8a4fb0; color: #fff; }
+.town-chapter { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; margin-bottom: 10px; border-radius: 16px; background: linear-gradient(180deg, #fff1f8, #f6e9ff); border: 2px solid #f0bde0; }
+.town-chapter > b { font-family: "Jua", sans-serif; font-weight: 400; color: #8a4fb0; font-size: 17px; }
+.town-chapter > small { color: #7a5a8e; }
+.town-contract.chapter { background: rgba(255, 255, 255, 0.85); }
+#contract-hud .ch b { color: #d0548f; }
+#contract-hud .ch { border-left: 3px solid #f29cc8; }
+@media (max-width: 760px) { body.guiding #tracker { display: none; } }
