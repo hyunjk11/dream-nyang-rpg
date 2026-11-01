@@ -69,10 +69,12 @@ describe('Meshy 적', () => {
     expect(Math.max(...xs.map((p) => p.sx)) - Math.min(...xs.map((p) => p.sx))).toBeGreaterThan(0.15)
   })
 
-  it('맞으면 찌그러지고, 죽으면 부풀었다가 사라지고, 다시 나올 때 튀어나온다', () => {
+  it('맞으면 찌그러지고, 죽으면 납작→펑 늘어났다가 사라지고, 다시 나올 때 튀어나온다', () => {
     for (const kind of FOE_KINDS) {
       expect(foePose(kind, { ...idle, hurt: 1 }).sy).toBeLessThan(foePose(kind, idle).sy)
-      expect(foePose(kind, { ...idle, dying: 0.2 }).sy).toBeGreaterThan(foePose(kind, idle).sy)
+      expect(foePose(kind, { ...idle, dying: 0.25 }).sy).toBeLessThan(foePose(kind, idle).sy)
+      expect(foePose(kind, { ...idle, dying: 0.25 }).sx).toBeGreaterThan(foePose(kind, idle).sx)
+      expect(foePose(kind, { ...idle, dying: 0.5 }).sy).toBeGreaterThan(foePose(kind, idle).sy)
       expect(foePose(kind, { ...idle, dying: 1 }).sy).toBeLessThan(0.01)
       expect(foePose(kind, { ...idle, spawn: 0 }).sy).toBeLessThan(0.01)
     }

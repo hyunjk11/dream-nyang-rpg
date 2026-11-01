@@ -126,16 +126,36 @@ export function foePose(kind: FoeKind, input: PoseInput): FoePose {
     p.lean -= 0.35 * hurt
   }
   const pop = spawn >= 1 ? 1 : popIn(spawn)
-  let scale = pop
+  p.sx *= pop
+  p.sy *= pop
+  p.sz *= pop
   if (dying > 0) {
-    // Swell, then shrink to nothing while spinning.
-    scale *= dying < 0.25 ? 1 + dying * 1.2 : Math.max(0, 1.3 * (1 - (dying - 0.25) / 0.75))
-    p.y += dying * 0.3
+    const d = deathShape(dying)
+    p.sx *= d.wide
+    p.sz *= d.wide
+    p.sy *= d.tall
+    p.y += d.lift
   }
-  p.sx *= scale
-  p.sy *= scale
-  p.sz *= scale
   return p
+}
+
+/**
+ * Death in three beats: squash flat (0–0.3), pop up tall (0.3–0.5), then dissolve into dream
+ * sparkles, shrinking to nothing as it floats up (0.5–1). Multipliers on the pose.
+ */
+export function deathShape(k: number): { wide: number; tall: number; lift: number } {
+  const x = Math.min(1, Math.max(0, k))
+  if (x < 0.3) {
+    const e = Math.sin((x / 0.3) * Math.PI * 0.5)
+    return { wide: 1 + 0.38 * e, tall: 1 - 0.45 * e, lift: 0 }
+  }
+  if (x < 0.5) {
+    const e = (x - 0.3) / 0.2
+    return { wide: 1.38 - 0.28 * e, tall: 0.55 + 0.8 * e, lift: 0.12 * e }
+  }
+  const e = (x - 0.5) / 0.5
+  const s = Math.max(0, 1 - e * e) * 1.1
+  return { wide: s, tall: s * 1.2, lift: 0.12 + e * 0.45 }
 }
 
 /** Pop from 0 to 1 with a small overshoot (ease-out-back). */

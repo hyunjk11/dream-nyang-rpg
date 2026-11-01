@@ -10,7 +10,8 @@ import {
   Object3D,
 } from 'three'
 import { toonGradient } from '../../core/materials'
-import { DREAM, brickTexture, flagTexture, hash } from './dream'
+import { brickTexture, flagTexture, hash } from './dream'
+import { THEMES, floorTint, themeProps, type DungeonTheme } from './theme'
 import { CEILING, TILE, Tile, tileCentre, type Maze } from './maze'
 import { wallFaces } from './walls'
 
@@ -64,14 +65,6 @@ export function vaultGeometry(segments = 7): BufferGeometry {
   return geo
 }
 
-/** Room tint per tile kind, so the start, halls and the boss room read apart. */
-const FLOOR_TINT: Record<number, number> = {
-  [Tile.Corridor]: 0x8576b0,
-  [Tile.Chamber]: 0x6f9eaa,
-  [Tile.Start]: 0x8f9ed0,
-  [Tile.Boss]: 0xb482ac,
-}
-
 /**
  * Tunnel shell: one merged floor, one merged ceiling, and the wall faces as one InstancedMesh.
  * Three draw calls whatever the maze size.
@@ -79,11 +72,13 @@ const FLOOR_TINT: Record<number, number> = {
 export class Sewer {
   readonly group = new Group()
   readonly maze: Maze
+  readonly theme: DungeonTheme
 
-  constructor(maze: Maze) {
+  constructor(maze: Maze, theme: DungeonTheme = THEMES.sewer) {
     this.maze = maze
+    this.theme = theme
     this.group.name = 'sewer'
-    this.group.add(this.floor(), this.ceiling(), this.walls())
+    this.group.add(this.floor(), this.ceiling(), this.walls(), themeProps(maze, theme))
   }
 
   private quads(y: number, up: boolean): BufferGeometry {
@@ -98,8 +93,8 @@ export class Sewer {
         const kind = maze.tiles[ty * maze.w + tx]
         if (kind === Tile.Solid) continue
         const { x, z } = tileCentre(maze, tx, ty)
-        c.set(FLOOR_TINT[kind] ?? 0x8f7fb8)
-        if (!up) c.set(0x4a3870)
+        c.set(floorTint(this.theme, kind))
+        if (!up) c.set(this.theme.ceiling)
         const a = [x - h, y, z - h]
         const b = [x + h, y, z - h]
         const d = [x - h, y, z + h]
@@ -151,7 +146,8 @@ export class Sewer {
       mesh.setMatrixAt(i, o.matrix)
       // Districts of lavender, mint and pink brick, so each part of the maze reads apart.
       const kind = this.maze.tiles[f.y * this.maze.w + f.x]
-      const base = kind === Tile.Boss ? DREAM.brick[2] : DREAM.brick[Math.floor(hash(f.x >> 2, f.y >> 2, 1) * DREAM.brick.length)]
+      const brick = this.theme.brick
+      const base = kind === Tile.Boss ? brick[2] : brick[Math.floor(hash(f.x >> 2, f.y >> 2, 1) * brick.length)]
       mesh.setColorAt(i, tint.set(base))
     })
     mesh.name = 'sewer-walls'

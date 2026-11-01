@@ -589,6 +589,9 @@ vol?.addEventListener('input', () => {
   audio.setMaster(Number(vol.value) / 100)
   audio.sfx('ui')
 })
+const bgm = document.getElementById('bgm') as HTMLInputElement | null
+if (bgm) bgm.value = String(Math.round(audio.bgm * 100))
+bgm?.addEventListener('input', () => audio.setBgm(Number(bgm.value) / 100))
 document.getElementById('mute')?.addEventListener('click', () => {
   audio.setMaster(audio.master > 0.01 ? 0 : 0.35)
   if (vol) vol.value = String(Math.round(audio.master * 100))
@@ -738,8 +741,9 @@ function enterSewer(depth = 1, floor = 1, seed?: number): void {
     combat.setRoster([])
     combat.places = []
     landmarks.group.visible = false
-    stage.setWorld('sewer', mod.SEWER_FOG)
-    setMood({ fog: mod.SEWER_FOG.color, sky: 0xe6d8ff, clear: mod.SEWER_FOG.color })
+    const theme = mod.themeFor(trip.plan.depth)
+    stage.setWorld('sewer', mod.themeFog(trip.plan.depth))
+    setMood({ fog: theme.fog, sky: theme.sky, clear: theme.fog })
     zonePlaces = []
     delve = trip
     delveUnlocked = -1
@@ -1079,6 +1083,7 @@ function frame(): void {
     else audio.sfx('hit')
   }
   footsteps(dt, heroPos)
+  audio.setScene('town')
   audio.update(dt, threatNear(heroPos))
   vfx.update(dt)
   if (hpFill) hpFill.style.width = `${Math.max(0, (hero.hp / hero.maxHp) * 100)}%`
@@ -1121,7 +1126,8 @@ function sewerFrame(dt: number, raw: number): void {
     game.persist(store)
   }
   vfx.update(dt)
-  audio.update(dt, false)
+  audio.setScene(run.boss && run.boss.awake && run.boss.alive ? 'boss' : 'dungeon', run.plan.depth)
+  audio.update(dt, run.threat)
   if (hpFill) hpFill.style.width = `${Math.max(0, (hero.hp / hero.maxHp) * 100)}%`
   talkTip?.classList.toggle('hidden', !run.nearPortal)
   if (run.nearPortal && talkTip) {

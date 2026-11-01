@@ -119,6 +119,8 @@ export class GunFx {
   readonly group = new Group()
   private readonly flash: Mesh
   private readonly flashCore: Mesh
+  /** A long petal along the barrel, so the flash reads from behind her too. */
+  private readonly flashSide: Mesh
   private flashT = 0
   private readonly stars: InstancedMesh
   private readonly bubbles: InstancedMesh
@@ -137,7 +139,8 @@ export class GunFx {
     const flashMat = new MeshBasicMaterial({ map: tex, color: new Color(0xc8f0ff).multiplyScalar(2.2), transparent: true, blending: AdditiveBlending, depthWrite: false, side: DoubleSide })
     this.flash = new Mesh(new PlaneGeometry(1, 1), flashMat)
     this.flashCore = new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial({ map: tex, color: new Color(0xfff2fa).multiplyScalar(2.6), transparent: true, blending: AdditiveBlending, depthWrite: false, side: DoubleSide }))
-    for (const f of [this.flash, this.flashCore]) {
+    this.flashSide = new Mesh(new PlaneGeometry(1, 1).rotateX(-Math.PI / 2), flashMat)
+    for (const f of [this.flash, this.flashCore, this.flashSide]) {
       f.visible = false
       f.renderOrder = 6
       f.frustumCulled = false
@@ -161,8 +164,14 @@ export class GunFx {
 
   /** One shot: flash at the muzzle facing the lens, and a casing flicked out to her right. */
   shot(tip: Vector3, dir: Vector3, camera: Camera, n: number): void {
-    this.flashT = 0.045
-    const sz = 0.38 + Math.random() * 0.22
+    this.flashT = 0.05
+    const sz = 0.44 + Math.random() * 0.24
+    const petal = this.flashSide
+    petal.visible = true
+    petal.position.copy(tip).addScaledVector(dir, 0.22)
+    petal.lookAt(petal.position.x + dir.x, petal.position.y + dir.y, petal.position.z + dir.z)
+    petal.rotateZ(Math.random() * Math.PI)
+    petal.scale.set(sz * 0.55, 1, sz * 1.6)
     for (const [f, k] of [
       [this.flash, 1],
       [this.flashCore, 0.45],
@@ -208,6 +217,7 @@ export class GunFx {
     const on = this.flashT > 0
     this.flash.visible = on
     this.flashCore.visible = on
+    this.flashSide.visible = on
     let si = 0
     let bi = 0
     for (let i = this.casings.length - 1; i >= 0; i -= 1) {

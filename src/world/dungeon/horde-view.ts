@@ -15,7 +15,10 @@ import {
   Matrix4,
   Mesh,
   MeshToonMaterial,
+  MeshBasicMaterial,
+  PlaneGeometry,
   Quaternion,
+  RingGeometry,
   SphereGeometry,
   Vector3,
   Group,
@@ -225,6 +228,12 @@ export function walkFrame(time: number, phase: number, moving: boolean, frames: 
 }
 
 const ELITE_TINT = new Color(1.25, 1.02, 0.55)
+/** Enraged elites glow hot pink-red. */
+const RAGE_TINT = new Color(1.6, 0.55, 0.6)
+/** Wind-up rings and charge lanes drawn at once (one instanced draw call each). */
+export const TELL_CAP = 32
+const TELL_MELEE = new Color(0.95, 0.18, 0.5)
+const TELL_CHARGE = new Color(1.0, 0.28, 0.08)
 const FLASH = new Color(3.2, 3.0, 3.4)
 const DEATH = new Color(2.4, 1.6, 2.6)
 
@@ -248,9 +257,25 @@ export class HordeView {
   private readonly c = new Color()
   private readonly tints = LORD_TINTS.map((t) => new Color(t))
   private readonly sphere = { center: new Vector3(), radius: 1 }
+  /** Ground tells: a filling ring under a winding foe, a lane in front of a crouching charger. */
+  readonly rings: InstancedMesh
+  readonly lanes: InstancedMesh
+  /** Tells drawn last frame (QA). */
+  tells = 0
 
   constructor() {
     this.group.name = 'sewer-horde'
+    const tellMat = () => new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.72, depthWrite: false })
+    this.rings = new InstancedMesh(new RingGeometry(0.66, 1, 28).rotateX(-Math.PI / 2), tellMat(), TELL_CAP)
+    this.lanes = new InstancedMesh(new PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0, 0, 0.5), tellMat(), TELL_CAP)
+    for (const t of [this.rings, this.lanes]) {
+      t.name = t === this.rings ? 'horde-tell-rings' : 'horde-tell-lanes'
+      t.count = 0
+      t.frustumCulled = false
+      t.renderOrder = 3
+      t.setColorAt(0, new Color(1, 1, 1))
+      this.group.add(t)
+    }
     for (const kind of HORDE_KINDS) {
       const a = art.get(kind) ?? ballArt(kind)
       const nears = a.frames.map((geo, f) => {
@@ -293,6 +318,8 @@ export class HordeView {
     const cam = camera.position
     this.drawn = 0
     this.nearDrawn = 0
+    let rings = 0
+    let lanes = 0
     // Nearest first so the near-LOD budget goes to the ones in her face.
     const order = horde.foes
       .map((f) => ({ f, d: (f.x - cam.x) ** 2 + (f.z - cam.z) ** 2 }))
@@ -300,6 +327,32 @@ export class HordeView {
     for (const { f, d } of order) {
       const scale = f.elite ? ELITE.scale : 1
       const look = KIND_ART[f.kind]
+      // Tells first (also for foes just off-screen: the lane may cross into view).
+      if (f.dying <= 0 && d < 400) {
+        if (f.windup > 0 && rings < TELL_CAP) {
+          const k = 1 - f.windup / DIFFICULTY.horde.windup
+          const r = (f.radius + 0.95) * (0.45 + 0.55 * k)
+          this.p.set(f.x, 0.04, f.z)
+          this.s.set(r, 1, r)
+          this.q.identity()
+          this.m.compose(this.p, this.q, this.s)
+          this.rings.setMatrixAt(rings, this.m)
+          this.rings.setColorAt(rings, this.c.copy(TELL_MELEE).multiplyScalar(0.75 + 0.35 * k))
+          rings += 1
+        }
+        if (f.chargeWind > 0 && lanes < TELL_CAP) {
+          const k = 1 - f.chargeWind / DIFFICULTY.elite.chargeWind
+          const len = f.speed * DIFFICULTY.elite.chargeSpeed * DIFFICULTY.elite.chargeTime * (0.3 + 0.7 * k)
+          this.p.set(f.x, 0.05, f.z)
+          this.e.set(0, Math.atan2(f.chargeX, f.chargeZ), 0)
+          this.q.setFromEuler(this.e)
+          this.s.set(f.radius * 2, 1, len)
+          this.m.compose(this.p, this.q, this.s)
+          this.lanes.setMatrixAt(lanes, this.m)
+          this.lanes.setColorAt(lanes, this.c.copy(TELL_CHARGE).multiplyScalar(0.7 + 0.45 * k))
+          lanes += 1
+        }
+      }
       const h = look.height * scale
       this.sphere.center.set(f.x, 0.5 * h + (look.hover ?? 0), f.z)
       this.sphere.radius = Math.max(1.1 * scale, h * 0.6)
@@ -333,12 +386,21 @@ export class HordeView {
       this.c.setRGB(1, 1, 1)
       // The lord's six boss variants (boss10…50, bounty) are tints of one body.
       if (f.kind === 'lord') this.c.copy(this.tints[f.id % this.tints.length])
-      else if (f.elite) this.c.copy(ELITE_TINT)
-      if (f.dying > 0) this.c.copy(DEATH)
+      else if (f.elite) this.c.copy(f.rage ? RAGE_TINT : ELITE_TINT)
+      // Crouching to charge: a hot shimmer.
+      if (f.chargeWind > 0) this.c.lerp(RAGE_TINT, 0.5 + 0.5 * Math.sin(time * 40))
+      if (f.dying > 0) this.c.copy(DEATH).multiplyScalar(1 + Math.max(0, 0.5 - Math.abs(f.dying / DIE_TIME - 0.4) * 2.5))
       else if (f.hurt > 0) this.c.lerp(FLASH, f.hurt * 0.8)
       mesh.setColorAt(i, this.c)
       this.drawn += 1
       if (useNear) this.nearDrawn += 1
+    }
+    this.tells = rings + lanes
+    for (const [t, n] of [[this.rings, rings], [this.lanes, lanes]] as const) {
+      t.count = n
+      t.visible = n > 0
+      t.instanceMatrix.needsUpdate = true
+      if (t.instanceColor) t.instanceColor.needsUpdate = true
     }
     for (const mesh of this.all) {
       mesh.count = counts.get(mesh) ?? 0
@@ -354,7 +416,7 @@ export class HordeView {
   }
 
   dispose(): void {
-    for (const mesh of [...this.all, ...this.ink.values()]) mesh.dispose()
+    for (const mesh of [...this.all, ...this.ink.values(), this.rings, this.lanes]) mesh.dispose()
     this.group.removeFromParent()
   }
 }

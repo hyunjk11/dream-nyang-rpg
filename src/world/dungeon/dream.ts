@@ -272,8 +272,13 @@ export class Decor {
   private readonly lights: PointLight[] = []
   private lightClock = 0
 
-  constructor(maze: Maze, lightCount = 4) {
+  private readonly lampPalette: readonly number[]
+  private readonly pipePalette: readonly number[]
+
+  constructor(maze: Maze, lightCount = 4, palette?: { lamps: readonly number[]; pipes: readonly number[] }) {
     this.maze = maze
+    this.lampPalette = palette?.lamps ?? [DREAM.lemon, DREAM.pink, DREAM.sky, DREAM.teal]
+    this.pipePalette = palette?.pipes ?? [DREAM.pink, DREAM.teal, DREAM.lemon, DREAM.lavender]
     this.group.name = 'sewer-decor'
     this.group.add(this.water(), this.pipes(), ...this.lampMeshes(), ...this.mushrooms(), this.moons(), this.bubbles(), ...this.nestMouths())
     for (let i = 0; i < lightCount; i += 1) {
@@ -397,7 +402,7 @@ export class Decor {
     const geo = new CylinderGeometry(1, 1, 1, 12, 1, true)
     const mat = new MeshToonMaterial({ color: 0xffffff, gradientMap: toonGradient(), map: stripeTexture(), emissive: 0x2a1f3a })
     const list: { x: number; y: number; z: number; rx: number; ry: number; r: number; len: number; c: number }[] = []
-    const palette = [DREAM.pink, DREAM.teal, DREAM.lemon, DREAM.lavender]
+    const palette = this.pipePalette
     for (const f of faces) {
       const { x, z } = tileCentre(this.maze, f.x, f.y)
       const nx = f.side === 0 ? 1 : f.side === 1 ? -1 : 0
@@ -440,7 +445,7 @@ export class Decor {
       Math.max(1, picks.length),
     )
     const o = new Object3D()
-    const palette = [DREAM.lemon, DREAM.pink, DREAM.sky, DREAM.teal]
+    const palette = this.lampPalette
     picks.forEach((f, i) => {
       const { x, z } = tileCentre(this.maze, f.x, f.y)
       const nx = f.side === 0 ? 1 : f.side === 1 ? -1 : 0

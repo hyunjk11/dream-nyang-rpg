@@ -367,6 +367,9 @@ export class Shooter {
       sfx?.('pop', hit.tone === 'elite' ? 1 : 0.75, (Math.random() - 0.5) * 0.2)
       if (hit.tone === 'elite') sfx?.('thunk', 1)
     } else sfx?.(roll.crit ? 'crit' : 'tick', hit.tone === 'boss' ? 0.8 : 0.7)
+    // A light lens shake on the big ones (crits, elite kills); chip hits stay steady for aiming.
+    const big = bigHitShake({ crit: roll.crit, kill: hit.kill, elite: hit.tone === 'elite', boss: hit.tone === 'boss' })
+    if (big > 0) this.rig.shake = Math.max(this.rig.shake, big)
     const stop = hitStopFor({ boss: hit.tone === 'boss', elite: hit.tone === 'elite', kill: hit.kill, crit: roll.crit })
     if (stop > 0) this.host.hitStop?.(stop)
   }
@@ -377,7 +380,7 @@ export class Shooter {
       this.tracerFrom.shift()
       this.tracerTo.shift()
     }
-    this.tracerLife.push(0.05)
+    this.tracerLife.push(TRACER_LIFE)
     this.tracerFrom.push(from.clone())
     this.tracerTo.push(to.clone())
   }
@@ -398,7 +401,9 @@ export class Shooter {
       const len = a.distanceTo(b)
       this.dummy.position.copy(a)
       this.dummy.lookAt(b)
-      this.dummy.scale.set(0.04, 0.04, len)
+      // Fat and bright as it leaves, thinning out as it fades.
+      const w = 0.025 + 0.05 * Math.max(0, this.tracerLife[i] / TRACER_LIFE)
+      this.dummy.scale.set(w, w, len)
       this.dummy.updateMatrix()
       this.tracers.setMatrixAt(n, this.dummy.matrix)
       n += 1
@@ -425,4 +430,16 @@ export class Shooter {
     ;(this.tracers.material as MeshBasicMaterial).dispose()
     this.gunFx.group.removeFromParent()
   }
+}
+
+/** Seconds a tracer streak stays on screen. */
+export const TRACER_LIFE = 0.075
+
+/** Lens shake for a hit: 0 for chip damage so aim stays steady; capped small (comfort). */
+export function bigHitShake(h: { crit: boolean; kill: boolean; elite: boolean; boss: boolean }): number {
+  if (h.kill && h.elite) return 0.09
+  if (h.crit && h.boss) return 0.05
+  if (h.crit) return 0.035
+  if (h.kill && !h.boss) return 0.02
+  return 0
 }

@@ -1,7 +1,9 @@
 import { MASTER_DEFAULT } from '../core/feel'
+import { ProcMusic, trackFor, type Scene } from './music'
 import { CUES, MUSIC, musicGains, pickVariant, stepMusic, type CueName, type MusicState } from './soundplan'
 
 const KEY = 'dream-nyang-3d-master'
+const BGM_KEY = 'dnr3d.bgm'
 const base = import.meta.env.BASE_URL
 
 /**
@@ -10,6 +12,12 @@ const base = import.meta.env.BASE_URL
  */
 class Bus {
   master = read()
+  /** Music-only level (배경음 slider), under the master. */
+  bgm = readBgm()
+  private musicBus: GainNode | null = null
+  private proc: ProcMusic | null = null
+  private scene: Scene = 'town'
+  private depth = 1
   private ctx: AudioContext | null = null
   private out: GainNode | null = null
   private sfxBus: GainNode | null = null
@@ -29,6 +37,27 @@ class Bus {
     this.apply()
   }
 
+  setBgm(value: number): void {
+    this.bgm = Math.max(0, Math.min(1, value))
+    try {
+      localStorage.setItem(BGM_KEY, String(this.bgm))
+    } catch {
+      /* private mode */
+    }
+    if (this.musicBus && this.ctx) this.musicBus.gain.setTargetAtTime(this.bgm, this.ctx.currentTime, 0.05)
+  }
+
+  /** Town = recorded beds; dungeon (per depth theme) / boss = procedural tracks. */
+  setScene(scene: Scene, depth = 1): void {
+    this.scene = scene
+    this.depth = depth
+    this.proc?.play(trackFor(scene, depth))
+  }
+
+  get musicScene(): { scene: Scene; track: string | null } {
+    return { scene: this.scene, track: this.proc?.playing ?? null }
+  }
+
   /** Create the context; browsers keep it suspended until the first tap or key. */
   start(): void {
     if (this.ctx) return
@@ -45,8 +74,13 @@ class Bus {
     const battle = ctx.createGain()
     village.gain.value = MUSIC.level
     battle.gain.value = 0
-    village.connect(this.out)
-    battle.connect(this.out)
+    this.musicBus = ctx.createGain()
+    this.musicBus.gain.value = this.bgm
+    this.musicBus.connect(this.out)
+    village.connect(this.musicBus)
+    battle.connect(this.musicBus)
+    this.proc = new ProcMusic(ctx, this.musicBus)
+    this.proc.play(trackFor(this.scene, this.depth))
     this.beds = { village, battle }
     const unlock = () => void ctx.resume()
     for (const type of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(type, unlock, { passive: true })
@@ -61,8 +95,13 @@ class Bus {
     if (!this.beds || !this.ctx) return
     const gains = musicGains(this.music.mix)
     const now = this.ctx.currentTime
-    this.beds.village.gain.setTargetAtTime(gains.village * MUSIC.level, now, 0.08)
-    this.beds.battle.gain.setTargetAtTime(gains.battle * MUSIC.level, now, 0.08)
+    // Below ground the procedural track replaces the village bed; the battle bed still swells
+    // in on a fight (and sits low under the boss pulse).
+    const town = this.scene === 'town'
+    const village = town ? gains.village : 0
+    const battle = this.scene === 'boss' ? 0.35 : town ? gains.battle : gains.battle * 0.8
+    this.beds.village.gain.setTargetAtTime(village * MUSIC.level, now, 0.08)
+    this.beds.battle.gain.setTargetAtTime(battle * MUSIC.level, now, 0.08)
   }
 
   /** Live context + sfx bus for synthesised sounds (null until audio has started). */
@@ -130,3 +169,12 @@ function read(): number {
 }
 
 export const audio = new Bus()
+
+function readBgm(): number {
+  try {
+    const v = Number(localStorage.getItem(BGM_KEY))
+    return localStorage.getItem(BGM_KEY) !== null && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8
+  } catch {
+    return 0.8
+  }
+}
