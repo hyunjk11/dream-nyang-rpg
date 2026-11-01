@@ -5,8 +5,10 @@ import {
   Box3,
   BufferAttribute,
   BufferGeometry,
+  Color,
   CylinderGeometry,
   Group,
+  InstancedMesh,
   LoopOnce,
   Mesh,
   MeshToonMaterial,
@@ -25,6 +27,7 @@ import {
   Vector3,
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { addOutline, applyToon, toon } from '../../core/materials'
 import { PLACES, VILLAGE_ONLY, type Place, type PlaceKind } from './places'
 
@@ -134,13 +137,6 @@ function popoStall(base: string): Group {
   sign.position.set(0, 2.32, 0.2)
   group.add(sign)
   // Twinkly bulbs strung under the awning lip, and a big swirl lollipop on each post.
-  const bulbCols = [0xffe08a, 0xff9fd2, 0x9fe8c8, 0xbfa8ff]
-  for (let i = 0; i < 9; i += 1) {
-    const x = -0.88 + (1.76 * i) / 8
-    const bulb = new Mesh(new SphereGeometry(0.045, 6, 5), toon(0xffffff, bulbCols[i % 4], 1.1))
-    bulb.position.set(x, 1.74 - Math.sin((i / 8) * Math.PI) * 0.12, 0.84)
-    group.add(bulb)
-  }
   for (const x of [-1.05, 1.05]) {
     const stick = new Mesh(new CylinderGeometry(0.025, 0.025, 0.5, 6), toon(0xfff4e4))
     stick.position.set(x, 1.4, 0.62)
@@ -155,15 +151,16 @@ function popoStall(base: string): Group {
   const crate = new Mesh(new BoxGeometry(0.5, 0.32, 0.4), wood)
   crate.position.set(-0.6, 0.16, 0.95)
   group.add(crate)
-  for (let i = 0; i < 5; i += 1) {
-    const candy = new Mesh(new SphereGeometry(0.07, 6, 5), toon(jarColors[i % 4], jarColors[i % 4], 0.3))
-    candy.position.set(-0.78 + i * 0.09, 0.36, 0.92 + (i % 2) * 0.08)
-    group.add(candy)
-  }
   group.traverse((obj) => {
     if ((obj as Mesh).isMesh) (obj as Mesh).castShadow = true
   })
   addOutline(group, 0.014)
+  // Bulbs and the crate's candies: one instanced draw each, no outline (they're tiny).
+  const bulbCols = [0xffe08a, 0xff9fd2, 0x9fe8c8, 0xbfa8ff]
+  group.add(
+    dots(9, 0.045, 1.1, (i, o) => o.position.set(-0.88 + (1.76 * i) / 8, 1.74 - Math.sin((i / 8) * Math.PI) * 0.12, 0.84), (i) => bulbCols[i % 4]),
+    dots(5, 0.07, 0.3, (i, o) => o.position.set(-0.78 + i * 0.09, 0.36, 0.92 + (i % 2) * 0.08), (i) => jarColors[i % 4]),
+  )
   // Popo herself, from her painted portrait, standing behind the counter.
   const tex = new TextureLoader().load(`${base}assets/npc_popo.png`)
   tex.colorSpace = SRGBColorSpace
@@ -173,6 +170,20 @@ function popoStall(base: string): Group {
   popo.name = 'popo'
   group.add(popo)
   return group
+}
+
+/** A few small glowing spheres in one InstancedMesh (bulbs, candies). */
+function dots(n: number, r: number, glow: number, place: (i: number, o: Object3D) => void, colour: (i: number) => number): InstancedMesh {
+  const mesh = new InstancedMesh(new SphereGeometry(r, 6, 5), toon(0xffffff, 0xffffff, glow * 0.4), n)
+  const o = new Object3D()
+  const c = new Color()
+  for (let i = 0; i < n; i += 1) {
+    place(i, o)
+    o.updateMatrix()
+    mesh.setMatrixAt(i, o.matrix)
+    mesh.setColorAt(i, c.set(colour(i)))
+  }
+  return mesh
 }
 
 /** Byeolha's stash chest: a round-lidded toy chest with a gold band and a star latch. */
@@ -192,15 +203,15 @@ function stashChest(): Group {
   latch.name = 'latch'
   group.add(box, lid, band, latch)
   // Gold corner trims, stubby feet, and a star on the lid so it reads as hers from afar.
+  const trims: BufferGeometry[] = []
+  const feet: BufferGeometry[] = []
   for (const x of [-0.44, 0.44]) {
     for (const z of [-0.29, 0.29]) {
-      const trim = new Mesh(new BoxGeometry(0.06, 0.5, 0.06), toon(0xffd66b, 0xffc070, 0.25))
-      trim.position.set(x, 0.25, z)
-      const foot = new Mesh(new SphereGeometry(0.07, 6, 5), toon(0x7a4fb0))
-      foot.position.set(x * 0.9, 0.02, z * 0.9)
-      group.add(trim, foot)
+      trims.push(new BoxGeometry(0.06, 0.5, 0.06).translate(x, 0.25, z))
+      feet.push(new SphereGeometry(0.07, 6, 5).translate(x * 0.9, 0.02, z * 0.9))
     }
   }
+  group.add(new Mesh(mergeGeometries(trims), toon(0xffd66b, 0xffc070, 0.25)), new Mesh(mergeGeometries(feet), toon(0x7a4fb0)))
   const star = new Mesh(new ConeGeometry(0.11, 0.04, 5), toon(0xfff2a0, 0xffd66b, 0.8))
   star.rotation.x = Math.PI / 2 - 0.3
   star.position.set(0, 0.68, 0.17)

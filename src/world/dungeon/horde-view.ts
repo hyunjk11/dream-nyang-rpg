@@ -19,7 +19,6 @@ import {
   PlaneGeometry,
   Quaternion,
   RingGeometry,
-  AdditiveBlending,
   SphereGeometry,
   Vector3,
   Group,
@@ -233,8 +232,8 @@ const ELITE_TINT = new Color(1.25, 1.02, 0.55)
 const RAGE_TINT = new Color(1.6, 0.55, 0.6)
 /** Wind-up rings and charge lanes drawn at once (one instanced draw call each). */
 export const TELL_CAP = 32
-const TELL_MELEE = new Color(1.0, 0.45, 0.7)
-const TELL_CHARGE = new Color(1.0, 0.35, 0.2)
+const TELL_MELEE = new Color(0.95, 0.18, 0.5)
+const TELL_CHARGE = new Color(1.0, 0.28, 0.08)
 const FLASH = new Color(3.2, 3.0, 3.4)
 const DEATH = new Color(2.4, 1.6, 2.6)
 
@@ -266,8 +265,8 @@ export class HordeView {
 
   constructor() {
     this.group.name = 'sewer-horde'
-    const tellMat = () => new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false, blending: AdditiveBlending })
-    this.rings = new InstancedMesh(new RingGeometry(0.78, 1, 28).rotateX(-Math.PI / 2), tellMat(), TELL_CAP)
+    const tellMat = () => new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.72, depthWrite: false })
+    this.rings = new InstancedMesh(new RingGeometry(0.66, 1, 28).rotateX(-Math.PI / 2), tellMat(), TELL_CAP)
     this.lanes = new InstancedMesh(new PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0, 0, 0.5), tellMat(), TELL_CAP)
     for (const t of [this.rings, this.lanes]) {
       t.name = t === this.rings ? 'horde-tell-rings' : 'horde-tell-lanes'
@@ -338,7 +337,7 @@ export class HordeView {
           this.q.identity()
           this.m.compose(this.p, this.q, this.s)
           this.rings.setMatrixAt(rings, this.m)
-          this.rings.setColorAt(rings, this.c.copy(TELL_MELEE).multiplyScalar(0.5 + 0.7 * k))
+          this.rings.setColorAt(rings, this.c.copy(TELL_MELEE).multiplyScalar(0.75 + 0.35 * k))
           rings += 1
         }
         if (f.chargeWind > 0 && lanes < TELL_CAP) {
@@ -350,7 +349,7 @@ export class HordeView {
           this.s.set(f.radius * 2, 1, len)
           this.m.compose(this.p, this.q, this.s)
           this.lanes.setMatrixAt(lanes, this.m)
-          this.lanes.setColorAt(lanes, this.c.copy(TELL_CHARGE).multiplyScalar(0.5 + 0.8 * k))
+          this.lanes.setColorAt(lanes, this.c.copy(TELL_CHARGE).multiplyScalar(0.7 + 0.45 * k))
           lanes += 1
         }
       }
