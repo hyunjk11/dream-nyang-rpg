@@ -34,6 +34,8 @@ export const AFFIXES: AffixSpec[] = [
   { id: 'sparkle', suffix: '별빛의', name: '반짝이는', stat: 'sparkle', min: 0.08, max: 0.16, weaponOnly: true, element: true },
   { id: 'ice', suffix: '서리의', name: '서늘한', stat: 'ice', min: 0.1, max: 0.2, weaponOnly: true, element: true },
   { id: 'candy', suffix: '사탕의', name: '끈적한', stat: 'candy', min: 0.1, max: 0.2, weaponOnly: true, element: true },
+  { id: 'ricochet', suffix: '별도탄의', name: '통통 튀는', stat: 'starShot', min: 0.05, max: 0.1, weaponOnly: true },
+  { id: 'fluff', suffix: '솜사탕의', name: '몽실몽실', stat: 'cloud', min: 0.05, max: 0.1, weaponOnly: true },
 ]
 
 /** Gear affixes are this much bigger than gun affixes, so a new hat or ring reads at a glance. */
@@ -49,4 +51,4 @@ export const AFFIX_COUNT: Record<string, number> = {
 }
 
 /** Stats shown as percentages. */
-export const PERCENT_STATS: StatKey[] = ['critChance', 'critDamage', 'attackSpeed', 'damage', 'fireRate', 'lifesteal', 'moveSpeed', 'armor', 'sparkle', 'ice', 'candy']
+export const PERCENT_STATS: StatKey[] = ['critChance', 'critDamage', 'attackSpeed', 'damage', 'fireRate', 'lifesteal', 'moveSpeed', 'armor', 'sparkle', 'ice', 'candy', 'starShot', 'cloud']

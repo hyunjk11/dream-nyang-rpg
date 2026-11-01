@@ -255,6 +255,7 @@ export class DungeonRun {
       solid: this.ray,
       targets: () => this.targets(),
       strike: (o, d, max, amount, procs) => this.strike(o, d, max, amount, procs),
+      bodies: () => this.bodies(),
       normal: (end, d) => hitNormal(maze, end.x, end.y, end.z, d.x, d.z),
     }
     this.horde = new Horde(this.maze)

@@ -82,7 +82,7 @@ export class HudFx {
     this.marker.className = kill ? 'on kill' : crit ? 'on crit' : 'on'
   }
 
-  number(amount: number, at: Vector3, kind: 'n' | 'crit' | 'elite' | 'boss'): void {
+  number(amount: number, at: Vector3, kind: NumberKind): void {
     if (!this.nums.length) return
     const n = this.nums[this.next]
     this.next = (this.next + 1) % this.nums.length
@@ -140,6 +140,9 @@ export class HudFx {
 }
 
 /** How hard a damage number pops in: crits slam, elite/boss hits thump, chip damage ticks. */
-export function numberPunch(kind: 'n' | 'crit' | 'elite' | 'boss'): number {
-  return kind === 'crit' ? 1.25 : kind === 'elite' || kind === 'boss' ? 0.9 : 0.6
+/** Damage number looks: normal, crit, elite, boss, ricochet star, candy cloud tick. */
+export type NumberKind = 'n' | 'crit' | 'elite' | 'boss' | 'star' | 'candy'
+
+export function numberPunch(kind: NumberKind): number {
+  return kind === 'crit' ? 1.25 : kind === 'elite' || kind === 'boss' || kind === 'star' ? 0.9 : kind === 'candy' ? 0.45 : 0.6
 }

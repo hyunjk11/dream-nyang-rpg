@@ -19,6 +19,8 @@ import { GUN_PROFILES, type GunProfile } from '../data/guns'
 import { GunFx } from './gunfx'
 import { HudFx } from '../ui/hudfx'
 import type { GunCue } from '../audio/gunsound'
+import { JUICE, Juice, rollCloud, rollStar } from './juice'
+import type { SkillBody } from './skills'
 
 /** What a world tells the rig and the gun. */
 export interface AimWorld {
@@ -174,6 +176,8 @@ export interface ShotWorld extends AimWorld {
   strike: (o: Vector3, d: Vector3, max: number, amount: number, procs?: ShotProcs) => ShotHit | null
   /** Surface normal where a droplet splashed on something solid. */
   normal: (end: Vector3, d: Vector3) => { x: number; y: number; z: number }
+  /** Everything a ricochet star or a candy cloud can hurt (same adapter the skills use). */
+  bodies?: () => SkillBody[]
 }
 
 export interface ShooterHost {
@@ -186,6 +190,8 @@ export interface ShooterHost {
   hitStop?: (seconds: number) => void
   /** Lifesteal: heal her by this many hp. */
   heal?: (hp: number) => void
+  /** Phones and software GL: fewer stars and clouds alive at once. */
+  lowPower?: boolean
 }
 
 /** What the equipped gun and her stats make of each droplet (from sim computeStats). */
@@ -201,6 +207,10 @@ export interface Loadout {
   ice: number
   candy: number
   fireRate: number
+  /** Extra chance per droplet to throw a ricochet star (별도탄 확률). */
+  starShot?: number
+  /** Extra chance per landed droplet to puff a cotton-candy cloud (솜사탕 구름). */
+  cloud?: number
   /** Tracer / splash colour. */
   tint: number
 }
@@ -227,6 +237,8 @@ export class Shooter {
   readonly gun = new Gun()
   readonly gunFx = new GunFx()
   readonly hudFx: HudFx
+  /** Ricochet stars and cotton-candy clouds. */
+  readonly juice: Juice
   /** Most recent droplet (QA). */
   last: ShotTrace | null = null
   /** Droplets fired / landed on a foe since the last reset (QA readout). */
@@ -250,6 +262,12 @@ export class Shooter {
     this.host = host
     this.rig = new ShoulderRig(host.camera, yaw, pitch)
     this.hudFx = new HudFx(host.hud)
+    this.juice = new Juice({
+      vfx: host.vfx,
+      lowPower: !!host.lowPower,
+      number: (n, at, tone) => this.hudFx.number(n, at, tone),
+      sound: (cue, gain, pitch) => host.gun?.(cue, gain, pitch),
+    })
     this.tracers = new InstancedMesh(
       new BoxGeometry(1, 1, 1).translate(0, 0, 0.5),
       new MeshBasicMaterial({ color: new Color(0xbfeaff).multiplyScalar(2.4), transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false }),
@@ -257,7 +275,7 @@ export class Shooter {
     )
     this.tracers.count = 0
     this.tracers.frustumCulled = false
-    parent.add(this.gunFx.group, this.tracers)
+    parent.add(this.gunFx.group, this.tracers, this.juice.group)
   }
 
   get view(): TpsView {
@@ -285,6 +303,7 @@ export class Shooter {
     this.hudFx.aim(this.gun.gapPx, this.gun.heat, this.gun.overheated)
     this.hudFx.target(this.rig.onTarget ? 2 : this.rig.near ? 1 : 0)
     this.tickTracers(dt)
+    this.juice.update(dt, world)
     this.gunFx.update(dt)
     this.hudFx.update(dt, this.host.camera)
   }
@@ -301,6 +320,7 @@ export class Shooter {
     let lastEnd = tip
     let firstDir = aim
     let stolen = 0
+    this.puffed = false
     for (let k = 0; k < Math.max(1, p.pellets); k += 1) {
       // Converge on the crosshair point, jittered inside the bloom cone (pellets fan wider).
       const cone = p.pellets > 1 ? Math.max(gun.spread, p.spreadMin) : gun.spread
@@ -346,6 +366,8 @@ export class Shooter {
       lastEnd = end.clone()
     }
     if (stolen > 0) this.host.heal?.(stolen)
+    // 두두두 사이사이 별 도탄: every few droplets (more with the affix) a star flies out and bounces around.
+    if (rollStar(this.fired + 1, l.starShot ?? 0, Math.random())) this.juice.star(tip, firstDir, l.damage * JUICE.starShare)
     const ndc = lastEnd.clone().project(camera)
     this.last = { from: tip.clone(), to: lastEnd.clone(), aim: this.rig.aim.clone(), hit: anyHit, ndcX: ndc.x, ndcY: ndc.y }
     this.fired += 1
@@ -358,13 +380,24 @@ export class Shooter {
     this.rig.shake = Math.min(heavy ? 0.04 : 0.02, this.rig.shake + (heavy ? 0.02 : 0.005))
     if (sfx) {
       sfx('shot', heavy ? 1.3 : 1, heavy ? -0.35 : p.kind === 'star' ? 0.12 + gun.heat * 0.1 : gun.heat * 0.1)
+      // A bright snap on top of the thump: the 팡 in 팡팡.
+      sfx('snap', heavy ? 0.9 : 0.6, (Math.random() - 0.5) * 0.25)
       if (heavy) sfx('thunk', 0.6)
       else if (gun.shots % 4 === 0) sfx('tail', 0.9)
     } else this.host.sfx('shoot_water', 0.8)
   }
 
+  /** One candy cloud per trigger pull at most (shotgun pellets would carpet the room). */
+  private puffed = false
+
   private landedHit(end: Vector3, hit: ShotHit, roll: { amount: number; crit: boolean }, pierced: boolean, sfx: ShooterHost['gun']): void {
     this.host.vfx.hit(end, hit.color, roll.crit || (hit.kill && hit.tone !== 'n'))
+    // Hit spark burst: a little crown of sparks on every landed droplet, bigger on crits.
+    this.host.vfx.burst(end, roll.crit ? 0xffe27a : 0xffffff, { count: roll.crit ? 10 : 4, speed: roll.crit ? 5 : 3.4, up: 1.4, life: 0.22, size: roll.crit ? 0.16 : 0.09, shape: 1, gravity: 4, drag: 3, additive: true })
+    if (!this.puffed && !pierced && rollCloud(roll.crit, this.loadout.cloud ?? 0, Math.random())) {
+      this.puffed = true
+      this.juice.cloud(end, roll.amount)
+    }
     this.hudFx.hit(hit.kill, roll.crit)
     this.hudFx.number(pierced ? Math.round(roll.amount * 0.8) : roll.amount, end, roll.crit ? 'crit' : hit.tone)
     if (hit.kill && hit.tone !== 'boss') {
@@ -424,6 +457,7 @@ export class Shooter {
     this.tracerFrom.length = 0
     this.tracerTo.length = 0
     this.tracers.count = 0
+    this.juice.reset()
     this.rig.fovKick = 0
     this.rig.shake = 0
   }
@@ -431,6 +465,7 @@ export class Shooter {
   dispose(): void {
     this.gunFx.dispose()
     this.hudFx.dispose()
+    this.juice.dispose()
     this.tracers.removeFromParent()
     this.tracers.geometry.dispose()
     ;(this.tracers.material as MeshBasicMaterial).dispose()

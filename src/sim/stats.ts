@@ -37,6 +37,10 @@ export interface ComputedStats {
   sparkle: number
   ice: number
   candy: number
+  /** Ricochet star chance per droplet (on top of every 7th). */
+  starShot: number
+  /** Cotton-candy cloud chance per landed droplet (on top of the base). */
+  cloud: number
   weaponKind: WeaponKind
   /** The equipped gun's profile with its level/rarity damage folded in (crit fields are raw base). */
   gun: GunProfile
@@ -47,7 +51,9 @@ export interface ComputedStats {
 /** Per-level growth (level 30 ≈ 2× hp, +58% damage). */
 export const LEVEL_GROWTH = { hp: 0.035, damage: 0.02 }
 /** Caps so gear can't break the game. */
-export const STAT_CAPS = { critChance: 0.6, lifesteal: 0.08, armor: 0.5, moveMul: 1.35, fireRate: 2 }
+export const STAT_CAPS = { critChance: 0.6, lifesteal: 0.08, armor: 0.5, moveMul: 1.35, fireRate: 2, starShot: 0.4, cloud: 0.4 }
+/** Gun-type flavour for the juice: built-in star / cloud chance. */
+export const GUN_JUICE = { starRifle: 0.1, bubbleCloud: 0.06 }
 
 export function gearSum(items: ItemInstance[]): Partial<Record<StatKey, number>> {
   const sum: Partial<Record<StatKey, number>> = {}
@@ -98,6 +104,9 @@ export function computeStats(save: SaveData, items: ItemInstance[] = equippedIte
     sparkle: clamp((g.sparkle ?? 0) + (rank(save, 'sparkle_heart') ? 0.12 : 0), 0, 0.6),
     ice: clamp(g.ice ?? 0, 0, 0.6),
     candy: clamp(g.candy ?? 0, 0, 0.6),
+    // The star rifle throws more stars, the bubble shotgun puffs more clouds.
+    starShot: clamp((g.starShot ?? 0) + (kind === 'star' ? GUN_JUICE.starRifle : 0), 0, STAT_CAPS.starShot),
+    cloud: clamp((g.cloud ?? 0) + (kind === 'bubble' ? GUN_JUICE.bubbleCloud : 0), 0, STAT_CAPS.cloud),
     weaponKind: kind,
     gun: { ...base, damage: Math.round(base.damage * gunScale * 100) / 100 },
     shotDamage: 0,
