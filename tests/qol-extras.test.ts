@@ -5,7 +5,7 @@ import { AUTO_AIM, assistPick, type AimTarget } from '../src/core/tps'
 import { Delve, delveOf, floorPlan, fieldPlan } from '../src/sim/delve'
 import { freshSave } from '../src/sim/mutate'
 import { HELP_KEYS, HELP_QOL } from '../src/ui/help'
-import { ZONE_OF } from '../src/ui/layout'
+import { ZONE_OF, aimZone, popoverFit } from '../src/ui/layout'
 
 describe('퀘스트 길 안내 목표', () => {
   it('챕터 2 퀘스트는 종류에 맞는 목표를, 끝나면 게시판을, 마을에선 별문을 가리킨다', () => {
@@ -130,5 +130,23 @@ describe('편의 기능 안내', () => {
     expect(HELP_KEYS.some(([k]) => k === 'R')).toBe(true)
     expect(HELP_QOL.some(([k]) => k === '퀘스트')).toBe(true)
     expect(ZONE_OF.waypoint).toBe('tr')
+  })
+})
+
+describe('퀘스트 펼침 창과 조준선', () => {
+  it('조준선 보호 구역에 닿으면 위쪽 여유만큼 줄이거나 옆으로 좁힌다', () => {
+    const aim = aimZone(390, 844)
+    const fit = popoverFit({ left: 116, top: 56, right: 376, bottom: 420 }, aim)
+    expect(fit.maxHeight).toBe(Math.floor(aim.top - 56 - 6))
+    expect(fit.width).toBeNull()
+    const wide = aimZone(844, 390)
+    const side = popoverFit({ left: 570, top: 150, right: 830, bottom: 300 }, wide)
+    expect(side).toEqual({ maxHeight: null, width: null })
+    const land = popoverFit({ left: 470, top: 150, right: 830, bottom: 300 }, wide)
+    expect(land.width).toBe(Math.floor(830 - wide.right - 6))
+  })
+
+  it('안 닿으면 그대로 둔다', () => {
+    expect(popoverFit({ left: 300, top: 60, right: 380, bottom: 120 }, aimZone(390, 844))).toEqual({ maxHeight: null, width: null })
   })
 })

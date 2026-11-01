@@ -626,6 +626,8 @@ body.compact .actions { gap: 8px; }
   /* Opened on a small screen it drops down over the view like a menu (tap the chip to close). */
   body.compact #hud-tr { position: relative; overflow: visible; }
   body.compact #contract-hud.open { position: absolute; right: 0; top: calc(var(--map) + 8px); z-index: 3; width: min(260px, calc(100vw - 28px)); max-width: none; max-height: calc(100vh - var(--edge-t) - var(--bar-h) - var(--map) - var(--edge-b) - var(--br-h, 0px) - 24px); padding: 6px; border-radius: 16px; background: rgba(40, 24, 60, 0.35); align-items: flex-end; }
+  /* In town there is no minimap above it: open right under the top bar. */
+  body.compact:not(.sewer) #contract-hud.open { top: 0; }
   body.compact #loot-toasts { max-width: min(220px, calc(100vw - 28px)); }
   body.compact #map-legend { font-size: 11px; gap: 8px; padding: 5px 10px; }
 }
