@@ -130,7 +130,7 @@ describe('어깨 너머 3인칭 카메라', () => {
     expect(v.kickPitch).toBeLessThan(0.01)
   })
 
-  it('넓은 방에서는 그녀가 화면 왼쪽 아래, 조준점이 화면 정중앙', () => {
+  it('넓은 방에서는 그녀가 화면 가로 가운데 조금 아래, 조준점이 화면 정중앙', () => {
     const m = generateMaze(21)
     const room = m.bossRoom
     const c = tileCentre(m, room.x + 2, room.y + 2)
@@ -142,7 +142,8 @@ describe('어깨 너머 3인칭 카메라', () => {
     cam.lookAt(p.x + p.fx, p.y + p.fy, p.z + p.fz)
     cam.updateMatrixWorld()
     const hero = new Vector3(c.x, 1.0, c.z).project(cam)
-    expect(hero.x).toBeLessThan(-0.05)
+    expect(Math.abs(hero.x)).toBeLessThan(0.02)
+    expect(hero.y).toBeLessThan(-0.1)
     expect(hero.z).toBeLessThan(1)
     const ahead = new Vector3(p.x + p.fx * 10, p.y + p.fy * 10, p.z + p.fz * 10).project(cam)
     expect(ahead.x).toBeCloseTo(0, 3)

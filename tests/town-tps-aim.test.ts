@@ -82,12 +82,12 @@ describe('마을·던전 공용 숄더 조준', () => {
     expect(rayCapsule(0, 0.5, 0, 0, 0, 1, t, 3)).toBe(-1)
   })
 
-  it('카메라는 그녀에게 고정(지연 없음): 한 프레임 만에 정해진 숄더 위치에 선다', () => {
+  it('카메라는 그녀에게 고정(지연 없음): 한 프레임 만에 정해진 뒤쪽 위치에 선다', () => {
     const v = createView(0.7, 0.1)
     const a = pose(v, null, 3, 0, -2, 1 / 60)
     const b = pose(v, null, 3, 0, -2, 1 / 60)
     expect(a).toEqual(b)
-    // Lens sits behind and to her right, a little above her head.
+    // Lens sits straight behind her, a little above her head.
     expect(Math.hypot(a.x - 3, a.z + 2)).toBeGreaterThan(TPS.back * 0.8)
     expect(a.y).toBeGreaterThan(TPS.height)
   })

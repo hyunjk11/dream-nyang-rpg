@@ -45,6 +45,7 @@ export interface HeroInput {
 
 export class Hero {
   readonly object = new Group()
+  private alpha = 1
   readonly muzzle = new Object3D()
   readonly aimPoint = new Vector3()
   /** From level, tree and gear (applyBuild); 150 at level 1 with no gear. */
@@ -402,6 +403,28 @@ export class Hero {
   }
 
   /** Hat, outfit and shoes on the model (procedural meshes riding her bones). */
+  /**
+   * See-through amount (0 solid .. 1 most faded) while she covers the crosshair. Materials keep
+   * their own transparency settings and get them back at 0.
+   */
+  fade(k: number): void {
+    const alpha = 1 - Math.max(0, Math.min(1, k)) * 0.65
+    if (Math.abs(alpha - this.alpha) < 0.01) return
+    this.alpha = alpha
+    this.object.traverse((obj) => {
+      const mesh = obj as Mesh
+      if (!mesh.isMesh || mesh.name === 'hero-shadow') return
+      for (const mat of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        const base = (mat.userData.baseAlpha ??= { opacity: mat.opacity, transparent: mat.transparent, depthWrite: mat.depthWrite }) as { opacity: number; transparent: boolean; depthWrite: boolean }
+        const solid = alpha > 0.99
+        if (mat.transparent !== (solid ? base.transparent : true)) mat.needsUpdate = true
+        mat.transparent = solid ? base.transparent : true
+        mat.opacity = base.opacity * alpha
+        mat.depthWrite = solid ? base.depthWrite : false
+      }
+    })
+  }
+
   setWear(look: WearLook): void {
     this.wearLook = look
     this.wear.set(look)
