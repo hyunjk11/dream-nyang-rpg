@@ -42,6 +42,9 @@ import { DIFFICULTY } from '../../combat/difficulty'
 import { chestDrops, delveDrops, floorIntro, floorLabel, floorPlan, objectiveText, type ChestTier, type FloorPlan } from '../../sim/delve'
 import type { Drop } from '../../sim/loot'
 import { LootView } from './loot-view'
+import { FIELD, FieldDirector } from './field'
+import { NAMED } from '../../sim/chapters'
+import type { HordeKind } from './horde'
 import { Chest } from './chest'
 
 /** What the sewer borrows from the hub game each frame. */
@@ -57,8 +60,14 @@ export interface RunHost {
   leave: (why: 'recall' | 'clear') => void
   /** Floor objective met and she stepped into the stairs portal. */
   stairs?: () => void
-  /** A foe went down (elite?) — the delve counts kills. */
-  kill?: (elite: boolean) => void
+  /** A foe went down (elite?, its kind) — the delve and chapter quests count kills. */
+  kill?: (elite: boolean, kind: HordeKind) => void
+  /** Extra drops a foe spills (몽실 들판: quest fluff). */
+  extraDrops?: (elite: boolean) => Drop[]
+  /** 몽실 들판: the named elite is out / went down. */
+  named?: (event: 'spawn' | 'down') => void
+  /** The T recall spell (or a scroll) took her home (the guide waits for it). */
+  recalled?: () => void
   /** She touched a pickup; returns the heal share (of max hp) and the float text. */
   pickup?: (drop: Drop) => { heal: number; text: string }
   /** Spend a return scroll if she carries one (instant recall). */
@@ -208,6 +217,8 @@ export class DungeonRun {
   private lastWave = 0
   /** Milliseconds the horde simulation + view took last frame (QA perf readout). */
   hordeMs = 0
+  /** 몽실 들판 (챕터 2): the open-field pack director, or null in the sewer. */
+  field: FieldDirector | null = null
   /** This depth's look (palette, fog, props). */
   readonly theme: DungeonTheme
   /** What skills (bombs, Mochi's rush, sparkle bursts) can hurt down here. */
@@ -219,6 +230,7 @@ export class DungeonRun {
     this.maze = floorMaze(this.plan)
     this.director = new Director(this.plan.scale.firstWave)
     const exploring = this.plan.objective === 'exit'
+    const field = this.plan.objective === 'field' ? this.plan.field ?? { kinds: ['slime'], fluff: false, named: false, boss: false } : null
     // Lay out packs, nests, chests, shrine and the secret before the geometry (it carves).
     this.layout = exploring ? planLayout(this.maze, this.plan, rng(this.plan.seed ^ 0x5bd1e995)) : null
     if (this.layout && !this.layout.needsKey) this.plan = { ...this.plan, key: false }
@@ -233,7 +245,7 @@ export class DungeonRun {
     const b = this.maze.bossRoom
     const bx = b.x + Math.floor(b.w / 2)
     const by = b.y + Math.floor(b.h / 2)
-    const isBoss = this.plan.objective === 'boss'
+    const isBoss = this.plan.objective === 'boss' || !!field?.boss
     const exit = tileCentre(this.maze, bx, isBoss ? by + 2 : by)
     this.exitPortal = new Portal(new Vector3(exit.x, 0, exit.z), 0xff9fd2)
     this.stairsPortal = new Portal(new Vector3(exit.x, 0, exit.z), 0xffd36b)
@@ -243,7 +255,7 @@ export class DungeonRun {
     this.minimap = new Minimap(this.maze, host.hud)
     this.minimap.mark(this.maze.startRoom.x, this.maze.startRoom.y, '#7fd0ff')
     if (isBoss) this.minimap.mark(bx, by, '#ff6fb8')
-    else this.minimap.mark(bx, by, '#7be0a8', 'exit', false, 'exit')
+    else if (!field) this.minimap.mark(bx, by, '#7be0a8', 'exit', false, 'exit')
     this.ownShooter = !host.shooter
     this.shooter = host.shooter ?? new Shooter(host, this.sewer.group, Math.PI / 4, 0.1)
     this.shooter.reset()
@@ -276,6 +288,13 @@ export class DungeonRun {
       this.nests = this.explore.nests
       this.buildProps(this.layout)
     } else this.nests = []
+    if (field) {
+      this.horde.scale.hp *= FIELD.hp
+      this.field = new FieldDirector(maze, this.horde, Math.random, { kinds: field.kinds, named: field.named ? NAMED : null, mobile: host.lights <= 2 })
+      // An open sky over the field: no tunnel roof, and the fog pulls far back.
+      const roof = this.sewer.group.getObjectByName('sewer-ceiling')
+      if (roof) roof.visible = false
+    }
     this.skillWorld = { solid: this.ray, bodies: () => this.bodies() }
     this.hordeView = new HordeView()
     this.sewer.group.add(this.hordeView.group)
@@ -456,6 +475,7 @@ export class DungeonRun {
     if (this.host.scroll?.()) {
       this.host.vfx.ring(this.host.hero.object.position.clone().setY(0.06), 0x9ad7ff, 0.3, 2.4, 0.5)
       this.host.banner('귀환 두루마리!', '포포의 두루마리가 바로 마을로 데려다줘')
+      this.host.recalled?.()
       this.host.leave('recall')
       return
     }
@@ -482,6 +502,7 @@ export class DungeonRun {
     }
     if (this.recallT >= RECALL_TIME) {
       this.recallT = 0
+      this.host.recalled?.()
       this.host.leave('recall')
     }
   }
@@ -669,12 +690,19 @@ export class DungeonRun {
 
   /** A horde foe went down (any cause): count it, spill its drops, let skills chain. */
   private foeDown(f: HordeFoe): void {
-    this.host.kill?.(f.elite)
+    this.host.kill?.(f.elite, f.kind)
     // Dissolve into dream sparkles: a few stars drifting up, tinted by the theme's lamps.
     const tint = this.theme.lamps[f.id % this.theme.lamps.length]
     this.host.vfx.burst(new Vector3(f.x, 0.7, f.z), tint, { count: f.elite ? 14 : 6, speed: 1.1, up: 2.2, life: 0.9, size: f.elite ? 0.3 : 0.22, shape: 1, gravity: -1.6, drag: 2.2, spread: 0.5, additive: true })
     if (this.explore) for (const ev of this.explore.foeDown(f)) this.onExplore(ev, f.x, f.z)
-    this.loot.spill(this.drops(f.elite, false), f.x, f.z, f.elite ? 1.2 : 0.8)
+    if (this.field)
+      for (const ev of this.field.foeDown(f))
+        if (ev.type === 'named-down') {
+          this.host.banner(`${NAMED.name} 쓰러뜨림!`, '퀘스트 완료 · 마을 게시판에서 보상')
+          this.host.named?.('down')
+        }
+    const extra = this.host.extraDrops?.(f.elite) ?? []
+    this.loot.spill([...this.drops(f.elite, false), ...extra], f.x, f.z, f.elite ? 1.2 : 0.8)
     this.host.foeDied?.(f.x, f.z)
   }
 
@@ -791,11 +819,17 @@ export class DungeonRun {
       const kinds = this.layout?.packs[0]?.kinds ?? ['slime']
       const spawnAt = (i: number, kind: keyof typeof HORDE) => this.pourNest(i, kind)
       for (const ev of this.explore.update(dt, p.x, p.z, hero.alive, spawnAt, kinds)) this.onExplore(ev, p.x, p.z)
+    } else if (this.field) {
+      for (const ev of this.field.update(dt, p.x, p.z, hero.alive && !this.done))
+        if (ev.type === 'named-spawn') {
+          this.host.banner(NAMED.name, '들판 어딘가에 나타났어 · 화살표를 따라가')
+          this.host.named?.('spawn')
+        }
     } else {
       const orders = this.director.update(dt, { nestDistance, alive: this.horde.alive, inBoss })
       for (const o of orders) this.pour(o.nest, o.kind, o.elite)
     }
-    if (!this.explore && this.director.wave !== this.lastWave && this.director.active) {
+    if (!this.explore && !this.field && this.director.wave !== this.lastWave && this.director.active) {
       this.lastWave = this.director.wave
       this.host.banner(`웨이브 ${this.lastWave}`, this.director.active.elites ? `정예 ${this.director.active.elites}마리가 섞여 있어` : '파이프에서 몰려온다')
       this.host.sfx('windup', 0.6)
@@ -816,7 +850,8 @@ export class DungeonRun {
           .slice(0, 3)
         for (let i = 0; i < 12 && this.horde.alive < LIVE_CAP; i += 1) {
           const n = near[i % near.length]
-          if (n) this.pour(n.i, i % 3 === 0 ? 'bug' : 'slime', i === 0)
+          // The field has no pipes: the adds bubble up out of the grass round the ring.
+          this.pour(n ? n.i : DRAIN, i % 3 === 0 ? 'bug' : 'slime', i === 0)
         }
       }
     }
@@ -1051,6 +1086,12 @@ export class DungeonRun {
 
   /** Where the objective arrow points (explore floors), or null. */
   hintTarget(): { x: number; z: number } | null {
+    if (this.field && !this.done) {
+      const n = this.field.named()
+      if (n) return { x: n.x, z: n.z }
+      if (this.boss?.alive && !this.boss.awake) return { x: this.boss.x, z: this.boss.z }
+      return null
+    }
     const L = this.layout
     const ex = this.explore
     if (!L || !ex || this.done) return null
@@ -1195,7 +1236,11 @@ export class DungeonRun {
       const w = this.director.active
       const kills = this.host.runKills?.() ?? this.horde.kills
       const chasing = this.horde.chasing
-      const text = this.explore
+      const text = this.field
+        ? boss?.awake && boss.alive
+          ? `들판 보스전 · 총 처치 ${kills}`
+          : `몽실 들판 · 깨어난 몹 ${chasing} · 총 처치 ${kills}`
+        : this.explore
         ? chasing
           ? `탐험 · 쫓아오는 몹 ${chasing} · 총 처치 ${kills}`
           : `탐험 · 총 처치 ${kills}`
@@ -1231,7 +1276,7 @@ export class DungeonRun {
       if (text !== this.delveText) {
         this.delveText = text
         const [a, b, c] = this.delveEl.children
-        a.textContent = floorLabel(this.plan.depth, this.plan.floor)
+        a.textContent = this.field ? '챕터 2 · 몽실 들판' : floorLabel(this.plan.depth, this.plan.floor)
         b.textContent = goal
         c.textContent = recall
         this.delveEl.classList.toggle('done', this.done)

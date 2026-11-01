@@ -107,6 +107,8 @@ export interface SaveData {
   build?: { points: number; ranks: Record<string, number> }
   /** Stage 4 town services: shop stock, buy-back, stash, scrolls and the contract board. */
   town?: import('./town').TownSave
+  /** 챕터 progress (가이드 챕터 → 몽실 들판 quests). Old saves get it on load. */
+  chapters?: import('./chapters').ChapterSave
 }
 
 export interface OpenRun {

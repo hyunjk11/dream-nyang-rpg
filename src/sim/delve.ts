@@ -20,7 +20,8 @@ import { itemName, maxRarityFor, rollDrops, sellValue, type Drop } from './loot'
 import { addMaterial } from './quests'
 import type { OpenRun, ItemInstance, Rarity, SaveData } from './types'
 
-export type Objective = 'exit' | 'boss'
+/** 'field' = 몽실 들판 (챕터 2): one open hunting field, no stairs. */
+export type Objective = 'exit' | 'boss' | 'field'
 
 export interface DelveCheckpoint {
   depth: number
@@ -99,6 +100,20 @@ export interface FloorPlan {
   cells: number
   bossRoom: number
   scale: FloorScale
+  /** 몽실 들판 only: what the active chapter quests need out there. */
+  field?: FieldNeeds
+}
+
+export interface FieldNeeds {
+  kinds: import('../world/dungeon/horde').HordeKind[]
+  fluff: boolean
+  named: boolean
+  boss: boolean
+}
+
+/** The 몽실 들판 trip plan: depth-1 roster and numbers, floor-2 scale, an open field. */
+export function fieldPlan(salt: number, needs: FieldNeeds): FloorPlan {
+  return { depth: 1, floor: 2, objective: 'field', goal: 1, key: false, seed: floorSeed(9, 1, salt), cells: 17, bossRoom: 7, scale: floorScale(1, 2), field: needs }
 }
 
 export function floorScale(depth: number, floor: number): FloorScale {
@@ -146,6 +161,7 @@ export function floorLabel(depth: number, floor: number): string {
  * 1 = key in hand (or no key needed). The run adds a direction arrow and distance.
  */
 export function objectiveText(plan: Pick<FloorPlan, 'objective' | 'goal'> & { key?: boolean }, progress = 0, done = false): string {
+  if (plan.objective === 'field') return done ? '들판의 악몽 꽃을 쓰러뜨렸어!' : '퀘스트 사냥 · T 또는 파란 포털로 마을'
   if (done) return plan.objective === 'boss' ? '보물 상자를 열고 출구 포털로!' : '출구 방에 도착 · 금빛 계단으로 다음 층'
   switch (plan.objective) {
     case 'exit':
@@ -157,6 +173,7 @@ export function objectiveText(plan: Pick<FloorPlan, 'objective' | 'goal'> & { ke
 
 /** Banner title/sub when a floor begins. */
 export function floorIntro(plan: FloorPlan): { title: string; sub: string } {
+  if (plan.objective === 'field') return { title: '챕터 2 · 몽실 들판', sub: plan.field?.boss ? '들판 동쪽 끝에 악몽 꽃이 피어 있어' : '괴물 무리가 계속 몰려와 · 퀘스트를 채우자' }
   const title = floorLabel(plan.depth, plan.floor)
   if (plan.objective === 'boss') return { title, sub: '달빛 방에 악몽 꽃이 잠들어 있어' }
   return plan.key
@@ -189,6 +206,8 @@ export interface DelveSummary {
   /** XP earned this trip and the level she came home at. */
   xp?: number
   level?: number
+  /** A 몽실 들판 trip (the card says so instead of a depth/floor). */
+  field?: boolean
 }
 
 /** Dungeon drop table per foe (scaled by depth). Bosses roll it with boss=true. */
@@ -241,6 +260,8 @@ export class Delve {
   ended: DelveSummary | null = null
   /** This trip's boss is down (a fall afterwards keeps the checkpoint cleared). */
   bossBeaten = false
+  /** A 몽실 들판 trip (챕터 2): no floors, no checkpoint; its plan is fixed at the start. */
+  fieldPlan: FloorPlan | null = null
 
   constructor(depth: number, floor = 1, salt = 0) {
     this.depth = Math.max(1, Math.floor(depth))
@@ -259,6 +280,15 @@ export class Delve {
     return run
   }
 
+  /** A trip out to the 몽실 들판 (챕터 2 quests). Leaves the sewer checkpoint alone. */
+  static field(save: SaveData, needs: FieldNeeds): Delve {
+    const d = delveOf(save)
+    d.runs += 1
+    const run = new Delve(1, 1, d.runs)
+    run.fieldPlan = fieldPlan(d.runs, needs)
+    return run
+  }
+
   /** Resume from the saved checkpoint (null when there is none). */
   static resume(save: SaveData): Delve | null {
     const cp = delveOf(save).checkpoint
@@ -266,11 +296,12 @@ export class Delve {
   }
 
   get plan(): FloorPlan {
+    if (this.fieldPlan) return this.fieldPlan
     return floorPlan(this.depth, this.floor, this.salt)
   }
 
   get onBoss(): boolean {
-    return this.floor >= BOSS_FLOOR
+    return !this.fieldPlan && this.floor >= BOSS_FLOOR
   }
 
   /** Floor objective met and she took the stairs: next floor (checkpoint saved). */
@@ -285,7 +316,7 @@ export class Delve {
 
   /** Snapshot the trip into the save (run gold survives a reload; see settleOpenRun). */
   sync(save: SaveData): void {
-    if (this.ended) return
+    if (this.ended || this.fieldPlan) return
     delveOf(save).open = {
       depth: this.depth,
       floor: this.floor,
@@ -357,7 +388,7 @@ export class Delve {
     save.gold = Math.max(0, save.gold + gold)
     const d = delveOf(save)
     d.open = null
-    if (end !== 'clear' && !this.bossBeaten) d.checkpoint = { depth: this.depth, floor: this.floor }
+    if (end !== 'clear' && !this.bossBeaten && !this.fieldPlan) d.checkpoint = { depth: this.depth, floor: this.floor }
     this.ended = {
       end,
       depth: this.depth,
@@ -372,6 +403,7 @@ export class Delve {
       unlocked,
       xp: this.xp,
       level: save.level,
+      field: !!this.fieldPlan,
     }
     return this.ended
   }

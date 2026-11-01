@@ -31,9 +31,14 @@ export function groupLoot(loot: DelveSummary['loot']): DelveSummary['loot'] {
 
 /** Plain-text lines (also what the QA reads). */
 export function summaryLines(s: DelveSummary): { sub: string; stats: [string, string, string?][] } {
-  const where = floorLabel(s.depth, s.floor)
-  const sub =
-    s.end === 'clear'
+  const where = s.field ? '몽실 들판' : floorLabel(s.depth, s.floor)
+  const sub = s.field
+    ? s.end === 'down'
+      ? '몽실 들판에서 쓰러졌어. 골드를 조금 흘렸지만 퀘스트 진행은 그대로야.'
+      : s.end === 'clear'
+        ? '들판의 악몽 꽃을 쓰러뜨렸어! 게시판에서 챕터 2 마지막 보상을 받자.'
+        : '몽실 들판에서 돌아왔어. 다 채운 퀘스트는 게시판에서 보상!'
+    : s.end === 'clear'
       ? s.unlocked
         ? `깊이 ${s.depth}의 악몽 꽃을 쓰러뜨렸어! 이제 별문에서 깊이 ${s.unlocked}로 갈 수 있어.`
         : `깊이 ${s.depth}의 악몽 꽃을 다시 쓰러뜨렸어!`
@@ -42,7 +47,7 @@ export function summaryLines(s: DelveSummary): { sub: string; stats: [string, st
         : `${where}에서 쓰러졌어. 골드를 조금 흘렸지만 물건은 다 챙겼어.`
   const stats: [string, string, string?][] = [
     ['도달', where],
-    ['지난 층', `${s.floorsCleared}층`],
+    ...(s.field ? [] : ([['지난 층', `${s.floorsCleared}층`]] as [string, string][])),
     ['처치', s.elites ? `${s.kills}마리 (정예 ${s.elites})` : `${s.kills}마리`],
     ['시간', formatTime(s.seconds)],
     ['골드', `+${s.gold}`],

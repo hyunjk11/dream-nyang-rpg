@@ -47,6 +47,8 @@ import { activeContracts, contractEvent, contractLine, type ContractEvent } from
 import { eatCandy, townOf, useScroll } from './sim/town'
 import { tryEquip } from './sim/mutate'
 import { isEquipped } from './sim/inventory'
+import { FLUFF, chapter2Open, chaptersOf, fieldNeeds, guideEvent, guideStep, keepGuide, questEvent, questHud, skipGuide, type ChapterOut, type FieldEvent, type GuideEvent } from './sim/chapters'
+import { ChapterUI } from './ui/chapters'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -418,6 +420,13 @@ const townUI = new TownUI({
     paintHotbar()
     paintContracts()
   },
+  viewed: (panel) => {
+    if (panel === 'shop' || panel === 'workshop' || panel === 'board') guideHit({ type: panel })
+  },
+  chapterClaimed: (result, cleared) => {
+    showResult(result)
+    if (cleared) queueClearCard()
+  },
 })
 
 /** Any town panel or the bag is up (she stands still; the island keeps living). */
@@ -462,8 +471,18 @@ const contractHud = document.getElementById('contract-hud')
 function paintContracts(): void {
   if (!contractHud) return
   const list = mode === 'title' ? [] : activeContracts(game.save)
-  contractHud.classList.toggle('hidden', list.length === 0)
+  const chapter = mode === 'title' ? [] : questHud(game.save)
+  contractHud.classList.toggle('hidden', list.length + chapter.length === 0)
   contractHud.innerHTML = ''
+  for (const q of chapter) {
+    const row = document.createElement('div')
+    row.className = q.done ? 'ch done' : 'ch'
+    row.dataset.id = q.id
+    const b = document.createElement('b')
+    b.textContent = '챕터 2'
+    row.append(b, document.createTextNode(`${q.title} ${q.prog}`))
+    contractHud.append(row)
+  }
   for (const c of list) {
     const row = document.createElement('div')
     row.className = c.status === 'done' ? 'done' : ''
@@ -485,6 +504,159 @@ function contractHit(e: ContractEvent): void {
   paintContracts()
 }
 
+// ---- 챕터: the guide chapter and the 몽실 들판 quests ----
+const chapterUI = new ChapterUI(document.body)
+/** A chapter-clear card waits for the next calm moment (no summary or dialogue up). */
+let clearPending = false
+
+function chapterOut(o: ChapterOut): void {
+  if (o.say) chapterUI.say(o.say.who, o.say.text)
+  if (o.gift === 'candy') {
+    paintCandy()
+    toast('모찌가 하트 사탕을 챙겨 줬어!', 'reward')
+  } else if (o.gift === 'gear') {
+    const item = game.save.items[game.save.items.length - 1]
+    if (item) lootPing(item)
+  }
+  for (const t of o.toasts) {
+    toast(t, 'quest')
+    chime('contract')
+  }
+  if (o.advanced >= 0) audio.sfx('quest')
+  if (o.cleared) queueClearCard()
+  if (o.advanced >= 0 || o.cleared) paintContracts()
+  if (o.advanced >= 0 || o.cleared || o.toasts.length) game.persist(store)
+}
+
+/** Something the guide chapter may be waiting for. */
+function guideHit(e: GuideEvent): void {
+  if (mode === 'title' || !guideStep(game.save)) return
+  chapterOut(guideEvent(game.save, e))
+}
+
+/** A 몽실 들판 happening for the active chapter quests. */
+function questHit(e: FieldEvent): void {
+  chapterOut(questEvent(game.save, e))
+  paintContracts()
+}
+
+function queueClearCard(): void {
+  clearPending = true
+  window.setTimeout(showClearCard, 1200)
+}
+
+function showClearCard(): void {
+  const c = chaptersOf(game.save)
+  if (!clearPending || !c.card) return
+  if (mode !== 'play' || run || travelling || talk.open || menuUp()) {
+    window.setTimeout(showClearCard, 800)
+    return
+  }
+  clearPending = false
+  const n = c.card
+  c.card = 0
+  game.persist(store)
+  mode = 'menu'
+  releaseLook()
+  chime('contract')
+  levelUpFx()
+  void chapterUI.clearCard(n).then(() => {
+    mode = 'play'
+    paintContracts()
+  })
+}
+
+/** Existing players: offer the skip once. */
+function offerSkip(): void {
+  const c = chaptersOf(game.save)
+  if (!c.offerSkip || c.guide.done) return
+  if (mode !== 'play' || talk.open || menuUp() || run) {
+    window.setTimeout(offerSkip, 800)
+    return
+  }
+  mode = 'menu'
+  releaseLook()
+  void chapterUI.skipCard().then((skip) => {
+    if (skip) {
+      skipGuide(game.save)
+      toast('가이드를 건너뛰었어. 게시판에서 챕터 2 퀘스트를 받아 봐!', 'quest')
+    } else {
+      keepGuide(game.save)
+      const step = guideStep(game.save)
+      if (step) chapterUI.say(step.say.who, step.say.text)
+    }
+    game.persist(store)
+    paintContracts()
+    mode = 'play'
+  })
+}
+
+/** Watch for the guide's body steps (walk, fire, dash, gear) every play frame. */
+let guideLast: { x: number; z: number } | null = null
+let guideFired = 0
+let guideDashing = false
+let guideGear = ''
+function chapterTick(): void {
+  const step = mode === 'play' ? guideStep(game.save) : null
+  chapterUI.paint(game.save, stage.touch, !!step && !travelling)
+  if (!step) return
+  const p = hero.object.position
+  if (step.id === 'move' && guideLast) {
+    const d = Math.hypot(p.x - guideLast.x, p.z - guideLast.z)
+    if (d > 0.01 && d < 2) guideTally += d
+    if (guideTally >= 1) {
+      guideHit({ type: 'move', amount: Math.floor(guideTally) })
+      guideTally -= Math.floor(guideTally)
+    }
+  }
+  guideLast = { x: p.x, z: p.z }
+  if (shooter.fired < guideFired) guideFired = shooter.fired
+  if (shooter.fired > guideFired) {
+    if (step.id === 'shoot') guideHit({ type: 'shoot', amount: shooter.fired - guideFired })
+    guideFired = shooter.fired
+  }
+  if (hero.dashing && !guideDashing) guideHit({ type: 'dash' })
+  guideDashing = hero.dashing
+  const gear = JSON.stringify(game.save.equipment)
+  if (step.id === 'equip' && guideGear && gear !== guideGear) guideHit({ type: 'equip' })
+  guideGear = gear
+}
+let guideTally = 0
+
+/** Through the portal to the 몽실 들판 (챕터 2 quest hunting). */
+function enterField(): void {
+  if (run || travelling) return
+  if (!chapter2Open(game.save)) {
+    toast('가이드 챕터를 마치면 열리는 들판이야.', 'info')
+    return
+  }
+  travelling = true
+  audio.sfx('windup', 0.7)
+  const trip = Delve.field(game.save, fieldNeeds(game.save))
+  void loadDungeon().then((mod) => fadeThrough(() => {
+    talk.close()
+    combat.setRoster([])
+    combat.places = []
+    landmarks.group.visible = false
+    const theme = mod.themeFor(1)
+    // Open sky: the fog sits far back so the packs read across the field.
+    stage.setWorld('sewer', { ...mod.themeFog(1), near: 14, far: 62 })
+    setMood({ fog: theme.fog, sky: theme.sky, clear: theme.fog })
+    zonePlaces = []
+    delve = trip
+    delveUnlocked = -1
+    hero.hp = hero.maxHp
+    game.persist(store)
+    buildFloor(mod, trip.plan)
+    document.body.classList.add('sewer', 'field')
+    showHint()
+  }))
+    .catch(() => toast('들판으로 가는 길을 불러오지 못했어. 잠시 뒤 다시 해 줘.', 'info'))
+    .finally(() => {
+      travelling = false
+    })
+}
+
 const candyBtn = document.getElementById('candy')
 const candyCount = document.getElementById('candy-count')
 function paintCandy(): void {
@@ -501,6 +673,7 @@ function eatCandyNow(): void {
     return
   }
   hero.hp = Math.min(hero.maxHp, hero.hp + r.heal)
+  guideHit({ type: 'candy' })
   const at = hero.object.position.clone().setY(1.5)
   float(`+${r.heal}`, at, '#ffb8d6')
   vfx.burst(at, 0xff9fd2, { count: 12, speed: 1.6, up: 1.8, life: 0.6, size: 0.14, gravity: -0.5, drag: 1.6 })
@@ -570,7 +743,10 @@ function handleKeys(): void {
   for (let slot = consumeSkill(); slot >= 0; slot = consumeSkill()) {
     if (talk.open || travelling || menuUp()) continue
     const id = ACTIVES[slot]
-    if (id && skills.use(id, skillWorld())) chime('skill')
+    if (id && skills.use(id, skillWorld())) {
+      chime('skill')
+      guideHit({ type: 'skill' })
+    }
   }
 }
 
@@ -619,10 +795,21 @@ document.getElementById('fps-toggle')?.addEventListener('click', () => {
   fpsEl?.classList.toggle('hidden', !showFps)
 })
 document.getElementById('retry')?.addEventListener('click', () => restart())
+document.getElementById('guide-skip')?.addEventListener('click', () => {
+  showSettings(false)
+  if (mode === 'title' || chaptersOf(game.save).guide.done) {
+    toast('가이드 챕터는 이미 끝났어.', 'info')
+    return
+  }
+  skipGuide(game.save)
+  game.persist(store)
+  paintContracts()
+  toast('가이드를 건너뛰었어. 게시판에서 챕터 2 퀘스트를 받아 봐!', 'quest')
+})
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, get lastPickup() { return lastPickup } } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup } } })
 
 void bootGame()
 
@@ -652,6 +839,7 @@ async function bootGame(): Promise<void> {
     const zone = game.zone
     showResult(game.kill(foe.kind, foe.tags))
     giveXp(townKillXp(Boolean(foe.elite)) * (foe.kind === 'bloom' ? 10 : 1))
+    guideHit({ type: 'kill' })
     skills.onKill(foe.object.position.x, foe.object.position.z, townSkillWorld)
     for (const loot of killLoot(zone, foe.tags, foe.elite, Math.random())) combat.dropLoot(foe.object.position, loot)
     if (zone === 'meadow' && foe.tags.includes('tutorial')) toast('서쪽 별문이 반짝인다. 마을로 가 보자!', 'quest')
@@ -704,6 +892,17 @@ function beginPlay(): void {
   showHint()
   enterZone(game.zone, game.zone === 'meadow' || game.zone === 'village' ? PLAZA : PORTAL_ARRIVAL)
   if (!game.save.flags.metMochi) window.setTimeout(() => talk.start('mochi_meet'), 700)
+  const ch = chaptersOf(game.save)
+  guideLast = null
+  guideFired = shooter.fired
+  guideGear = JSON.stringify(game.save.equipment)
+  if (ch.offerSkip && !ch.guide.done) window.setTimeout(offerSkip, 900)
+  else if (ch.card) queueClearCard()
+  else {
+    const step = guideStep(game.save)
+    if (step) window.setTimeout(() => chapterUI.say(step.say.who, step.say.text), game.save.flags.metMochi ? 900 : 400)
+  }
+  paintContracts()
 }
 
 /** Lay out one zone on the island: its foes, pickups, standing landmarks, light and name. */
@@ -771,6 +970,7 @@ function enterSewer(depth = 1, floor = 1, seed?: number): void {
     buildFloor(mod, seed === undefined ? plan : { ...plan, seed })
     document.body.classList.add('sewer')
     showHint()
+    guideHit({ type: 'sewer' })
   }))
     .catch(() => toast('하수도로 가는 길을 불러오지 못했어. 잠시 뒤 다시 해 줘.', 'info'))
     .finally(() => {
@@ -780,6 +980,7 @@ function enterSewer(depth = 1, floor = 1, seed?: number): void {
 
 /** One floor of the trip: a fresh DungeonRun wired to the delve. */
 function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan): void {
+  const field = plan.objective === 'field'
   run = new mod.DungeonRun(
     {
       scene: stage.scene,
@@ -791,11 +992,18 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
       steps: footsteps,
       leave: (why) => leaveSewer(why),
       stairs: () => nextFloor(),
-      kill: (elite) => {
+      kill: (elite, kind) => {
         delve?.kill(elite)
         giveXp(killXp(plan.depth, elite))
-        contractHit({ type: 'kill', depth: plan.depth, elite })
+        if (field) questHit({ type: 'kill', kind, elite })
+        else contractHit({ type: 'kill', depth: plan.depth, elite })
+        guideHit({ type: 'kill' })
       },
+      extraDrops: () => (field && fieldNeeds(game.save).fluff && Math.random() < 0.4 ? [{ kind: 'material', matId: FLUFF, amount: 1 }] : []),
+      named: (ev) => {
+        if (ev === 'down') questHit({ type: 'named' })
+      },
+      recalled: () => guideHit({ type: 'recall' }),
       nestDown: () => {
         giveXp(nestXp(plan.depth))
         contractHit({ type: 'nest', depth: plan.depth })
@@ -816,10 +1024,18 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
       pickup: (drop) => {
         const r = delve ? delve.pickup(game.save, drop) : { heal: 0, text: '' }
         if (drop.kind === 'item' && drop.item) lootPing(drop.item)
+        if (drop.kind === 'material' && drop.matId === FLUFF) questHit({ type: 'collect', amount: drop.amount })
         return r
       },
       bossDown: () => {
         if (!delve) return
+        if (field) {
+          giveXp(bossXp(2))
+          questHit({ type: 'boss' })
+          game.persist(store)
+          return
+        }
+        guideHit({ type: 'boss', depth: plan.depth })
         delveUnlocked = delve.bossCleared(game.save)
         giveXp(bossXp(plan.depth))
         contractHit({ type: 'boss', depth: plan.depth })
@@ -933,7 +1149,7 @@ function leaveSewer(why: DelveEnd = 'recall'): void {
   void fadeThrough(() => {
     run?.dispose()
     run = null
-    document.body.classList.remove('sewer')
+    document.body.classList.remove('sewer', 'field')
     landmarks.group.visible = true
     stage.setWorld('island')
     armTown()
@@ -948,6 +1164,8 @@ function leaveSewer(why: DelveEnd = 'recall'): void {
     audio.sfx(sum.end === 'down' ? 'ui' : 'quest')
     showSummary(sum, () => {
       mode = 'play'
+      paintContracts()
+      if (chaptersOf(game.save).card) queueClearCard()
     })
   })
 }
@@ -997,6 +1215,7 @@ function talkDone(actions: Action[], choice: TalkChoice | null, id: string | Tal
   const dive = choice?.go?.match(/^sewer:(\d+):(\d+)$/)
   if (dive) enterSewer(Number(dive[1]), Number(dive[2]))
   else if (choice?.go === 'sewer') enterSewer()
+  else if (choice?.go === 'field') enterField()
   else if (choice?.go) travel(choice.go as ZoneId)
   if (id === 'luna_bloom_done' && game.finished && !game.save.flags.ending) {
     game.save.flags.ending = true
@@ -1016,6 +1235,7 @@ function gateTalk(): TalkDef {
     choices: [
       ...dests.map((d) => ({ text: d.label, go: d.to })),
       ...(game.zone === 'village' ? portalChoices(game.save).map((c) => ({ text: c.label, go: `sewer:${c.depth}:${c.floor}` })) : []),
+      ...(game.zone === 'village' && chapter2Open(game.save) ? [{ text: '챕터 2 · 몽실 들판 (퀘스트 사냥)', go: 'field' }] : []),
       { text: '그만두기' },
     ],
   }
@@ -1036,6 +1256,7 @@ function frame(): void {
     return
   }
   game.save.playSeconds += raw
+  chapterTick()
   if (run) {
     sewerFrame(dt, raw)
     return

@@ -1,0 +1,203 @@
+/**
+ * 몽실 들판 (챕터 2): one big open dream field instead of a maze. A few pillar clumps and
+ * cloud hedges break the sight lines; packs stand around the field asleep, wake when she comes
+ * close, and keep coming back (a new pack walks in whenever the field thins out). Pure, no
+ * three.js — run.ts draws it, tests drive it headless.
+ */
+import { Horde, type HordeFoe, type HordeKind } from './horde'
+import { TILE, Tile, rng, tileCentre, type Maze, type Rect } from './maze'
+
+export const FIELD = {
+  /** Field size in tiles (odd). */
+  size: 35,
+  /** Live foes the field keeps topped up to (desktop, mobile). */
+  alive: [18, 13] as const,
+  /** Foes per pack. */
+  pack: [3, 5] as const,
+  /** New packs walk in this far from her (m). */
+  near: 15,
+  far: 34,
+  /** Seconds between top-ups. */
+  every: 2.4,
+  /** Share of packs led by an elite. */
+  eliteShare: 0.12,
+  /** Sleeping packs farther than this (m) are recycled into fresh ones nearer her. */
+  recycle: 52,
+  /** Wake range and leash (m). */
+  aggro: 14,
+  leash: 22,
+  leashTime: 6,
+  chaseCap: 10,
+  /** Foe hp on the field, on top of DIFFICULTY.horde.hp × the plan scale. */
+  hp: 1.3,
+  /** Safe radius round the arrival portal (tiles). */
+  safe: 5,
+} as const
+
+/** An open field: border walls, pillar clumps and hedges, a start pocket and a boss ring. */
+export function fieldMaze(seed: number, size: number = FIELD.size): Maze {
+  const rand = rng(seed)
+  const w = size % 2 ? size : size + 1
+  const h = w
+  const tiles = new Uint8Array(w * h)
+  for (let y = 1; y < h - 1; y += 1) for (let x = 1; x < w - 1; x += 1) tiles[y * w + x] = Tile.Chamber
+  const startRoom: Rect = { x: 2, y: Math.floor(h / 2) - 1, w: 3, h: 3 }
+  const bossRoom: Rect = { x: w - 10, y: Math.floor(h / 2) - 3, w: 7, h: 7 }
+  const near = (x: number, y: number, r: Rect, m: number) => x >= r.x - m && y >= r.y - m && x < r.x + r.w + m && y < r.y + r.h + m
+  // Pillar clumps (2×2 / 1×3) and a few short hedges: cover, never walls of a maze.
+  const clumps = Math.round((w * h) / 70)
+  for (let k = 0; k < clumps; k += 1) {
+    const x = 3 + Math.floor(rand() * (w - 6))
+    const y = 3 + Math.floor(rand() * (h - 6))
+    const long = rand() < 0.35
+    const cw = long ? (rand() < 0.5 ? 3 : 1) : 2
+    const ch = long ? (cw === 3 ? 1 : 3) : 2
+    let ok = true
+    for (let yy = y - 1; yy < y + ch + 1 && ok; yy += 1) for (let xx = x - 1; xx < x + cw + 1; xx += 1) if (near(xx, yy, startRoom, FIELD.safe - 2) || near(xx, yy, bossRoom, 1) || tiles[yy * w + xx] === Tile.Solid) ok = false
+    if (!ok) continue
+    for (let yy = y; yy < y + ch; yy += 1) for (let xx = x; xx < x + cw; xx += 1) tiles[yy * w + xx] = Tile.Solid
+  }
+  for (let y = startRoom.y; y < startRoom.y + startRoom.h; y += 1) for (let x = startRoom.x; x < startRoom.x + startRoom.w; x += 1) tiles[y * w + x] = Tile.Start
+  for (let y = bossRoom.y; y < bossRoom.y + bossRoom.h; y += 1) for (let x = bossRoom.x; x < bossRoom.x + bossRoom.w; x += 1) tiles[y * w + x] = Tile.Boss
+  return { seed, w, h, tiles, start: { x: startRoom.x + 1, y: startRoom.y + 1 }, startRoom, bossRoom, chambers: [], nests: [] }
+}
+
+export type FieldDirectorEvent = { type: 'pack'; size: number; elite: boolean } | { type: 'named-spawn'; foe: HordeFoe } | { type: 'named-down' }
+
+export interface FieldOpts {
+  kinds: HordeKind[]
+  /** Spawn the named elite once (hunt quest on). */
+  named: { kind: HordeKind; name: string; hp: number } | null
+  mobile: boolean
+}
+
+export class FieldDirector {
+  readonly maze: Maze
+  private readonly horde: Horde
+  private readonly rand: () => number
+  private readonly opts: FieldOpts
+  private clock = 0.5
+  private nextPack = 5000
+  /** Packs walked in so far. */
+  packs = 0
+  /** The named elite's foe id (0 = not out yet / down). */
+  namedId = 0
+  namedDown = false
+  /** Open tiles to spawn on (not the start pocket, not the boss ring). */
+  private readonly open: number[] = []
+
+  constructor(maze: Maze, horde: Horde, rand: () => number, opts: FieldOpts) {
+    this.maze = maze
+    this.horde = horde
+    this.rand = rand
+    this.opts = opts
+    horde.aggro = { range: FIELD.aggro, leash: FIELD.leash, leashTime: FIELD.leashTime, cap: FIELD.chaseCap }
+    for (let i = 0; i < maze.w * maze.h; i += 1) if (maze.tiles[i] === Tile.Chamber) this.open.push(i)
+  }
+
+  get target(): number {
+    return FIELD.alive[this.opts.mobile ? 1 : 0]
+  }
+
+  /** A random open tile `near`..`far` m from her, or null. */
+  private spot(px: number, pz: number, near: number = FIELD.near, far: number = FIELD.far): { x: number; z: number } | null {
+    for (let k = 0; k < 40; k += 1) {
+      const i = this.open[Math.floor(this.rand() * this.open.length)]
+      const c = tileCentre(this.maze, i % this.maze.w, Math.floor(i / this.maze.w))
+      const d = Math.hypot(c.x - px, c.z - pz)
+      if (d >= near && d <= far) return c
+    }
+    return null
+  }
+
+  /** One sleeping pack round (x, z). */
+  private pack(x: number, z: number, size: number, elite: boolean): number {
+    const id = this.nextPack++
+    const kinds = this.opts.kinds.length ? this.opts.kinds : (['slime'] as HordeKind[])
+    const a = kinds[Math.floor(this.rand() * kinds.length)]
+    const b = kinds[Math.floor(this.rand() * kinds.length)]
+    let n = 0
+    for (let k = 0; k < size; k += 1) {
+      const ang = (k / size) * Math.PI * 2 + this.rand() * 0.5
+      const r = k === 0 && elite ? 0 : 0.7 + this.rand() * 0.8
+      const f = this.horde.spawn(k % 2 ? b : a, x + Math.cos(ang) * r, z + Math.sin(ang) * r, elite && k === 0)
+      if (!f) break
+      f.pack = id
+      f.mode = 'idle'
+      f.homeX = f.x
+      f.homeZ = f.z
+      f.age = 1
+      f.yaw = this.rand() * Math.PI * 2
+      n += 1
+    }
+    this.packs += 1
+    return n
+  }
+
+  /** Top the field up round her; recycle far sleeping packs; let the named elite out once. */
+  update(dt: number, px: number, pz: number, alive: boolean): FieldDirectorEvent[] {
+    const out: FieldDirectorEvent[] = []
+    if (!alive) return out
+    this.clock -= dt
+    if (this.clock > 0) return out
+    this.clock = FIELD.every
+    // Far sleepers walk off and come back nearer (the field never empties where she is).
+    for (let i = this.horde.foes.length - 1; i >= 0; i -= 1) {
+      const f = this.horde.foes[i]
+      if (f.dying > 0 || f.mode === 'chase' || f.id === this.namedId) continue
+      if (Math.hypot(f.x - px, f.z - pz) > FIELD.recycle) this.horde.foes.splice(i, 1)
+    }
+    if (this.opts.named && !this.namedId && !this.namedDown) {
+      const at = this.spot(px, pz, 24, 60)
+      if (at) {
+        const f = this.horde.spawn(this.opts.named.kind, at.x, at.z, true)
+        if (f) {
+          f.maxHp = Math.round(f.maxHp * this.opts.named.hp)
+          f.hp = f.maxHp
+          f.radius *= 1.25
+          f.pack = this.nextPack++
+          f.mode = 'idle'
+          f.homeX = f.x
+          f.homeZ = f.z
+          f.age = 1
+          this.namedId = f.id
+          out.push({ type: 'named-spawn', foe: f })
+        }
+      }
+    }
+    // The first tick fills the whole field at once (she arrives to a field already full of packs).
+    const rounds = this.packs === 0 ? 8 : 1
+    for (let r = 0; r < rounds; r += 1) this.topUp(px, pz, out)
+    return out
+  }
+
+  private topUp(px: number, pz: number, out: FieldDirectorEvent[]): void {
+    const missing = this.target - this.horde.alive
+    if (missing >= FIELD.pack[0]) {
+      const at = this.spot(px, pz)
+      if (at) {
+        const size = Math.min(missing, FIELD.pack[0] + Math.floor(this.rand() * (FIELD.pack[1] - FIELD.pack[0] + 1)))
+        const elite = this.rand() < FIELD.eliteShare
+        const n = this.pack(at.x, at.z, size, elite)
+        if (n) out.push({ type: 'pack', size: n, elite })
+      }
+    }
+  }
+
+  /** A foe went down: was it the named one? */
+  foeDown(f: HordeFoe): FieldDirectorEvent[] {
+    if (f.id !== this.namedId || this.namedDown) return []
+    this.namedDown = true
+    this.namedId = 0
+    return [{ type: 'named-down' }]
+  }
+
+  /** Where the named elite is (HUD arrow), or null. */
+  named(): HordeFoe | null {
+    if (!this.namedId) return null
+    return this.horde.foes.find((f) => f.id === this.namedId && f.dying <= 0) ?? null
+  }
+}
+
+/** Field width in metres (for the HUD and tests). */
+export const FIELD_METRES = FIELD.size * TILE

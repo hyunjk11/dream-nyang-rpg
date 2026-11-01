@@ -13,7 +13,8 @@ import { itemLines, itemName, itemPower, plusOf, sellValue, upgradeMul } from '.
 import { fillCell, nameTitle } from './itemcell'
 import { buyBack, buyConsumable, buyStock, consumableCount, CONSUMABLES, RESTOCK_COST, restock, sellItem, shopStock, STASH_CAP, stashPut, stashTake, townOf } from '../sim/town'
 import { canPay, changeElement, ELEMENT_COST, elementOf, MAX_PLUS, rerollAffix, rerollAffixCost, rerollChoices, upgradeCost, upgradeGun, type Cost } from '../sim/workshop'
-import { BAG_CAP, type Element, type ItemInstance, type SaveData } from '../sim/types'
+import { CHAPTER2, CHAPTER_TITLE, chapter2Open, chapterProgress, chaptersOf, claimQuest, questRewardText, takeQuest } from '../sim/chapters'
+import { BAG_CAP, type MutationResult, type Element, type ItemInstance, type SaveData } from '../sim/types'
 import { compareEquip } from './inventory'
 
 export type TownPanel = 'shop' | 'workshop' | 'board' | 'stash'
@@ -32,6 +33,10 @@ export interface TownHost {
   openStory(): void
   opened(): void
   closed(): void
+  /** A panel was shown (the guide chapter waits for each one). */
+  viewed?(panel: TownPanel): void
+  /** A chapter quest was turned in (rewards to show; the chapter it cleared, or 0). */
+  chapterClaimed?(result: MutationResult, cleared: number): void
 }
 
 const TITLE: Record<TownPanel, string> = { shop: '포포 상점', workshop: '키키의 총 공방', board: '퀘스트 게시판', stash: '별하의 보관함' }
@@ -146,6 +151,7 @@ export class TownUI {
     else if (this.panel === 'workshop') this.renderWorkshop(save, body)
     else if (this.panel === 'board') this.renderBoard(save, body)
     else this.renderStash(save, body)
+    this.host.viewed?.(this.panel)
   }
 
   // ---- shared bits ----
@@ -389,6 +395,7 @@ export class TownUI {
   private renderBoard(save: SaveData, body: HTMLElement): void {
     const list = el('section', 'town-col town-board')
     body.append(list)
+    this.renderChapter(save, list)
     const board = boardOf(save)
     board.forEach((c, i) => list.append(this.contractCard(save, c, i)))
     const foot = el('div', 'inv-actions')
@@ -398,6 +405,50 @@ export class TownUI {
     }, { id: 'board-story' }))
     foot.append(el('small', 'town-sub', `완료한 의뢰 ${townOf(save).contractsDone}개 · 맡지 않은 의뢰는 하수도에 다녀오면 바뀌어.`))
     list.append(foot)
+  }
+
+  /** 챕터 퀘스트: the story hunts on top of the board (take, track, turn in). */
+  private renderChapter(save: SaveData, list: HTMLElement): void {
+    const c = chaptersOf(save)
+    const box = el('div', 'town-chapter')
+    box.id = 'board-chapter'
+    if (!chapter2Open(save)) {
+      box.append(el('b', '', `챕터 1 · ${CHAPTER_TITLE[1]}`), el('small', '', '가이드를 따라 깊이 1의 악몽 꽃을 쓰러뜨리면 챕터 2 퀘스트가 열려.'))
+      list.append(box)
+      return
+    }
+    const prog = chapterProgress(save)
+    const head = c.cleared.includes(2) ? `챕터 2 · ${CHAPTER_TITLE[2]} 클리어!` : `챕터 2 · ${CHAPTER_TITLE[2]} (${prog.claimed}/${prog.total})`
+    box.append(el('b', 'town-chapter-head', head))
+    box.append(el('small', '', '맡은 퀘스트는 광장 별문의 "몽실 들판"에서 진행돼. 끝나면 여기서 보상!'))
+    const shown = CHAPTER2.filter((d) => c.quests[d.id].status !== 'locked' && c.quests[d.id].status !== 'claimed')
+    if (!shown.length && c.cleared.includes(2)) box.append(el('small', '', '다음 챕터는 준비 중이야. 들판 사냥은 계속할 수 있어.'))
+    for (const d of shown) {
+      const q = c.quests[d.id]
+      const card = el('div', `town-contract chapter s-${q.status}`)
+      card.dataset.id = d.id
+      card.append(el('b', '', d.title), el('small', '', d.text), el('small', '', `보상: ${questRewardText(d)}`))
+      const bar = el('div', 'town-bar')
+      const fill = el('span')
+      fill.style.width = `${Math.round((q.progress / d.goal) * 100)}%`
+      bar.append(fill)
+      card.append(bar, el('small', 'town-prog', `${q.progress}/${d.goal}`))
+      const row = el('div', 'inv-actions')
+      if (q.status === 'offered') row.append(this.button('퀘스트 받기', () => this.run(takeQuest(save, d.id), `퀘스트 "${d.title}" 시작! 별문 → 몽실 들판`, 'take'), { primary: true, id: `chapter-take-${d.id}` }))
+      else if (q.status === 'active') row.append(el('small', 'town-sub', '진행 중 · 몽실 들판에서'))
+      else if (q.status === 'done')
+        row.append(
+          this.button('보상 받기', () => {
+            const r = claimQuest(save, d.id)
+            if (!r.ok) return this.run(r, '', 'claim')
+            this.host.chapterClaimed?.(r.result, r.cleared)
+            this.run(r, `"${d.title}" 완료!`, 'claim')
+          }, { primary: true, id: `chapter-claim-${d.id}` }),
+        )
+      card.append(row)
+      box.append(card)
+    }
+    list.append(box)
   }
 
   private contractCard(save: SaveData, c: Contract, i: number): HTMLElement {
