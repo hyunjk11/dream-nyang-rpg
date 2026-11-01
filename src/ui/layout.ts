@@ -22,6 +22,7 @@ export type Zone = 'tl' | 'tc' | 'tr' | 'bl' | 'br' | 'pocket'
 export const ZONE_OF: Record<string, Zone> = {
   tracker: 'tl',
   delve: 'tl',
+  'guide-chip': 'tl',
   wave: 'tc',
   bossbar: 'tc',
   'zone-banner': 'tc',
@@ -156,6 +157,16 @@ export function squeezeVictim(order: string[], colliding: Set<string>): string |
   return null
 }
 
+/**
+ * Keep-out box around the crosshair (screen centre): no HUD piece may sit here, so aiming is never
+ * covered. Wider/taller on big screens, never smaller than the crosshair's spread plus a margin.
+ */
+export function aimZone(w: number, h: number): Box {
+  const hw = Math.min(150, Math.max(56, w * 0.12))
+  const hh = Math.min(100, Math.max(40, h * 0.1))
+  return { left: w / 2 - hw, right: w / 2 + hw, top: h / 2 - hh, bottom: h / 2 + hh }
+}
+
 /** Pieces that always stay (fixed HUD). */
 const SOLID = ['#ui .top', '#tracker', '#delve', '#wave', '#bossbar', '#guide', '#minimap', '#contract-hud', '#hud-pocket > *', '#stick', '#hotbar > *', '#actions > button', '#hint', '#relock', '#dialog']
 let solidBoxes: Box[] = []
@@ -193,7 +204,9 @@ export function fitHud(): void {
   const pieces = flex()
   for (const el of pieces) el.classList.remove('squeezed')
   const guide = document.getElementById('guide')
-  guide?.classList.remove('tight')
+  guide?.classList.remove('tight', 'cramped')
+  document.body.classList.remove('guide-cramped')
+  const aim = aimZone(window.innerWidth, window.innerHeight)
   const solids = () => {
     const out: { el: Element; r: DOMRect }[] = []
     for (const sel of SOLID) document.querySelectorAll(sel).forEach((el) => {
@@ -203,10 +216,18 @@ export function fitHud(): void {
     return out
   }
   let fixed = solids()
-  if (guide && compactNow) {
+  // The full guide card: tight (no 모찌 line) when it reaches the crosshair or the thumb clusters,
+  // folded back to its chip when even that does not fit.
+  const guideBlocked = () => {
     const g = fixed.find((f) => f.el === guide)
-    if (g && fixed.some((f) => f.el !== guide && f.el.closest('#hud-bl, #hud-br') && boxHit(f.r, g.r))) {
-      guide.classList.add('tight')
+    return !!g && (boxHit(g.r, aim, 0) || fixed.some((f) => f.el !== guide && f.el.closest('#hud-bl, #hud-br') && boxHit(f.r, g.r)))
+  }
+  if (guide && guideBlocked()) {
+    guide.classList.add('tight')
+    fixed = solids()
+    if (guideBlocked()) {
+      guide.classList.add('cramped')
+      document.body.classList.add('guide-cramped')
       fixed = solids()
     }
   }
@@ -221,7 +242,7 @@ export function fitHud(): void {
     const hits = new Set<string>()
     for (let i = 0; i < live.length; i++) {
       const a = live[i]
-      if (fixed.some((f) => boxHit(a.r, f.r))) hits.add(ids.get(a.el) ?? '')
+      if (boxHit(a.r, aim, 0) || fixed.some((f) => boxHit(a.r, f.r))) hits.add(ids.get(a.el) ?? '')
       for (let j = i + 1; j < live.length; j++) {
         // The lower-priority of two colliding flexible pieces loses.
         if (live[j].el.parentElement === a.el.parentElement) continue
@@ -268,5 +289,15 @@ export function hudArena(): { cx: number; cy: number; rx: number; ry: number } {
   }
   const hot = document.getElementById('hotbar')?.getBoundingClientRect()
   if (hot && hot.height > 0 && !compactNow) bottomTop = Math.min(bottomTop, hot.top)
-  return arenaOf({ w, h }, topBottom, bottomTop)
+  return clearOfAim(arenaOf({ w, h }, topBottom, bottomTop), aimZone(w, h))
+}
+
+/** Grow the arrow ellipse until the crosshair keep-out box (plus an arrow) sits fully inside it. */
+export function clearOfAim(a: { cx: number; cy: number; rx: number; ry: number }, aim: Box, pad = 24): { cx: number; cy: number; rx: number; ry: number } {
+  const hw = (aim.right - aim.left) / 2 + pad
+  const hh = (aim.bottom - aim.top) / 2 + pad
+  const rx = Math.max(a.rx, hw * 1.25)
+  const k = 1 - (hw / rx) ** 2
+  const ry = Math.max(a.ry, hh / Math.sqrt(Math.max(0.05, k)))
+  return { cx: a.cx, cy: (aim.top + aim.bottom) / 2, rx, ry }
 }

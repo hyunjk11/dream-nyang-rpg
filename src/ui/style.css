@@ -504,7 +504,15 @@ body.compact #wave { font-size: 12px; padding: 4px 10px; }
 
 /* 챕터: guide prompt (top centre), 별하/모찌 line, skip/clear cards, board section */
 #guide { width: min(480px, 100%); padding: 9px 16px 10px; border-radius: 18px; background: rgba(255, 248, 252, 0.92); color: #4a3358; box-shadow: 0 4px 0 rgba(58, 36, 72, 0.22); display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; pointer-events: none; border: 2px solid #f6b8dc; }
-#guide.hidden { display: none; }
+#guide.hidden, #guide.cramped { display: none !important; }
+#guide { padding-right: 34px; }
+#guide .guide-x { position: absolute; top: 5px; right: 6px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: #fbe3f0; color: #8a4fb0; font: 700 16px/24px sans-serif; cursor: pointer; pointer-events: auto; }
+#guide .guide-x:hover { background: #f6c6e0; }
+/* Folded guide: a small chip under the tracker; tap / J opens the card again. */
+#guide-chip { align-self: flex-start; max-width: min(260px, 100%); padding: 5px 12px; border-radius: 999px; border: 2px solid #f6b8dc; background: rgba(255, 248, 252, 0.9); color: #8a4fb0; font: 400 13px "Jua", sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; pointer-events: auto; box-shadow: 0 3px 0 rgba(58, 36, 72, 0.18); flex: none; }
+#guide-chip:hover { background: #fff; }
+#guide-chip.hidden, #guide-chip.standby { display: none; }
+body.guide-cramped #guide-chip.standby { display: block; }
 #guide.pop { animation: guide-pop 0.45s ease-out; }
 @keyframes guide-pop { 0% { transform: scale(0.86); } 60% { transform: scale(1.05); } 100% { transform: scale(1); } }
 #guide > b { font-family: "Jua", sans-serif; font-weight: 400; color: #8a4fb0; font-size: 16px; }
@@ -558,8 +566,8 @@ body.compact #wave { font-size: 12px; padding: 4px 10px; }
 #hud-br { position: absolute; right: var(--edge-r); bottom: var(--edge-b); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 #hud-pocket { display: flex; gap: 8px; align-items: center; }
 #hud-br #hud-pocket { order: 0; }
-#tracker, #wave { order: 1; } #delve, #bossbar { order: 2; } #zone-banner { order: 3; } #levelup { order: 4; }
-#guide { order: 5; } #note { order: 6; } #toasts { order: 7; }
+#tracker, #wave { order: 1; } #delve, #bossbar { order: 2; } #guide-chip { order: 3; } #guide { order: 3; } #zone-banner { order: 4; } #levelup { order: 5; }
+ #note { order: 6; } #toasts { order: 7; }
 #minimap { order: 1; } #contract-hud { order: 2; }
 #loot-toasts { order: 1; } #hud-bl #hud-pocket { order: 2; } #stick { order: 3; }
 #hotbar { order: 1; } #actions { order: 2; }
@@ -579,7 +587,8 @@ body.compact #wave { font-size: 12px; padding: 4px 10px; }
 body.compact #ui { --tl-w: 230px; --tr-w: 190px; --map: 120px; --btn: 64px; --fire: 82px; --slot: 50px; --stick: 112px; }
 body.compact #hud-top { column-gap: 10px; }
 body.compact #tracker, body.compact #delve { font-size: 12px; padding: 7px 11px; }
-body.compact #guide { padding: 7px 12px 8px; }
+body.compact #guide { padding: 7px 32px 8px 12px; width: min(380px, 100%); }
+body.compact #guide-chip { font-size: 12px; padding: 4px 10px; max-width: min(210px, 100%); }
 body.compact #guide > b { font-size: 14px; }
 body.compact #guide > span, body.compact #guide .guide-line { font-size: 12px; }
 body.compact .actions { gap: 8px; }

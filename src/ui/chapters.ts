@@ -4,6 +4,8 @@
  */
 import { CHAPTER_TITLE, guideHud } from '../sim/chapters'
 import type { SaveData } from '../sim/types'
+import { fitHud } from './layout'
+import { chipText, foldHide, foldPoke, foldStep, foldToggle, foldView, freshFold, type GuideFold, type GuideView } from './guidefold'
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag)
@@ -18,8 +20,14 @@ export class ChapterUI {
   private readonly keys: HTMLElement
   private readonly count: HTMLElement
   private readonly line: HTMLElement
+  private readonly chip: HTMLButtonElement
+  private readonly close: HTMLButtonElement
   private lineTimer = 0
   private last = ''
+  private lastView: GuideView | 'none' | '' = ''
+  private fold: GuideFold = freshFold()
+  private combat = false
+  private active = false
 
   constructor(root: HTMLElement) {
     this.panel = el('div', 'hidden')
@@ -28,28 +36,85 @@ export class ChapterUI {
     this.keys = el('span')
     this.count = el('em')
     this.line = el('p', 'guide-line hidden')
-    this.panel.append(this.head, this.keys, this.count, this.line)
-    root.append(this.panel)
+    this.close = el('button', 'guide-x', '×')
+    this.close.type = 'button'
+    this.close.setAttribute('aria-label', '가이드 숨기기')
+    this.close.dataset.tip = '가이드 숨기기\n다음 단계에서 다시 나와 · J로 다시 보기'
+    this.panel.append(this.head, this.keys, this.count, this.close, this.line)
+    this.chip = el('button', 'hidden')
+    this.chip.id = 'guide-chip'
+    this.chip.type = 'button'
+    this.chip.dataset.tip = '가이드\n눌러서 펼치기 (J)'
+    this.close.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.fold = foldHide(this.fold)
+      this.apply(performance.now())
+    })
+    this.chip.addEventListener('click', () => this.toggle())
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyJ' && !e.repeat && this.active) this.toggle()
+    })
+    root.append(this.panel, this.chip)
   }
 
-  /** Repaint the prompt (cheap when nothing changed). */
-  paint(save: SaveData | null, touch: boolean, show: boolean): void {
+  /** J / chip: open the full card or fold it. */
+  toggle(now = performance.now()): void {
+    if (!this.active) return
+    this.fold = foldToggle(this.fold, now)
+    this.apply(now)
+  }
+
+  /** What the guide shows right now (QA and tests). */
+  view(now = performance.now()): GuideView | 'none' {
+    return this.active ? foldView(this.fold, now) : 'none'
+  }
+
+  /** Dev/QA: force the card open or folded. */
+  force(v: 'full' | 'chip'): void {
+    const now = performance.now()
+    this.fold = { ...this.fold, hidden: false, pending: false, manual: v === 'full', until: v === 'full' ? now + 60_000 : 0 }
+    this.apply(now)
+  }
+
+  /**
+   * Repaint the prompt (cheap when nothing changed). `combat`: foes are on her, so the card stays folded.
+   */
+  paint(save: SaveData | null, touch: boolean, show: boolean, combat = false, now = performance.now()): void {
     const g = save && show ? guideHud(save, touch) : null
+    this.combat = combat
+    this.active = !!g
+    if (g) this.fold = foldStep(this.fold, now, g.head, g.count, combat)
     const text = g ? `${g.head}|${g.keys}|${g.count}` : ''
-    if (text === this.last) return
-    const stepChanged = g && this.last.split('|')[0] !== g.head
-    this.last = text
-    this.panel.classList.toggle('hidden', !g)
-    document.body.classList.toggle('guiding', !!g)
-    if (!g) return
-    this.head.textContent = g.head
-    this.keys.textContent = g.keys
-    this.count.textContent = g.count
-    if (stepChanged) {
-      this.panel.classList.remove('pop')
-      void this.panel.offsetWidth
-      this.panel.classList.add('pop')
+    if (text !== this.last) {
+      const stepChanged = g && this.last.split('|')[0] !== g.head
+      this.last = text
+      document.body.classList.toggle('guiding', !!g)
+      if (g) {
+        this.head.textContent = g.head
+        this.keys.textContent = g.keys
+        this.count.textContent = g.count
+        this.chip.textContent = `📜 ${chipText(g.head, g.count)}`
+        if (stepChanged) {
+          this.panel.classList.remove('pop')
+          void this.panel.offsetWidth
+          this.panel.classList.add('pop')
+        }
+      }
     }
+    this.apply(now)
+  }
+
+  private apply(now: number): void {
+    const v: GuideView | 'none' = this.active ? foldView(this.fold, now) : 'none'
+    if (v === this.lastView) return
+    this.lastView = v
+    this.panel.classList.toggle('hidden', v !== 'full')
+    // The chip waits in the corner while the card is open, for when the layout has no room for the card.
+    this.chip.classList.toggle('hidden', v === 'off' || v === 'none')
+    this.chip.classList.toggle('standby', v === 'full')
+    this.chip.setAttribute('aria-expanded', String(v === 'full'))
+    // Re-fit now, so a card that would reach the crosshair never shows for even a frame.
+    fitHud()
   }
 
   /** A short line from 별하 or 모찌 under the prompt (fades by itself). */
@@ -57,6 +122,8 @@ export class ChapterUI {
     this.line.innerHTML = ''
     this.line.append(el('b', who === '별하' ? 'byeolha' : 'mochi', who), document.createTextNode(` ${text}`))
     this.line.classList.remove('hidden')
+    this.fold = foldPoke(this.fold, performance.now(), this.combat)
+    this.apply(performance.now())
     window.clearTimeout(this.lineTimer)
     this.lineTimer = window.setTimeout(() => this.line.classList.add('hidden'), 5200)
   }
