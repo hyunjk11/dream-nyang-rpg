@@ -9,6 +9,10 @@ interface Num {
   at: Vector3
   life: number
   live: boolean
+  /** Sideways drift (world m/s) and the pop strength (crits punch harder). */
+  vx: number
+  punch: number
+  tilt: number
 }
 
 const NUMS = 28
@@ -41,7 +45,7 @@ export class HudFx {
       el.className = 'dmg'
       el.style.display = 'none'
       hud.append(el)
-      this.nums.push({ el, at: new Vector3(), life: 0, live: false })
+      this.nums.push({ el, at: new Vector3(), life: 0, live: false, vx: 0, punch: 0.7, tilt: 0 })
     }
   }
 
@@ -85,9 +89,12 @@ export class HudFx {
     n.at.copy(at)
     n.at.x += (Math.random() - 0.5) * 0.35
     n.at.y += Math.random() * 0.2
-    n.life = NUM_LIFE
+    n.life = NUM_LIFE * (kind === 'crit' ? 1.25 : 1)
     n.live = true
-    n.el.textContent = String(amount)
+    n.vx = (Math.random() - 0.5) * 1.4
+    n.punch = numberPunch(kind)
+    n.tilt = kind === 'crit' ? (Math.random() - 0.5) * 16 : (Math.random() - 0.5) * 6
+    n.el.textContent = kind === 'crit' ? `${amount}!` : String(amount)
     n.el.className = `dmg ${kind}`
     n.el.style.display = 'block'
   }
@@ -108,15 +115,17 @@ export class HudFx {
         continue
       }
       n.at.y += dt * 1.1
+      n.at.x += n.vx * dt
+      n.vx *= Math.exp(-dt * 4)
       this.tmp.copy(n.at).project(camera)
       if (this.tmp.z > 1) {
         n.el.style.display = 'none'
         continue
       }
-      const t = 1 - n.life / NUM_LIFE
-      const pop = t < 0.15 ? 1 + (1 - t / 0.15) * 0.7 : 1
+      const t = Math.max(0, 1 - n.life / NUM_LIFE)
+      const pop = t < 0.15 ? 1 + (1 - t / 0.15) * n.punch : 1
       n.el.style.display = 'block'
-      n.el.style.transform = `translate(${((this.tmp.x * 0.5 + 0.5) * w).toFixed(1)}px, ${((-this.tmp.y * 0.5 + 0.5) * h).toFixed(1)}px) translate(-50%, -50%) scale(${pop.toFixed(2)})`
+      n.el.style.transform = `translate(${((this.tmp.x * 0.5 + 0.5) * w).toFixed(1)}px, ${((-this.tmp.y * 0.5 + 0.5) * h).toFixed(1)}px) translate(-50%, -50%) scale(${pop.toFixed(2)}) rotate(${n.tilt.toFixed(1)}deg)`
       n.el.style.opacity = String(Math.min(1, n.life / 0.25))
     }
   }
@@ -128,4 +137,9 @@ export class HudFx {
     this.cross?.style.setProperty('--spread', '7px')
     this.cross?.classList.remove('near', 'on')
   }
+}
+
+/** How hard a damage number pops in: crits slam, elite/boss hits thump, chip damage ticks. */
+export function numberPunch(kind: 'n' | 'crit' | 'elite' | 'boss'): number {
+  return kind === 'crit' ? 1.25 : kind === 'elite' || kind === 'boss' ? 0.9 : 0.6
 }

@@ -73,9 +73,14 @@ export function wearMesh(id: string, rarity: Rarity, size: number): { anchor: An
       return { anchor: 'head', mesh: g }
     }
     case 'outfit_hoodie': {
-      // A soft hood folded behind her neck.
-      const hood = add(new TorusGeometry(r * 0.78, r * 0.34, 8, 18, Math.PI), m(0xc7b2ff), 0, -r * 0.1, -r * 0.78)
-      hood.rotation.set(-0.35, 0, Math.PI)
+      // A soft hood folded behind her neck: sits out past her hair (it hid the old one), with a
+      // floppy fold hanging over her back and a front collar so it reads from every side.
+      const hood = add(new TorusGeometry(r * 0.92, r * 0.4, 8, 18, Math.PI), m(0xc7b2ff), 0, -r * 0.05, -r * 1.12)
+      hood.rotation.set(-0.5, 0, Math.PI)
+      const fold = add(new SphereGeometry(r * 0.72, 12, 8), m(0xb9a3f5), 0, -r * 0.62, -r * 1.32)
+      fold.scale.set(1.15, 1.05, 0.42)
+      const collar = add(new TorusGeometry(r * 0.62, r * 0.16, 6, 20, Math.PI), m(0xc7b2ff), 0, -r * 0.32, r * 0.05)
+      collar.rotation.set(Math.PI / 2 + 0.25, 0, 0)
       add(new SphereGeometry(r * 0.12, 8, 6), m(0xffffff), r * 0.26, -r * 0.55, r * 0.42)
       add(new SphereGeometry(r * 0.12, 8, 6), m(0xffffff), -r * 0.26, -r * 0.55, r * 0.42)
       return { anchor: 'neck', mesh: g }

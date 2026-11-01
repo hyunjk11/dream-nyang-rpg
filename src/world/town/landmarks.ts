@@ -19,6 +19,7 @@ import {
   SpriteMaterial,
   SRGBColorSpace,
   TextureLoader,
+  TorusGeometry,
   BoxGeometry,
   ConeGeometry,
   Vector3,
@@ -132,6 +133,33 @@ function popoStall(base: string): Group {
   const sign = new Mesh(new BoxGeometry(0.7, 0.26, 0.04), toon(0xfff4e4, 0xffc070, 0.25))
   sign.position.set(0, 2.32, 0.2)
   group.add(sign)
+  // Twinkly bulbs strung under the awning lip, and a big swirl lollipop on each post.
+  const bulbCols = [0xffe08a, 0xff9fd2, 0x9fe8c8, 0xbfa8ff]
+  for (let i = 0; i < 9; i += 1) {
+    const x = -0.88 + (1.76 * i) / 8
+    const bulb = new Mesh(new SphereGeometry(0.045, 6, 5), toon(0xffffff, bulbCols[i % 4], 1.1))
+    bulb.position.set(x, 1.74 - Math.sin((i / 8) * Math.PI) * 0.12, 0.84)
+    group.add(bulb)
+  }
+  for (const x of [-1.05, 1.05]) {
+    const stick = new Mesh(new CylinderGeometry(0.025, 0.025, 0.5, 6), toon(0xfff4e4))
+    stick.position.set(x, 1.4, 0.62)
+    const pop = new Mesh(new CylinderGeometry(0.22, 0.22, 0.06, 16), toon(0xff9fc6, 0xff6fae, 0.25))
+    pop.rotation.x = Math.PI / 2
+    pop.position.set(x, 1.72, 0.62)
+    const swirl = new Mesh(new TorusGeometry(0.12, 0.03, 5, 14), toon(0xfff4e4))
+    swirl.position.set(x, 1.72, 0.66)
+    group.add(stick, pop, swirl)
+  }
+  // A crate of candy at the counter's foot.
+  const crate = new Mesh(new BoxGeometry(0.5, 0.32, 0.4), wood)
+  crate.position.set(-0.6, 0.16, 0.95)
+  group.add(crate)
+  for (let i = 0; i < 5; i += 1) {
+    const candy = new Mesh(new SphereGeometry(0.07, 6, 5), toon(jarColors[i % 4], jarColors[i % 4], 0.3))
+    candy.position.set(-0.78 + i * 0.09, 0.36, 0.92 + (i % 2) * 0.08)
+    group.add(candy)
+  }
   group.traverse((obj) => {
     if ((obj as Mesh).isMesh) (obj as Mesh).castShadow = true
   })
@@ -163,6 +191,20 @@ function stashChest(): Group {
   latch.position.set(0, 0.42, 0.31)
   latch.name = 'latch'
   group.add(box, lid, band, latch)
+  // Gold corner trims, stubby feet, and a star on the lid so it reads as hers from afar.
+  for (const x of [-0.44, 0.44]) {
+    for (const z of [-0.29, 0.29]) {
+      const trim = new Mesh(new BoxGeometry(0.06, 0.5, 0.06), toon(0xffd66b, 0xffc070, 0.25))
+      trim.position.set(x, 0.25, z)
+      const foot = new Mesh(new SphereGeometry(0.07, 6, 5), toon(0x7a4fb0))
+      foot.position.set(x * 0.9, 0.02, z * 0.9)
+      group.add(trim, foot)
+    }
+  }
+  const star = new Mesh(new ConeGeometry(0.11, 0.04, 5), toon(0xfff2a0, 0xffd66b, 0.8))
+  star.rotation.x = Math.PI / 2 - 0.3
+  star.position.set(0, 0.68, 0.17)
+  group.add(star)
   group.traverse((obj) => {
     if ((obj as Mesh).isMesh) (obj as Mesh).castShadow = true
   })

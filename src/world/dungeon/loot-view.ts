@@ -181,7 +181,11 @@ export class LootView {
       p.mesh.rotation.y = time * 2.4 + i
       p.mesh.visible = p.age < LIFE - 4 || Math.sin(p.age * 18) > 0
       if (p.label) {
-        p.label.position.set(p.x, p.y + 0.62 + (p.label.userData.lift as number), p.z)
+        // Shrink the tag as she walks up to it (the lens is right behind her), full size afar.
+        const k = labelScale(Math.hypot(hx - p.x, hz - p.z))
+        const base = p.label.userData.base as { w: number; h: number }
+        p.label.scale.set(base.w * k, base.h * k, 1)
+        p.label.position.set(p.x, p.y + 0.5 + 0.12 * k + (p.label.userData.lift as number) * k, p.z)
         p.label.visible = p.mesh.visible && !p.pulled
       }
       if (p.beam) {
@@ -298,7 +302,13 @@ function nameLabel(text: string, color: string): Sprite | null {
   const sprite = new Sprite(new SpriteMaterial({ map, transparent: true, depthWrite: false }))
   const h = 0.3
   sprite.scale.set((w / 48) * h, h, 1)
+  sprite.userData.base = { w: (w / 48) * h, h }
   sprite.renderOrder = 5
   sprite.name = text
   return sprite
+}
+
+/** Name-tag size by her distance to the drop: 45% at her feet, full size from 7 m out. */
+export function labelScale(d: number): number {
+  return Math.min(1, Math.max(0.45, 0.45 + (d - 1) * (0.55 / 6)))
 }

@@ -246,6 +246,8 @@ export class Horde {
   onKill: ((f: HordeFoe) => void) | null = null
   /** An elite just enraged (VFX / banner). */
   onRage: ((f: HordeFoe) => void) | null = null
+  /** An elite crouched to charge (sound cue). */
+  onCharge: ((f: HordeFoe) => void) | null = null
   /** Explore floors: aggro rules (null = everyone hunts her, the wave behaviour). */
   aggro: Aggro | null = null
   /** Per-pack flow fields home (built on demand). */
@@ -643,6 +645,7 @@ export class Horde {
     f.chargeX = dx / d
     f.chargeZ = dz / d
     f.chargeWind = e.chargeWind * (f.rage ? 0.8 : 1)
+    this.onCharge?.(f)
     return true
   }
 

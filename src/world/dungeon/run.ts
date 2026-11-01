@@ -1,3 +1,4 @@
+import { themeFor, type DungeonTheme } from './theme'
 import {
   AdditiveBlending,
   SphereGeometry,
@@ -97,6 +98,12 @@ export interface RunHost {
 
 /** Sewer fog: soft lavender haze that hides the far tunnels. */
 export const SEWER_FOG = { color: 0x55407e, near: 4, far: 25 }
+export { themeFor }
+
+/** Fog for a depth's theme (same distances, its own colour). */
+export function themeFog(depth: number): { color: number; near: number; far: number } {
+  return { ...SEWER_FOG, color: themeFor(depth).fog }
+}
 
 /** Boss body is drawn at this multiple of its island size. */
 const BOSS_SCALE = 1.4
@@ -201,6 +208,8 @@ export class DungeonRun {
   private lastWave = 0
   /** Milliseconds the horde simulation + view took last frame (QA perf readout). */
   hordeMs = 0
+  /** This depth's look (palette, fog, props). */
+  readonly theme: DungeonTheme
   /** What skills (bombs, Mochi's rush, sparkle bursts) can hurt down here. */
   readonly skillWorld: SkillWorld
 
@@ -213,10 +222,11 @@ export class DungeonRun {
     // Lay out packs, nests, chests, shrine and the secret before the geometry (it carves).
     this.layout = exploring ? planLayout(this.maze, this.plan, rng(this.plan.seed ^ 0x5bd1e995)) : null
     if (this.layout && !this.layout.needsKey) this.plan = { ...this.plan, key: false }
-    this.sewer = new Sewer(this.maze)
+    this.theme = themeFor(this.plan.depth)
+    this.sewer = new Sewer(this.maze, this.theme)
     host.scene.add(this.sewer.group)
     const s = tileCentre(this.maze, this.maze.start.x, this.maze.start.y)
-    this.decor = new Decor(this.maze, host.lights)
+    this.decor = new Decor(this.maze, host.lights, this.theme)
     this.sewer.group.add(this.decor.group)
     const home = tileCentre(this.maze, this.maze.startRoom.x, this.maze.startRoom.y)
     this.homePortal = new Portal(new Vector3(home.x, 0, home.z), 0x9ad7ff)
@@ -250,6 +260,13 @@ export class DungeonRun {
     this.horde = new Horde(this.maze)
     this.horde.scale = { hp: this.plan.scale.hp, damage: this.plan.scale.damage }
     this.horde.onKill = (f) => this.foeDown(f)
+    this.horde.onRage = (f) => {
+      const at = new Vector3(f.x, 1, f.z)
+      this.host.vfx.ring(at.clone().setY(0.06), 0xff6b7a, 0.4, 3, 0.5)
+      this.host.vfx.burst(at, 0xff7a8a, { count: 14, speed: 3, up: 2.4, life: 0.5, size: 0.2, gravity: 3, drag: 2, additive: true })
+      this.host.sfx('windup', 0.9)
+    }
+    this.horde.onCharge = () => this.host.sfx('windup', 0.6)
     if (this.layout) {
       this.horde.scale.hp *= EXPLORE.hp
       const nestHp = Math.round(DIFFICULTY.delve.nestHp * this.plan.scale.hp)
@@ -551,6 +568,11 @@ export class DungeonRun {
   }
 
   /** True when E does something here (for the hint). */
+  /** Something is hunting her (drives the battle music swell). */
+  get threat(): boolean {
+    return this.horde.chasing > 0 || !!(this.boss && this.boss.awake && this.boss.alive)
+  }
+
   get nearPortal(): boolean {
     return this.portalAt !== null
   }
@@ -646,6 +668,9 @@ export class DungeonRun {
   /** A horde foe went down (any cause): count it, spill its drops, let skills chain. */
   private foeDown(f: HordeFoe): void {
     this.host.kill?.(f.elite)
+    // Dissolve into dream sparkles: a few stars drifting up, tinted by the theme's lamps.
+    const tint = this.theme.lamps[f.id % this.theme.lamps.length]
+    this.host.vfx.burst(new Vector3(f.x, 0.7, f.z), tint, { count: f.elite ? 14 : 6, speed: 1.1, up: 2.2, life: 0.9, size: f.elite ? 0.3 : 0.22, shape: 1, gravity: -1.6, drag: 2.2, spread: 0.5, additive: true })
     if (this.explore) for (const ev of this.explore.foeDown(f)) this.onExplore(ev, f.x, f.z)
     this.loot.spill(this.drops(f.elite, false), f.x, f.z, f.elite ? 1.2 : 0.8)
     this.host.foeDied?.(f.x, f.z)
