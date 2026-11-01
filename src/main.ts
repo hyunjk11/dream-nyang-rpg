@@ -54,6 +54,12 @@ if (!canvas) throw new Error('canvas missing')
 
 const stage = createStage(canvas)
 if (stage.touch) document.body.classList.add('touch')
+/** Touch or a small window: the thumb layout (stick, action buttons, skill row above them). */
+const compactHud = (): void => {
+  document.body.classList.toggle('compact', stage.touch || window.innerWidth <= 900 || window.innerHeight <= 520)
+}
+compactHud()
+window.addEventListener('resize', compactHud)
 installInput(canvas)
 const hero = new Hero()
 const mochi = new Mochi()
@@ -596,6 +602,14 @@ document.getElementById('mute')?.addEventListener('click', () => {
   audio.setMaster(audio.master > 0.01 ? 0 : 0.35)
   if (vol) vol.value = String(Math.round(audio.master * 100))
 })
+const gear = document.getElementById('gear')
+const settings = document.getElementById('settings')
+const showSettings = (on: boolean): void => {
+  settings?.classList.toggle('hidden', !on)
+  gear?.setAttribute('aria-expanded', String(on))
+}
+gear?.addEventListener('click', () => showSettings(settings?.classList.contains('hidden') ?? false))
+canvas.addEventListener('pointerdown', () => showSettings(false))
 document.getElementById('fps-toggle')?.addEventListener('click', () => {
   showFps = !showFps
   fpsEl?.classList.toggle('hidden', !showFps)
@@ -1090,6 +1104,7 @@ function frame(): void {
   // Camera on her shoulder, then the crosshair ray from it, then the gun (same order as the sewer).
   if (combat.shake > 0.02) rig.shake = Math.max(rig.shake, combat.shake * 0.35)
   hero.object.visible = rig.place(dt, heroPos.x, heroPos.y, heroPos.z, townRay)
+  hero.fade(rig.ghost)
   FADE_FOCUS.value.set(heroPos.x, heroPos.y + 1.0, heroPos.z)
   rig.aimFrom(townWorld, dt)
   shooter.update(dt, firing, townWorld)

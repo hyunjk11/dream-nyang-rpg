@@ -403,6 +403,7 @@ export class DungeonRun {
     this.host.steps(dt, p)
     // Camera first, then the crosshair ray from it, then the gun: what you see is what you hit.
     hero.object.visible = this.shooter.rig.place(dt, p.x, p.y, p.z, this.ray)
+    hero.fade(this.shooter.rig.ghost)
     this.shooter.rig.aimFrom(this.world, dt)
     this.shooter.update(dt, pad.fire, this.world)
     const camera = this.host.camera

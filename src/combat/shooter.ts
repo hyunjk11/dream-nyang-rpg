@@ -11,7 +11,7 @@ import { AdditiveBlending, BoxGeometry, Color, InstancedMesh, MeshBasicMaterial,
 import type { Hero } from '../actors/hero'
 import type { Vfx } from '../core/vfx'
 import {
-  ASSIST, TPS, anglesTo, assistPick, createView, kick, look, perPixel, pose, rayCapsule, recover, wishFrom,
+  ASSIST, TPS, anglesTo, assistPick, createView, kick, look, overlapsHer, perPixel, pose, rayCapsule, recover, wishFrom,
   type AimTarget, type RayFn, type TpsView,
 } from '../core/tps'
 import { Gun, hitStopFor, rollDamage, spreadDir } from './gunfeel'
@@ -62,8 +62,11 @@ export class ShoulderRig {
     return wishFrom(axisX, axisY, this.view.yaw)
   }
 
+  /** 0..1: how much she covers the crosshair (her body fades by this). */
+  ghost = 0
+
   /**
-   * Put the camera on her shoulder (locked to her, no follow lag) and apply the per-shot FOV
+   * Put the camera behind her (locked to her, no follow lag) and apply the per-shot FOV
    * punch and lens shake. Returns true when the lens is far enough from her head to draw her.
    */
   place(dt: number, px: number, py: number, pz: number, ray: RayFn | null): boolean {
@@ -84,6 +87,9 @@ export class ShoulderRig {
       c.position.y += (Math.random() - 0.5) * this.shake
     }
     c.updateMatrixWorld()
+    // See-through when she stands in front of the crosshair (looking down past her head).
+    const want = overlapsHer(cam.x, cam.y, cam.z, cam.fx, cam.fy, cam.fz, px, py, pz)
+    this.ghost += (want - this.ghost) * (1 - Math.exp(-dt * 12))
     // Backed hard into a wall the lens would sit in her hair: let her vanish rather than fill the screen.
     return Math.hypot(cam.x - px, cam.y - py - TPS.height, cam.z - pz) > 0.62
   }

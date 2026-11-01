@@ -1,5 +1,6 @@
 /**
- * The one behind-the-right-shoulder camera for the whole game (Hellgate: London style): the
+ * The one chase camera for the whole game: straight behind her and a little above, so she
+ * stands centred just below the crosshair and her shots fly up the middle of the screen. The
  * island town and the dream sewer share it, so turning, moving and aiming feel identical. The
  * mouse turns the view; the crosshair is the screen centre; the boom pulls in when something
  * solid is behind her. Yaw follows the hero convention: forward = (sin yaw, 0, cos yaw).
@@ -7,11 +8,12 @@
 export const TPS = {
   /** Head height the boom hangs from (m); the chibi is 1.45 m. */
   height: 1.38,
-  /** Boom length behind the shoulder point. A little longer than before: less parallax, more room. */
+  /** Boom length behind the pivot above her head. */
   back: 3.0,
-  /** Sideways shoulder offset: enough that she never covers the crosshair, small enough to stay centred. */
-  right: 0.58,
-  up: 0.3,
+  /** Sideways offset: 0 = centred (she used to stand off to the left of a right-shoulder lens). */
+  right: 0,
+  /** Pivot lift above her head: the crosshair ray clears her hair, so she sits under it. */
+  up: 0.62,
   fov: 68,
   /** Pitch limits (rad, + looks down). */
   minPitch: -0.62,
@@ -148,15 +150,18 @@ export function pose(view: TpsView, ray: RayFn | null, px: number, py: number, p
   const hx = px
   const hy = py + TPS.height
   const hz = pz
-  // Two legs, so a wall behind her slides the camera in over the shoulder, never into her head:
-  // first out to the right shoulder (clamped by a side wall), then back along the view.
+  // Two legs, so a wall behind her slides the camera in toward the pivot, never into her head:
+  // first up (and sideways, if an offset is set) to the pivot, clamped by anything in the way,
+  // then back along the view.
   let sx = r.x * TPS.right
   let sz = r.z * TPS.right
-  const sy = TPS.up
-  if (ray) {
-    const side = ray(hx, hy, hz, sx, sy, sz, TPS.right + TPS.margin)
-    const k = Math.max(0, Math.min(1, (side - TPS.margin) / TPS.right))
+  let sy = TPS.up
+  const leg = Math.hypot(sx, sy, sz)
+  if (ray && leg > 1e-6) {
+    const side = ray(hx, hy, hz, sx / leg, sy / leg, sz / leg, leg + TPS.margin)
+    const k = Math.max(0, Math.min(1, (side - TPS.margin) / leg))
     sx *= k
+    sy *= k
     sz *= k
   }
   const ox = hx + sx
@@ -272,4 +277,20 @@ export function anglesTo(ox: number, oy: number, oz: number, x: number, y: numbe
   const dy = y - oy
   const dz = z - oz
   return { yaw: Math.atan2(dx, dz), pitch: -Math.atan2(dy, Math.hypot(dx, dz)) }
+}
+
+/**
+ * How much she is in the way of the crosshair: 1 when the view ray passes through her body
+ * (looking down past her head), 0 when it clears her. Drives the see-through fade.
+ */
+export function overlapsHer(cx: number, cy: number, cz: number, fx: number, fy: number, fz: number, px: number, py: number, pz: number): number {
+  const h = fx * fx + fz * fz
+  if (h < 1e-6) return 1
+  const t = ((px - cx) * fx + (pz - cz) * fz) / h
+  if (t <= 0) return 0
+  const miss = Math.hypot(cx + fx * t - px, cz + fz * t - pz)
+  const y = cy + fy * t - py
+  const top = 1.62
+  if (miss > 0.55 || y < -0.2) return 0
+  return Math.max(0, Math.min(1, (top - y) / 0.25))
 }

@@ -18,6 +18,7 @@
         <span class="tag" id="dust">골드 0</span>
         <span class="tag" id="mats" title="재료: H 도움말에서 쓰임새를 볼 수 있어">꿈가루 0 · 부품 0 · 별조각 0</span>
         <span id="fps">FPS</span>
+        <button id="gear" type="button" title="설정 (소리·음량·감도·FPS)" aria-expanded="false" aria-controls="settings">⚙</button>
       </div>
       <div id="tracker" class="hidden"></div>
       <p id="note" class="hidden"></p>
@@ -43,7 +44,7 @@
         <button id="recall" type="button" title="귀환 주문서 (T)">귀환</button>
         <button id="fire" type="button">공격</button>
       </div>
-      <div class="bottom">
+      <div id="settings" class="settings hidden" role="dialog" aria-label="설정">
         <button id="fps-toggle" type="button">FPS</button>
         <button id="mute" type="button">소리</button>
         <label>음량 <input id="vol" type="range" min="0" max="100" value="35" /></label>
