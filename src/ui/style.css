@@ -463,3 +463,8 @@ body.touch #contract-hud { top: 150px; }
 #help p { font-size: 13px; line-height: 1.45; margin: 0; }
 #help .help-close { margin-top: 12px; float: right; border: 0; border-radius: 999px; padding: 6px 16px; background: #ffd6ea; color: #4a3358; font: inherit; cursor: pointer; }
 body.touch #help .help-cols { grid-template-columns: 1fr; }
+
+/* Difficulty pick on the title card. */
+.diff-pick { display: flex; width: 100%; gap: 6px; justify-content: center; margin-top: 4px; }
+.title-actions .diff-pick button { width: auto; flex: 1 1 0; white-space: nowrap; min-width: 0; padding: 7px 10px; font-size: 14px; opacity: 0.75; background: rgba(30, 24, 60, 0.55); border: 1px solid rgba(255, 255, 255, 0.25); color: #fff; border-radius: 999px; }
+.title-actions .diff-pick button.on { opacity: 1; background: rgba(255, 196, 92, 0.9); color: #2a1a3a; border-color: #ffd98a; font-weight: 700; }

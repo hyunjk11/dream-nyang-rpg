@@ -13,7 +13,7 @@
  *    it, so the town portal offers "이어가기" from that floor (fresh maze, fresh foes). Beating the
  *    boss clears it and unlocks the next depth.
  */
-import { DIFFICULTY } from '../combat/difficulty'
+import { DIFFICULTY, diff } from '../combat/difficulty'
 import { MATERIAL_KO } from '../data/items'
 import { addItem } from './inventory'
 import { itemName, maxRarityFor, rollDrops, sellValue, type Drop } from './loot'
@@ -192,7 +192,7 @@ export interface DelveSummary {
 }
 
 /** Dungeon drop table per foe (scaled by depth). Bosses roll it with boss=true. */
-export const DELVE_TABLE = { gold: [1, 3] as [number, number], gear: 0.03, weapon: 0.014, dust: 0.08, part: 0.02, potion: 0.03 }
+export const DELVE_TABLE = { gold: [1, 3] as [number, number], gear: 0.03, weapon: 0.014, dust: 0.08, part: 0.02, potion: 0.022 }
 
 /** What a single kill leaves on the floor. Potions come out as hearts (healing on touch). */
 /** Item level of drops: depth weighs most, floors nudge it, the boss adds one. */
@@ -204,7 +204,7 @@ export function delveDrops(depth: number, elite: boolean, boss: boolean, rng: ()
   const s = floorScale(depth, 1)
   const table = boss
     ? { gold: [40, 60] as [number, number], gear: 0.98, weapon: 0.6, dust: 1, part: 1, potion: 1 }
-    : { ...DELVE_TABLE, gold: [DELVE_TABLE.gold[0], Math.round(DELVE_TABLE.gold[1] * s.gold)] as [number, number] }
+    : { ...DELVE_TABLE, potion: DELVE_TABLE.potion * diff().potion, gold: [DELVE_TABLE.gold[0], Math.round(DELVE_TABLE.gold[1] * s.gold)] as [number, number] }
   const drops = rollDrops({ table, luck, elite, boss, rng, itemLevel: itemLevelFor(depth, floor, boss), bias: (depth - 1) * 5, cap: maxRarityFor(depth, boss) })
   if (boss) for (const d of drops) if (d.kind === 'gold') d.amount = Math.round(d.amount * s.gold)
   return drops
@@ -219,7 +219,7 @@ export function chestDrops(depth: number, floor: number, tier: ChestTier, rng: (
   const gear = tier === 'small' ? 0.6 : 0.98
   const weapon = tier === 'small' ? 0.18 : tier === 'nest' ? 0.35 : 0.7
   const gold: [number, number] = [Math.round(8 * s.gold), Math.round((tier === 'small' ? 16 : 26) * s.gold)]
-  const table = { gold, gear, weapon, dust: 1, part: tier === 'small' ? 0.4 : 0.8, potion: 0.55 }
+  const table = { gold, gear, weapon, dust: 1, part: tier === 'small' ? 0.4 : 0.8, potion: Math.min(1, (tier === 'small' ? 0.4 : 0.6) * diff().potion) }
   const elite = tier !== 'small'
   const bias = (depth - 1) * 5 + (tier === 'secret' ? 18 : 6)
   return rollDrops({ table, luck, elite, rng, itemLevel: itemLevelFor(depth, floor, false), bias, cap: maxRarityFor(depth, tier === 'secret') })
@@ -314,7 +314,7 @@ export class Delve {
     }
     if (drop.kind === 'potion') {
       this.loot.push({ name: '하트 사탕', rarity: 'potion' })
-      return { heal: 0.25, text: '하트 사탕 · 체력 회복' }
+      return { heal: 0.22, text: '하트 사탕 · 체력 회복' }
     }
     if (drop.kind === 'material' && drop.matId) {
       addMaterial(save, drop.matId, drop.amount, rng)

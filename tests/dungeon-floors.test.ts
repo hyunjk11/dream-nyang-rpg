@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DIFFICULTY } from '../src/combat/difficulty'
 import { BOSS, Boss } from '../src/world/dungeon/boss'
 import { Horde, HORDE } from '../src/world/dungeon/horde'
 import { Tile, generateMaze } from '../src/world/dungeon/maze'
@@ -56,7 +57,7 @@ describe('층별 미로와 연출', () => {
     const fb = b.spawn('slime', 0, 0)!
     expect(fb.hp).toBeGreaterThan(fa.hp)
     expect(fb.damage).toBeGreaterThanOrEqual(fa.damage)
-    expect(fa.hp).toBe(Math.round(HORDE.slime.hp * 0.72))
+    expect(fa.hp).toBe(Math.round(HORDE.slime.hp * DIFFICULTY.horde.hp))
     expect(new Boss(m).maxHp).toBe(BOSS.hp)
     const deep = new Boss(m, floorPlan(3, 4).scale.boss)
     expect(deep.maxHp).toBeGreaterThan(BOSS.hp)

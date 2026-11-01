@@ -8,7 +8,7 @@
  * Crowding: a uniform spatial hash pushes overlapping bodies apart; walls via collideCircle.
  */
 import { ELEMENTS, speedMul, tickElements } from '../../combat/elements'
-import { DIFFICULTY } from '../../combat/difficulty'
+import { DIFFICULTY, diff } from '../../combat/difficulty'
 import { TILE, tileCentre, walkable, worldToTile, type Maze } from './maze'
 import { collideCircle } from './walls'
 import { rayCapsule, type AimTarget } from '../../core/tps'
@@ -116,6 +116,14 @@ export interface HordeFoe {
   lost: number
   /** Countdown to the next sight check (staggered). */
   look: number
+  /** Elites: enraged below DIFFICULTY.elite.rageAt hp (faster, harder hits). */
+  rage: boolean
+  /** Elites' charge: cooldown, crouch (telegraph) left, run left, and its heading. */
+  chargeCd: number
+  chargeWind: number
+  chargeRun: number
+  chargeX: number
+  chargeZ: number
 }
 
 export type FoeMode = 'idle' | 'chase' | 'home'
@@ -236,6 +244,8 @@ export class Horde {
   scale = { hp: 1, damage: 1 }
   /** Every killing blow, whatever dealt it (droplets, bombs, candy). */
   onKill: ((f: HordeFoe) => void) | null = null
+  /** An elite just enraged (VFX / banner). */
+  onRage: ((f: HordeFoe) => void) | null = null
   /** Explore floors: aggro rules (null = everyone hunts her, the wave behaviour). */
   aggro: Aggro | null = null
   /** Per-pack flow fields home (built on demand). */
@@ -305,7 +315,8 @@ export class Horde {
   spawn(kind: HordeKind, x: number, z: number, elite = false, dx = 0, dz = 0): HordeFoe | null {
     if (this.foes.length >= HORDE_CAP) return null
     const s = HORDE[kind]
-    const hp = Math.round(s.hp * DIFFICULTY.horde.hp * this.scale.hp * (elite ? ELITE.hp : 1))
+    const mode = diff()
+    const hp = Math.round(s.hp * DIFFICULTY.horde.hp * mode.foeHp * this.scale.hp * (elite ? ELITE.hp : 1))
     const foe: HordeFoe = {
       id: this.nextId++,
       kind,
@@ -319,7 +330,7 @@ export class Horde {
       maxHp: hp,
       radius: s.radius * (elite ? ELITE.scale : 1),
       speed: s.speed * DIFFICULTY.horde.speed * (elite ? ELITE.speed : 1) * (0.88 + ((this.nextId * 0.618) % 1) * 0.24),
-      damage: Math.max(1, Math.round(s.damage * DIFFICULTY.horde.damage * this.scale.damage * (elite ? ELITE.damage : 1))),
+      damage: Math.max(1, Math.round(s.damage * DIFFICULTY.horde.damage * mode.foeDamage * this.scale.damage * (elite ? ELITE.damage : 1))),
       age: 0,
       dying: 0,
       hurt: 0,
@@ -336,6 +347,12 @@ export class Horde {
       homeZ: z,
       lost: 0,
       look: ((this.nextId * 0.27) % 1) * 0.25,
+      rage: false,
+      chargeCd: DIFFICULTY.elite.chargeEvery * (0.5 + ((this.nextId * 0.73) % 1) * 0.5),
+      chargeWind: 0,
+      chargeRun: 0,
+      chargeX: 0,
+      chargeZ: 0,
     }
     this.foes.push(foe)
     return foe
@@ -374,6 +391,7 @@ export class Horde {
         continue
       }
       if (this.aggro && f.pack >= 0) this.leash(f, step, target, d)
+      if (f.elite && this.charge(f, step, dx, dz, d, target, strike)) continue
       this.steer(f, step, dx, dz, d, target.alive)
       this.melee(f, step, d, target, strike)
     }
@@ -429,6 +447,12 @@ export class Horde {
     if (f.mode !== 'chase' && f.pack >= 0) this.wakePack(f.pack)
     f.mode = 'chase'
     f.lost = 0
+    if (f.elite && !f.rage && f.hp > 0 && f.hp < f.maxHp * DIFFICULTY.elite.rageAt) {
+      f.rage = true
+      f.speed *= DIFFICULTY.elite.rageSpeed
+      f.damage = Math.round(f.damage * DIFFICULTY.elite.rageDamage)
+      this.onRage?.(f)
+    }
     if (f.hp > 0) return false
     f.dying = 1e-4
     this.kills += 1
@@ -577,6 +601,49 @@ export class Horde {
     let turn = face - f.yaw
     turn = Math.atan2(Math.sin(turn), Math.cos(turn))
     f.yaw += turn * Math.min(1, dt * 10)
+  }
+
+  /**
+   * Elites' charge: when she is a few metres off and in sight, crouch (the telegraph: it stops and
+   * shakes), then rush along that line; touching her on the way hits once. True while it runs the
+   * show this frame (steer/melee skipped).
+   */
+  private charge(f: HordeFoe, dt: number, dx: number, dz: number, d: number, target: HordeTarget, strike: (amount: number, x: number, z: number) => void): boolean {
+    const e = DIFFICULTY.elite
+    if (f.chargeRun > 0) {
+      f.chargeRun -= dt
+      const v = f.speed * e.chargeSpeed * speedMul(f)
+      f.vx = f.chargeX * v
+      f.vz = f.chargeZ * v
+      f.x += f.vx * dt
+      f.z += f.vz * dt
+      if (d < f.radius + 0.8 && target.alive) {
+        strike(f.damage, f.x, f.z)
+        f.chargeRun = 0
+        f.cooldown = DIFFICULTY.horde.cooldown
+      }
+      if (f.chargeRun <= 0) f.chargeCd = e.chargeEvery
+      return true
+    }
+    if (f.chargeWind > 0) {
+      f.chargeWind -= dt
+      f.vx *= 0.8
+      f.vz *= 0.8
+      f.yaw = Math.atan2(f.chargeX, f.chargeZ)
+      if (f.chargeWind <= 0) f.chargeRun = e.chargeTime
+      return true
+    }
+    f.chargeCd -= dt
+    if (f.chargeCd > 0 || f.mode !== 'chase' || f.windup > 0 || !target.alive || f.age < SPAWN_TIME) return false
+    if (d < e.chargeMin || d > e.chargeMax) return false
+    if (!this.sees(f.x, f.z, target.x, target.z)) {
+      f.chargeCd = 0.5
+      return false
+    }
+    f.chargeX = dx / d
+    f.chargeZ = dz / d
+    f.chargeWind = e.chargeWind * (f.rage ? 0.8 : 1)
+    return true
   }
 
   private melee(f: HordeFoe, dt: number, d: number, target: HordeTarget, strike: (amount: number, x: number, z: number) => void): void {
