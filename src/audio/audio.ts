@@ -131,6 +131,11 @@ class Bus {
       const g = ctx.createGain()
       g.gain.value = cue.volume * gain
       src.connect(g).connect(bus)
+      // Unhook when done so a long fight does not pile finished nodes onto the bus.
+      src.onended = () => {
+        src.disconnect()
+        g.disconnect()
+      }
       src.start()
     })
   }

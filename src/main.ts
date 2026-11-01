@@ -27,6 +27,8 @@ import { PLAZA, PORTAL_ARRIVAL, destinations, gateLocked, zone3d, type ZoneId } 
 import { Color, Fog, HemisphereLight } from 'three'
 import type { Action, MutationResult } from './sim/types'
 import { Vfx } from './core/vfx'
+import { HitStop } from './core/hitstop'
+import { DETAIL, Quality } from './core/quality'
 import type { DungeonRun } from './world/dungeon/run'
 import { Delve, portalChoices, type DelveEnd, type DelveSummary, type FloorPlan } from './sim/delve'
 import { showSummary } from './ui/summary'
@@ -78,6 +80,19 @@ combat.camera = stage.camera
 const vfx = new Vfx(stage.scene, stage.mobile)
 vfx.resize(window.innerHeight)
 combat.vfx = vfx
+/** World freeze on meaty hits, budgeted so rapid crits can never slow the game down. */
+const hitStop = new HitStop()
+/** Longest real frame the sim accepts (s); longer frames are hitches, not slow motion. */
+const MAX_FRAME = 0.1
+/** Largest single sim step in the dungeon (s); a long frame is split into ≤ 2 of these. */
+const SIM_STEP = 0.05
+const QUALITY_KEY = 'dnr.autoQuality'
+/** Adaptive quality: drops resolution / bloom / shadow refresh / sparks when FPS sags. */
+const quality = new Quality((level) => {
+  stage.setDetail(level)
+  vfx.density = DETAIL[level].particles
+})
+quality.enabled = safeStore()?.getItem(QUALITY_KEY) !== '0'
 combat.sound = (cue, gain) => audio.sfx(cue, gain)
 const landmarks = new Landmarks(stage.scene)
 const talk = new TalkBox(base, (actions, choice, id) => talkDone(actions, choice, id))
@@ -141,7 +156,7 @@ const shooter = new Shooter(
     gun: (cue, gain, pitch) => gunSfx(cue, gain, pitch),
     lowPower: stage.mobile,
     hitStop: (seconds) => {
-      combat.hitStop = Math.max(combat.hitStop, seconds)
+      hitStop.request(seconds)
     },
     heal: (hp) => {
       if (hero.alive) hero.hp = Math.min(hero.maxHp, hero.hp + hp)
@@ -825,6 +840,23 @@ document.getElementById('fps-toggle')?.addEventListener('click', () => {
   showFps = !showFps
   fpsEl?.classList.toggle('hidden', !showFps)
 })
+const qualityBtn = document.getElementById('auto-quality')
+const paintQuality = () => {
+  if (qualityBtn) {
+    qualityBtn.textContent = quality.enabled ? '자동 품질: 켬' : '자동 품질: 끔'
+    qualityBtn.setAttribute('aria-pressed', String(quality.enabled))
+  }
+}
+paintQuality()
+qualityBtn?.addEventListener('click', () => {
+  quality.setEnabled(!quality.enabled)
+  try {
+    safeStore()?.setItem(QUALITY_KEY, quality.enabled ? '1' : '0')
+  } catch {
+    /* private mode */
+  }
+  paintQuality()
+})
 const altBtn = document.getElementById('alt-mode')
 const paintAlt = () => {
   if (altBtn) altBtn.textContent = ALT_LABEL[cursor.mode]
@@ -884,7 +916,7 @@ document.getElementById('guide-skip')?.addEventListener('click', () => {
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), get guideView() { return chapterUI.view() } } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), get guideView() { return chapterUI.view() } } })
 
 void bootGame()
 
@@ -1124,7 +1156,7 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
       banner: (title, sub) => zoneBanner(title, sub),
       gun: (cue, gain, pitch) => gunSfx(cue, gain, pitch),
       hitStop: (seconds) => {
-        combat.hitStop = Math.max(combat.hitStop, seconds)
+        hitStop.request(seconds)
       },
       shooter,
     },
@@ -1318,13 +1350,18 @@ function gateTalk(): TalkDef {
 
 function frame(): void {
   requestAnimationFrame(frame)
-  const raw = Math.min(0.05, clock.getDelta())
+  // Real time up to 0.1 s per frame (10 FPS) so a slow frame never slows the game itself; the
+  // dungeon splits long frames into ≤ 1/20 s sim steps.
+  const raw = Math.min(MAX_FRAME, clock.getDelta())
   let dt = raw
   if (import.meta.env.DEV) dt *= view.timeScale
+  // Town foes still write combat.hitStop directly; fold it into the budgeted freeze.
   if (combat.hitStop > 0) {
-    combat.hitStop -= raw
-    dt *= 0.08
+    hitStop.request(combat.hitStop)
+    combat.hitStop = 0
   }
+  dt *= hitStop.step(raw)
+  quality.frame(raw)
   handleKeys()
   relockBtn?.classList.toggle('hidden', !syncCursor(shoulder.on && mode === 'play', stage.touch))
   if (mode !== 'play') {
@@ -1430,8 +1467,15 @@ function sewerFrame(dt: number, raw: number): void {
     stage.render()
     return
   }
-  run.update(dt)
-  skills.update(dt, run.skillWorld)
+  // A slow frame (up to MAX_FRAME) runs as two half steps, so collisions and shots stay exact
+  // without slowing game time.
+  const steps = dt > SIM_STEP ? 2 : 1
+  const step = dt / steps
+  for (let i = 0; i < steps && run; i += 1) {
+    run.update(step)
+    skills.update(step, run.skillWorld)
+  }
+  if (!run) return
   paintHotbar()
   if (delve && hero.alive) delve.seconds += raw
   saveClock += raw
@@ -1466,7 +1510,7 @@ function countFps(raw: number): void {
     fps = Math.round(frames / fpsTime)
     fpsTime = 0
     frames = 0
-    if (fpsEl && showFps) fpsEl.textContent = `${fps} FPS`
+    if (fpsEl && showFps) fpsEl.textContent = quality.level > 0 ? `${fps} FPS · 품질 ${3 - quality.level}` : `${fps} FPS`
   }
 }
 
@@ -1625,7 +1669,7 @@ function tickFloats(dt: number): void {
   for (const item of floats) {
     item.life -= dt
     item.y += dt * 28
-    const projected = item.at.clone()
+    const projected = floatAt.copy(item.at)
     projected.y += item.y * 0.01
     projected.project(stage.camera)
     item.el.style.left = `${(projected.x * 0.5 + 0.5) * width}px`
@@ -1646,8 +1690,12 @@ function float(text: string, at: Vector3, color: string): void {
   el.textContent = text
   el.style.color = color
   layer.append(el)
+  // A crowd of town foes can pop dozens at once; the oldest goes first past the cap.
+  if (floats.length >= FLOAT_CAP) floats.shift()?.el.remove()
   floats.push({ el, life: 0.7, y: 0, at: at.clone() })
 }
+const FLOAT_CAP = 40
+const floatAt = new Vector3()
 
 /** A sewer foe or boss orb landed on her. */
 let gunSound: GunSound | null = null

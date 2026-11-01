@@ -491,7 +491,7 @@ export class Combat {
           foe.bar.group.visible = false
           foe.knock.multiplyScalar(1.6)
           this.shake = Math.max(this.shake, foe.kind === 'bloom' ? 0.3 : 0.16)
-          this.hitStop = Math.max(this.hitStop, foe.kind === 'bloom' ? 0.12 : 0.07)
+          this.hitStop = Math.max(this.hitStop, foe.kind === 'bloom' ? 0.12 : 0.05)
           this.drop(foe.object.position, foe.elite ? spec.dust * 2 : spec.dust)
           this.onKill(foe)
         }

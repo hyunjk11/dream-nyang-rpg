@@ -173,6 +173,10 @@ export class GunSound {
     const g = this.ctx.createGain()
     g.gain.value = LEVEL[cue] * gain
     src.connect(g).connect(this.bus)
+    src.onended = () => {
+      src.disconnect()
+      g.disconnect()
+    }
     src.start(now)
     const end = now + (list[v].duration / src.playbackRate.value)
     for (const old of this.pool.add({ src, gain: g }, now, end)) {
