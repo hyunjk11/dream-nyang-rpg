@@ -163,15 +163,15 @@ describe('난이도 완화 (difficulty.ts 한곳)', () => {
     expect(LIVE_CAP).toBeLessThan(200)
   })
 
-  it('무리는 덜 아프게, 덜 단단하게 스폰된다', () => {
+  it('무리는 덜 아프게, 대신 한 방에 죽지 않게 단단하게 스폰된다', () => {
     const m = generateMaze(7)
     const h = new Horde(m)
     const c = tileCentre(m, m.start.x, m.start.y)
     const f = h.spawn('bug', c.x, c.z)
     expect(f).not.toBeNull()
     expect(f!.damage).toBeLessThan(HORDE.bug.damage)
-    expect(f!.maxHp).toBeLessThan(HORDE.bug.hp)
-    expect(BOSS.hp).toBeLessThan(1400)
+    expect(f!.maxHp).toBeGreaterThan(HORDE.bug.hp)
+    expect(BOSS.hp).toBeGreaterThan(1400)
     expect(BOSS.orbDamage).toBeLessThan(8)
   })
 

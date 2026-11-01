@@ -206,6 +206,9 @@ body.sewer #tracker { display: none; }
 .dmg.boss { color: #ffb0dc; font-size: 22px; }
 .dmg.star { color: #fff09a; font-size: 24px; -webkit-text-stroke: 1px #9a6a10; text-shadow: 0 0 8px rgba(255, 230, 120, 0.9), 0 2px 0 #9a6a10; }
 .dmg.star::before { content: "★"; font-size: 0.7em; margin-right: 1px; }
+.dmg.tally { font-size: 30px; color: #ffffff; padding: 0 10px; border-radius: 14px; background: rgba(90, 30, 120, 0.45); -webkit-text-stroke: 1.5px #7a2a8a; text-shadow: 0 0 12px rgba(255, 150, 220, 0.95), 0 3px 0 #7a2a8a; }
+.dmg.tally small { font-size: 0.55em; color: #ffe27a; margin-left: 3px; }
+.dmg.tally.done { color: #ffe27a; font-size: 36px; }
 .dmg.candy { color: #ffd2ec; font-size: 16px; -webkit-text-stroke: 1px #b0407a; text-shadow: 0 0 6px rgba(255, 170, 220, 0.9), 0 1px 0 #b0407a; }
 #heat { position: absolute; left: 50%; top: calc(50% + 34px); transform: translateX(-50%); width: 56px; height: 5px; border-radius: 999px; background: rgba(36, 22, 58, 0.45); pointer-events: none; opacity: 0; transition: opacity 0.2s; --heat: 0; }
 #heat.on { opacity: 1; }

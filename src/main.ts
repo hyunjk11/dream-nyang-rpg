@@ -186,7 +186,7 @@ const townWorld: ShotWorld = {
       queueMicrotask(() => blast(townSkillWorld.bodies(), x, z, ELEMENTS.sparkleRadius, amount * ELEMENTS.sparkleShare, 0, 0, (n, p, tone) => shooter.hudFx.number(n, p, tone)))
     }
     const tone = hit.foe.kind === 'bloom' ? 'boss' : hit.foe.elite ? 'elite' : 'n'
-    return { t: hit.t, kill, tone, color: 0xffc6e8, floor: hit.foe.object.position.clone().setY(0.02) }
+    return { t: hit.t, kill, tone, color: 0xffc6e8, floor: hit.foe.object.position.clone().setY(0.02), ref: hit.foe }
   },
   normal: (end, d) => {
     if (end.y < 0.1) return { x: 0, y: 1, z: 0 }

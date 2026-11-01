@@ -28,7 +28,8 @@ afterEach(() => {
 describe('난이도 상향 (보통 기본)', () => {
   it('보통은 이전보다 몬스터가 단단하고 아프고 빠르며, 회복은 느리다', () => {
     expect(DIFFICULTY.horde.hp).toBeGreaterThan(0.72)
-    expect(DIFFICULTY.horde.damage).toBeGreaterThan(0.55)
+    // 몬스터가 단단해진 대신(한 방 처치 방지) 한 대 피해는 낮췄다: 위협은 남기되 0.3 이상.
+    expect(DIFFICULTY.horde.damage).toBeGreaterThan(0.3)
     expect(DIFFICULTY.horde.speed).toBeGreaterThan(0.86)
     expect(DIFFICULTY.horde.windup).toBeLessThan(0.48)
     expect(DIFFICULTY.horde.cooldown).toBeLessThan(1.6)

@@ -18,8 +18,10 @@ export const DIFFICULTY = {
   },
   /** Sewer horde (multipliers on HORDE). */
   horde: {
-    hp: 0.78,
-    damage: 0.62,
+    /** Was 0.78 ("monsters die in one shot"): a starter water gun now needs ~6-10 droplets on a regular foe. */
+    hp: 1.3,
+    /** Was 0.62: tougher foes hit a little softer, so a fight lasts longer without being deadlier. */
+    damage: 0.36,
     speed: 0.92,
     /** Longer, easier-to-read melee wind-up (was 0.32 s) and a longer rest between swings (was 1.1 s). */
     windup: 0.44,
@@ -30,7 +32,7 @@ export const DIFFICULTY = {
    * they enrage (faster, harder hits), and every chargeEvery s they crouch for chargeWind s and
    * then charge at chargeSpeed× for chargeTime s when she is chargeMin..chargeMax m away.
    */
-  elite: { hp: 3.5, damage: 1.6, rageAt: 0.5, rageSpeed: 1.3, rageDamage: 1.25, chargeMin: 3.5, chargeMax: 9, chargeWind: 0.55, chargeTime: 0.45, chargeSpeed: 3.2, chargeEvery: 6 },
+  elite: { hp: 6.5, damage: 1.3, rageAt: 0.5, rageSpeed: 1.3, rageDamage: 1.25, chargeMin: 3.5, chargeMax: 9, chargeWind: 0.55, chargeTime: 0.45, chargeSpeed: 3.2, chargeEvery: 6 },
   /** Sewer waves: size = base + step·(n-1) + curve·(n-1)², times the early ease. */
   waves: {
     base: 8,
@@ -50,7 +52,7 @@ export const DIFFICULTY = {
     liveCap: 70,
   },
   /** The sewer boss (multipliers on BOSS). */
-  boss: { hp: 0.95, damage: 0.75, orbSpeed: 0.95, ringCount: 0.85 },
+  boss: { hp: 2, damage: 0.55, orbSpeed: 0.95, ringCount: 0.85 },
   /**
    * The delve: depth (act) → floors 1..3 + a boss floor. Depth 1, floor 1 is exactly the old
    * sewer (all multipliers 1, wave roster from wave 1); everything after creeps up gently.
@@ -72,7 +74,7 @@ export const DIFFICULTY = {
     /** Nest floor: pipes to plug. */
     nests: 3,
     /** Nest pipe hp (×foe hp scale). Roughly five slimes of water. */
-    nestHp: 110,
+    nestHp: 180,
     /** Boss hp / damage growth per depth. */
     bossHpPerDepth: 0.45,
     bossDamagePerDepth: 0.2,
@@ -82,7 +84,7 @@ export const DIFFICULTY = {
     deathGoldLoss: 0.3,
   },
   /** Island town foes (multipliers on FOE_SPECS). */
-  town: { hp: 0.8, damage: 0.6, speed: 0.9, windup: 1.3 },
+  town: { hp: 1.8, damage: 0.45, speed: 0.9, windup: 1.3 },
 } as const
 
 /** Sewer wave size for wave n (1-based). */
