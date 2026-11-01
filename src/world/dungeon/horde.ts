@@ -219,6 +219,11 @@ export interface HordeTarget {
 /** Hard cap: the view's instance buffers are sized from it. */
 export const HORDE_CAP = 220
 
+/** A sewer foe's hp: kind × horde tuning × 쉬움/보통/어려움 × floor scale (× elite). */
+export function hordeHp(kind: HordeKind, scaleHp: number, elite = false, foeHp = diff().foeHp): number {
+  return Math.round(HORDE[kind].hp * DIFFICULTY.horde.hp * foeHp * scaleHp * (elite ? ELITE.hp : 1))
+}
+
 const CELL = 1.2
 
 /** Explore-floor aggro rules (see layout.ts EXPLORE). */
@@ -318,7 +323,7 @@ export class Horde {
     if (this.foes.length >= HORDE_CAP) return null
     const s = HORDE[kind]
     const mode = diff()
-    const hp = Math.round(s.hp * DIFFICULTY.horde.hp * mode.foeHp * this.scale.hp * (elite ? ELITE.hp : 1))
+    const hp = hordeHp(kind, this.scale.hp, elite, mode.foeHp)
     const foe: HordeFoe = {
       id: this.nextId++,
       kind,

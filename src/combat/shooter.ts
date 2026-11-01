@@ -159,6 +159,8 @@ export interface ShotHit {
   color: number
   /** Where the kill splat goes on the floor. */
   floor?: Vector3
+  /** Which foe took it: hits on the same target stack into one running total. */
+  ref?: object
 }
 
 /** Element procs riding on one droplet (rolled by the shooter from gear chances). */
@@ -399,7 +401,9 @@ export class Shooter {
       this.juice.cloud(end, roll.amount)
     }
     this.hudFx.hit(hit.kill, roll.crit)
-    this.hudFx.number(pierced ? Math.round(roll.amount * 0.8) : roll.amount, end, roll.crit ? 'crit' : hit.tone)
+    const shown = pierced ? Math.round(roll.amount * 0.8) : roll.amount
+    this.hudFx.number(shown, end, roll.crit ? 'crit' : hit.tone)
+    this.hudFx.tally(shown, end, hit.ref ?? null, hit.kill)
     if (hit.kill && hit.tone !== 'boss') {
       this.host.vfx.poof(end, hit.tone === 'elite' ? 0xffe08a : 0xffb7e0, hit.tone === 'elite' ? 1.6 : 1)
       if (hit.floor) this.gunFx.splat(hit.floor, { x: 0, y: 1, z: 0 }, hit.tone === 'elite' ? 0xffd27a : 0xff9fd2, hit.tone === 'elite' ? 1.5 : 0.9)

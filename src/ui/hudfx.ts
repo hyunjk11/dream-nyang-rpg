@@ -18,6 +18,45 @@ interface Num {
 const NUMS = 28
 const NUM_LIFE = 0.62
 
+/**
+ * Running damage tally: droplets on the same foe within TALLY.gap s of each other stack into one
+ * big total floating over it (with a hit count), so holding the trigger reads as 두두두두두 → 1,284!
+ */
+export const TALLY = { gap: 0.7, minHits: 3, hold: 0.9 }
+
+export interface TallyState {
+  ref: object | null
+  total: number
+  hits: number
+  /** Seconds since the last hit landed. */
+  idle: number
+  /** The target went down: the total is final (shown a moment longer, then cleared). */
+  done: boolean
+}
+
+export function newTally(): TallyState {
+  return { ref: null, total: 0, hits: 0, idle: Infinity, done: false }
+}
+
+/** Fold one hit into the tally: a new target, a finished streak or a long pause starts over. */
+export function addTally(s: TallyState, amount: number, ref: object | null, kill: boolean): TallyState {
+  if (s.done || s.idle > TALLY.gap || ref !== s.ref || ref === null) {
+    s.ref = ref
+    s.total = 0
+    s.hits = 0
+  }
+  s.total += amount
+  s.hits += 1
+  s.idle = 0
+  s.done = kill
+  return s
+}
+
+/** Whether the tally is worth showing right now (a lone droplet is not a streak). */
+export function tallyVisible(s: TallyState): boolean {
+  return s.hits >= TALLY.minHits && s.idle <= (s.done ? TALLY.hold : TALLY.gap)
+}
+
 export class HudFx {
   private readonly cross: HTMLElement | null
   private readonly marker: HTMLElement | null = null
@@ -29,6 +68,10 @@ export class HudFx {
   private lastGap = -1
   private lastHeat = ''
   private lastTarget = -1
+  private readonly tallyEl: HTMLElement | null = null
+  readonly streak: TallyState = newTally()
+  private readonly tallyAt = new Vector3()
+  private tallyText = ''
 
   constructor(hud: HTMLElement | null) {
     this.cross = (hud?.querySelector('#crosshair') as HTMLElement | null) ?? null
@@ -39,7 +82,10 @@ export class HudFx {
     this.heat = document.createElement('div')
     this.heat.id = 'heat'
     this.heat.innerHTML = '<b></b><span>과열!</span>'
-    hud.append(this.marker, this.heat)
+    this.tallyEl = document.createElement('div')
+    this.tallyEl.className = 'dmg tally'
+    this.tallyEl.style.display = 'none'
+    hud.append(this.marker, this.heat, this.tallyEl)
     for (let i = 0; i < NUMS; i += 1) {
       const el = document.createElement('div')
       el.className = 'dmg'
@@ -99,6 +145,39 @@ export class HudFx {
     n.el.style.display = 'block'
   }
 
+  /** Stack a landed hit into the running total over its target. */
+  tally(amount: number, at: Vector3, ref: object | null, kill: boolean): void {
+    addTally(this.streak, amount, ref, kill)
+    this.tallyAt.copy(at)
+    this.tallyAt.y += 1.6
+  }
+
+  private drawTally(dt: number, camera: Camera, w: number, h: number): void {
+    const s = this.streak
+    s.idle += dt
+    const el = this.tallyEl
+    if (!el) return
+    if (!tallyVisible(s)) {
+      if (el.style.display !== 'none') el.style.display = 'none'
+      return
+    }
+    this.tmp.copy(this.tallyAt).project(camera)
+    if (this.tmp.z > 1) {
+      el.style.display = 'none'
+      return
+    }
+    const text = `${s.total.toLocaleString('ko-KR')}${s.done ? '!' : ''} <small>×${s.hits}</small>`
+    if (text !== this.tallyText) {
+      this.tallyText = text
+      el.innerHTML = text
+      el.classList.toggle('done', s.done)
+    }
+    const pop = s.idle < 0.08 ? 1.12 - s.idle : s.done ? 1.25 : 1
+    el.style.display = 'block'
+    el.style.opacity = String(s.done ? Math.min(1, (TALLY.hold - s.idle) / 0.3) : 1)
+    el.style.transform = `translate(${((this.tmp.x * 0.5 + 0.5) * w).toFixed(1)}px, ${((-this.tmp.y * 0.5 + 0.5) * h).toFixed(1)}px) translate(-50%, -50%) scale(${pop.toFixed(2)})`
+  }
+
   update(dt: number, camera: Camera): void {
     if (this.markT > 0) {
       this.markT -= dt
@@ -106,6 +185,7 @@ export class HudFx {
     }
     const w = window.innerWidth
     const h = window.innerHeight
+    this.drawTally(dt, camera, w, h)
     for (const n of this.nums) {
       if (!n.live) continue
       n.life -= dt
@@ -133,6 +213,7 @@ export class HudFx {
   dispose(): void {
     this.marker?.remove()
     this.heat?.remove()
+    this.tallyEl?.remove()
     for (const n of this.nums) n.el.remove()
     this.cross?.style.setProperty('--spread', '7px')
     this.cross?.classList.remove('near', 'on')

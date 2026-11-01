@@ -761,7 +761,7 @@ export class DungeonRun {
       const kill = this.boss.damage(amount)
       if (kill) this.bossDown()
       else this.procs(tip.clone().addScaledVector(dir, bossT), amount, procs ? { sparkle: procs.sparkle } : undefined, null)
-      return { t: bossT, kill, tone: 'boss' as const, color: 0xff9fd2 }
+      return { t: bossT, kill, tone: 'boss' as const, color: 0xff9fd2, ref: this.boss }
     }
     const nest = this.nests.length ? this.nestRay(tip, dir, reach) : null
     if (nest && (!foe || nest.t < foe.t)) {
@@ -769,13 +769,13 @@ export class DungeonRun {
       nest.n.hurt = 1
       const kill = nest.n.hp <= 0
       if (kill) this.plugNest(nest.n)
-      return { t: nest.t, kill, tone: 'elite' as const, color: 0xd9a6ff }
+      return { t: nest.t, kill, tone: 'elite' as const, color: 0xd9a6ff, ref: nest.n }
     }
     if (!foe) return null
     const f = foe.foe
     const kill = this.horde.damage(f, amount, dir.x, dir.z)
     this.procs(tip.clone().addScaledVector(dir, foe.t), amount, procs, kill ? null : f)
-    return { t: foe.t, kill, tone: f.elite ? ('elite' as const) : ('n' as const), color: 0xffc6e8, floor: new Vector3(f.x, 0, f.z) }
+    return { t: foe.t, kill, tone: f.elite ? ('elite' as const) : ('n' as const), color: 0xffc6e8, floor: new Vector3(f.x, 0, f.z), ref: f }
   }
 
   /** Waves out of the nest pipes, the crowd, and the boss once she reaches the chamber. */
