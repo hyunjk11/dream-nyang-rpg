@@ -1,3 +1,4 @@
+import { DETAIL } from './quality'
 import {
   ACESFilmicToneMapping,
   DirectionalLight,
@@ -33,6 +34,8 @@ export interface Stage {
   touch: boolean
   /** Island hub or the sewer dungeon: the island, sky stars, sun shadows and fog swap out. */
   setWorld: (world: 'island' | 'sewer', fog?: { color: number; near: number; far: number }) => void
+  /** Adaptive quality level (see core/quality.ts DETAIL). */
+  setDetail: (level: number) => void
   /** Draw calls in the last rendered frame (QA). */
   readonly drawCalls: number
 }
@@ -91,6 +94,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   const camera = new PerspectiveCamera(TPS.fov, window.innerWidth / window.innerHeight, 0.1, 80)
 
   let composer: EffectComposer | null = null
+  let bloomPass: UnrealBloomPass | null = null
   if (!mobile) {
     // HalfFloat + MSAA target: the composer path used to drop antialiasing (jaggy outlines) and
     // had no OutputPass, so tone mapping and sRGB conversion never ran on desktop.
@@ -104,7 +108,11 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     const bloom = new UnrealBloomPass(new Vector2(window.innerWidth, window.innerHeight), LOOK.bloom.strength, LOOK.bloom.radius, LOOK.bloom.threshold)
     composer.addPass(bloom)
     composer.addPass(new OutputPass())
+    bloomPass = bloom
   }
+  const basePr = renderer.getPixelRatio()
+  let shadowEvery = 1
+  let frameNo = 0
 
   const resize = () => {
     const width = window.innerWidth
@@ -134,6 +142,20 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
         fog.far = look.far
       }
     },
+    setDetail: (level) => {
+      const d = DETAIL[Math.max(0, Math.min(DETAIL.length - 1, level))]
+      const pr = Math.max(0.5, basePr * d.pr)
+      if (Math.abs(renderer.getPixelRatio() - pr) > 1e-3) {
+        renderer.setPixelRatio(pr)
+        composer?.setPixelRatio(pr)
+        resize()
+      }
+      if (bloomPass) bloomPass.enabled = d.bloom
+      // Shadows refresh every N frames instead of recompiling materials without them.
+      shadowEvery = d.shadowEvery
+      renderer.shadowMap.autoUpdate = shadowEvery === 1
+      renderer.shadowMap.needsUpdate = true
+    },
     scene,
     camera,
     renderer,
@@ -144,6 +166,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       stars.rotation.y += 0.0004
       island.tick(performance.now() / 1000)
       renderer.info.reset()
+      if (shadowEvery > 1 && frameNo++ % shadowEvery === 0) renderer.shadowMap.needsUpdate = true
       if (composer) composer.render()
       else renderer.render(scene, camera)
       calls = renderer.info.render.calls

@@ -13,6 +13,7 @@ import {
   ShaderMaterial,
   Vector3,
 } from 'three'
+import { SwapPool } from './pool'
 
 /** Pure particle step so tests can hold the motion: drag, gravity, then fade by life. */
 export function stepParticle(p: { x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number; life: number; drag: number; gravity: number }, dt: number): boolean {
@@ -74,6 +75,13 @@ export interface BurstOptions {
   additive?: boolean
 }
 
+function blankParticle(): Particle {
+  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, age: 0, life: 1, drag: 0, gravity: 0, size: 0, grow: 0, r: 1, g: 1, b: 1, shape: 0, additive: true }
+}
+
+/** Most shockwave rings alive at once; the oldest is recycled past this. */
+export const RING_CAP = 40
+
 interface Ring {
   mesh: Mesh
   age: number
@@ -120,17 +128,23 @@ void main() {
 /** One shared pool: hit sparks, death poofs, footstep dust, shockwave and telegraph rings. */
 export class Vfx {
   private readonly cap: number
-  private readonly parts: Particle[] = []
+  private readonly parts: SwapPool<Particle>
+  /** Particle count multiplier (adaptive quality). */
+  density = 1
   private readonly glowPts: Points
   private readonly dustPts: Points
   private readonly rings: Ring[] = []
+  private readonly freeRings: Mesh[] = []
   private readonly telegraphs = new Map<object, Mesh>()
+  private readonly freeDiscs: Mesh[] = []
   private readonly ringGeo = new RingGeometry(0.86, 1, 48)
   private readonly discGeo = new RingGeometry(0, 1, 48)
   private readonly tmp = new Color()
+  private readonly scratch = new Vector3()
 
   constructor(scene: Scene, lowPower: boolean) {
     this.cap = lowPower ? 220 : 520
+    this.parts = new SwapPool(this.cap, blankParticle)
     this.glowPts = this.points(AdditiveBlending)
     this.dustPts = this.points(NormalBlending)
     scene.add(this.glowPts, this.dustPts)
@@ -167,36 +181,45 @@ export class Vfx {
   }
 
   get live(): number {
-    return this.parts.length
+    return this.parts.count
+  }
+
+  /** Pool readout for QA probes. */
+  get stats(): { particles: number; cap: number; recycled: number; rings: number; freeRings: number; telegraphs: number } {
+    return { particles: this.parts.count, cap: this.cap, recycled: this.parts.recycled, rings: this.rings.length, freeRings: this.freeRings.length, telegraphs: this.telegraphs.size }
   }
 
   burst(at: Vector3, color: number, o: BurstOptions = {}): void {
-    const count = o.count ?? 10
+    const want = o.count ?? 10
+    // Adaptive quality thins bursts but never drops one entirely.
+    const count = this.density >= 1 ? want : Math.max(want > 0 ? 1 : 0, Math.round(want * this.density))
     this.tmp.set(color)
+    const speed = o.speed ?? 2.6
+    const spread = o.spread ?? 0
+    const up = o.up ?? 1.6
+    const life = o.life ?? 0.45
+    const size = o.size ?? 0.16
     for (let i = 0; i < count; i += 1) {
-      if (this.parts.length >= this.cap) this.parts.shift()
+      const p = this.parts.spawn()
       const ang = Math.random() * Math.PI * 2
-      const sp = (o.speed ?? 2.6) * (0.55 + Math.random() * 0.6)
-      const spread = o.spread ?? 0
-      this.parts.push({
-        x: at.x + (Math.random() - 0.5) * spread,
-        y: at.y + (Math.random() - 0.5) * spread,
-        z: at.z + (Math.random() - 0.5) * spread,
-        vx: Math.cos(ang) * sp,
-        vy: (o.up ?? 1.6) * (0.5 + Math.random()),
-        vz: Math.sin(ang) * sp,
-        age: 0,
-        life: (o.life ?? 0.45) * (0.75 + Math.random() * 0.5),
-        drag: o.drag ?? 3,
-        gravity: o.gravity ?? 5,
-        size: (o.size ?? 0.16) * (0.7 + Math.random() * 0.6),
-        grow: o.grow ?? 0,
-        r: this.tmp.r,
-        g: this.tmp.g,
-        b: this.tmp.b,
-        shape: o.shape ?? 0,
-        additive: o.additive ?? true,
-      })
+      const sp = speed * (0.55 + Math.random() * 0.6)
+      p.x = at.x + (Math.random() - 0.5) * spread
+      p.y = at.y + (Math.random() - 0.5) * spread
+      p.z = at.z + (Math.random() - 0.5) * spread
+      p.vx = Math.cos(ang) * sp
+      p.vy = up * (0.5 + Math.random())
+      p.vz = Math.sin(ang) * sp
+      p.age = 0
+      p.life = life * (0.75 + Math.random() * 0.5)
+      p.drag = o.drag ?? 3
+      p.gravity = o.gravity ?? 5
+      p.size = size * (0.7 + Math.random() * 0.6)
+      p.grow = o.grow ?? 0
+      p.r = this.tmp.r
+      p.g = this.tmp.g
+      p.b = this.tmp.b
+      p.shape = o.shape ?? 0
+      p.additive = o.additive ?? true
     }
   }
 
@@ -208,37 +231,62 @@ export class Vfx {
 
   /** A foe pops back into dream dust: ring on the ground, a star shower and soft puffs. */
   poof(at: Vector3, color: number, scale = 1): void {
-    this.ring(new Vector3(at.x, 0.04, at.z), color, 0.2, 1.5 * scale, 0.45)
+    this.ringAt(at.x, 0.04, at.z, color, 0.2, 1.5 * scale, 0.45)
     this.burst(at, 0xfff0a8, { count: Math.round(8 * scale), speed: 2.4, up: 3.2, life: 0.75, size: 0.32, shape: 1, gravity: 6 })
     this.burst(at, color, { count: Math.round(14 * scale), speed: 2, up: 1.2, life: 0.7, size: 0.34, grow: 0.5, gravity: -0.6, drag: 4, spread: 0.4 })
   }
 
   /** Grass dust kicked up by a footfall or a dash. */
   dust(at: Vector3, amount = 1): void {
-    this.burst(new Vector3(at.x, 0.06, at.z), 0xe9f3d6, { count: Math.round(3 * amount), speed: 0.8, up: 0.5, life: 0.5, size: 0.22, grow: 0.6, gravity: -0.3, drag: 4, additive: false })
+    this.scratch.set(at.x, 0.06, at.z)
+    this.burst(this.scratch, 0xe9f3d6, { count: Math.round(3 * amount), speed: 0.8, up: 0.5, life: 0.5, size: 0.22, grow: 0.6, gravity: -0.3, drag: 4, additive: false })
   }
 
-  /** Expanding flat ring (shockwave / landing). */
+  /** Expanding flat ring (shockwave / landing). Meshes come from a pool; at most RING_CAP live. */
   ring(at: Vector3, color: number, from: number, to: number, life: number, alpha = 0.85): void {
-    const mesh = new Mesh(this.ringGeo, new MeshBasicMaterial({ color, transparent: true, opacity: alpha, depthWrite: false, side: DoubleSide, blending: AdditiveBlending }))
-    mesh.rotation.x = -Math.PI / 2
-    mesh.position.copy(at)
+    this.ringAt(at.x, at.y, at.z, color, from, to, life, alpha)
+  }
+
+  private ringAt(x: number, y: number, z: number, color: number, from: number, to: number, life: number, alpha = 0.85): void {
+    let mesh: Mesh
+    if (this.rings.length >= RING_CAP) {
+      const old = this.rings.shift() as Ring
+      mesh = old.mesh
+    } else {
+      mesh = this.freeRings.pop() ?? this.newRing()
+      mesh.visible = true
+      if (!mesh.parent) this.scene.add(mesh)
+    }
+    const mat = mesh.material as MeshBasicMaterial
+    mat.color.set(color)
+    mat.opacity = alpha
+    mesh.position.set(x, y, z)
     mesh.scale.setScalar(from)
-    mesh.renderOrder = 4
-    this.scene.add(mesh)
     this.rings.push({ mesh, age: 0, life, from, to, alpha })
+  }
+
+  private newRing(): Mesh {
+    const mesh = new Mesh(this.ringGeo, new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, depthWrite: false, side: DoubleSide, blending: AdditiveBlending }))
+    mesh.rotation.x = -Math.PI / 2
+    mesh.renderOrder = 4
+    return mesh
   }
 
   /** Ground warning under a winding-up foe; progress 0..1 fills the disc toward the edge. */
   telegraph(key: object, x: number, z: number, radius: number, progress: number, color = 0xff7ab0): void {
     let disc = this.telegraphs.get(key)
     if (!disc) {
-      disc = new Mesh(this.discGeo, new MeshBasicMaterial({ color, transparent: true, opacity: 0.3, depthWrite: false, blending: AdditiveBlending }))
-      disc.rotation.x = -Math.PI / 2
-      disc.renderOrder = 3
-      const edge = new Mesh(this.ringGeo, new MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false, blending: AdditiveBlending }))
-      disc.add(edge)
-      this.scene.add(disc)
+      disc = this.freeDiscs.pop()
+      if (!disc) {
+        disc = new Mesh(this.discGeo, new MeshBasicMaterial({ color, transparent: true, opacity: 0.3, depthWrite: false, blending: AdditiveBlending }))
+        disc.rotation.x = -Math.PI / 2
+        disc.renderOrder = 3
+        const edge = new Mesh(this.ringGeo, new MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false, blending: AdditiveBlending }))
+        disc.add(edge)
+        this.scene.add(disc)
+      }
+      ;(disc.material as MeshBasicMaterial).color.set(color)
+      ;((disc.children[0] as Mesh).material as MeshBasicMaterial).color.set(color)
       this.telegraphs.set(key, disc)
     }
     disc.visible = true
@@ -252,11 +300,15 @@ export class Vfx {
 
   endTelegraph(key: object): void {
     const disc = this.telegraphs.get(key)
-    if (disc) disc.visible = false
+    if (!disc) return
+    // Back to the free list: a foe that never comes back no longer pins its disc forever.
+    disc.visible = false
+    this.telegraphs.delete(key)
+    this.freeDiscs.push(disc)
   }
 
   update(dt: number): void {
-    for (let i = this.parts.length - 1; i >= 0; i -= 1) if (!stepParticle(this.parts[i], dt)) this.parts.splice(i, 1)
+    this.parts.sweep((p) => stepParticle(p, dt))
     this.write(this.glowPts, true)
     this.write(this.dustPts, false)
     for (const ring of this.rings) {
@@ -268,8 +320,8 @@ export class Vfx {
     for (let i = this.rings.length - 1; i >= 0; i -= 1) {
       if (this.rings[i].age < this.rings[i].life) continue
       const ring = this.rings[i]
-      ring.mesh.removeFromParent()
-      ;(ring.mesh.material as MeshBasicMaterial).dispose()
+      ring.mesh.visible = false
+      this.freeRings.push(ring.mesh)
       this.rings.splice(i, 1)
     }
   }
@@ -282,7 +334,9 @@ export class Vfx {
     const alpha = geo.getAttribute('aAlpha') as BufferAttribute
     const shape = geo.getAttribute('aShape') as BufferAttribute
     let n = 0
-    for (const p of this.parts) {
+    const items = this.parts.items
+    for (let i = 0; i < this.parts.count; i += 1) {
+      const p = items[i]
       if (p.additive !== additive) continue
       pos.setXYZ(n, p.x, p.y, p.z)
       col.setXYZ(n, p.r, p.g, p.b)
@@ -291,7 +345,14 @@ export class Vfx {
       shape.setX(n, p.shape)
       n += 1
     }
+    const was = geo.drawRange.count
     geo.setDrawRange(0, n)
-    for (const a of [pos, col, size, alpha, shape]) a.needsUpdate = true
+    // Nothing to upload when the pool was and stays empty (most quiet frames).
+    if (n === 0 && was === 0) return
+    pos.needsUpdate = true
+    col.needsUpdate = true
+    size.needsUpdate = true
+    alpha.needsUpdate = true
+    shape.needsUpdate = true
   }
 }

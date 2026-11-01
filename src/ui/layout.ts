@@ -108,14 +108,21 @@ export function installLayout(ui: HTMLElement | null): void {
   }
   measure()
   // Re-fit when toasts, loot cards, the guide or the quest list change, and a slow safety tick.
+  // Text-only changes (wave counter, timers) are frequent in a fight, so fits are rate-limited:
+  // at most one every FIT_GAP ms (fitHud reads layout for every HUD piece).
   let queued = false
+  let lastFit = -1e9
   const soon = () => {
     if (queued) return
     queued = true
-    requestAnimationFrame(() => {
+    const wait = Math.max(0, FIT_GAP - (performance.now() - lastFit))
+    const run = () => {
       queued = false
+      lastFit = performance.now()
       fitHud()
-    })
+    }
+    if (wait <= 0) requestAnimationFrame(run)
+    else window.setTimeout(() => requestAnimationFrame(run), wait)
   }
   const watch = new MutationObserver(soon)
   for (const z of [zones.tc, zones.tl, zones.tr, zones.bl]) watch.observe(z, { childList: true, subtree: true, characterData: true })
@@ -123,9 +130,41 @@ export function installLayout(ui: HTMLElement | null): void {
     const el = document.getElementById(id)
     if (el) watch.observe(el, { attributes: true, attributeFilter: ['class'] })
   }
-  window.addEventListener('resize', soon)
-  window.setInterval(fitHud, 300)
+  window.addEventListener('resize', () => {
+    arenaCache.clear()
+    soon()
+  })
+  window.setInterval(soon, 600)
 }
+
+/** Least ms between two HUD fits. */
+export const FIT_GAP = 150
+/** How long a measured arrow arena stays valid (ms); fits and resizes refresh it early. */
+export const ARENA_TTL = 250
+
+/** Keeps one computed value for `ttl` ms (pure clock injected, tested). */
+export class TtlCache<T> {
+  private value: T | null = null
+  private at = -1e18
+  /** Recomputes so far (tests / QA). */
+  misses = 0
+  constructor(private readonly ttl: number) {}
+
+  get(now: number, make: () => T): T {
+    if (this.value === null || now - this.at >= this.ttl) {
+      this.value = make()
+      this.at = now
+      this.misses += 1
+    }
+    return this.value
+  }
+
+  clear(): void {
+    this.value = null
+  }
+}
+
+const arenaCache = new TtlCache<{ cx: number; cy: number; rx: number; ry: number }>(ARENA_TTL)
 
 export type Box = { left: number; top: number; right: number; bottom: number }
 
@@ -257,6 +296,7 @@ export function fitHud(): void {
     const r = el.classList.contains('squeezed') ? null : seen(el)
     if (r) solidBoxes.push(r)
   }
+  arenaCache.clear()
 }
 
 /** Move the bag/candy pocket when the thumb layout turns on or off. */
@@ -271,6 +311,12 @@ export function placePocket(compact: boolean): void {
 
 /** The free middle of the screen (screen px) for edge arrows: below the top zone, above the bottom clusters. */
 export function hudArena(): { cx: number; cy: number; rx: number; ry: number } {
+  // Edge arrows ask every frame; measuring forces a layout, so reuse it for a moment.
+  if (!zones) return measureArena()
+  return arenaCache.get(performance.now(), measureArena)
+}
+
+function measureArena(): { cx: number; cy: number; rx: number; ry: number } {
   const w = typeof window === 'undefined' ? 1280 : window.innerWidth
   const h = typeof window === 'undefined' ? 720 : window.innerHeight
   if (!zones) return arenaOf({ w, h }, h * 0.12, h * 0.88)
