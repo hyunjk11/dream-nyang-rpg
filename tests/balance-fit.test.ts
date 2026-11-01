@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DIFFICULTY } from '../src/combat/difficulty'
 import { BOSS_FLOOR, depthStep, floorScale, rosterShift } from '../src/sim/delve'
 import { urgentFit } from '../src/ui/layout'
+import { BANNER_MS } from '../src/ui/screens'
 
 // Node's fs, loaded the same way as in guide-fold.test.ts (no @types/node in this project).
 const fsName = 'node:fs'
@@ -84,5 +85,15 @@ describe('토스트와 조준선', () => {
     expect(urgentFit(rec('attributes', node('zone-banner', 'hidden'), { oldValue: '' }), tc)).toBe(false)
     expect(urgentFit(rec('attributes', node('contract-hud', 'open', false)), tc)).toBe(true)
     expect(urgentFit(rec('characterData', node('wave')), tc)).toBe(false)
+  })
+})
+
+describe('구역 배너가 끝나면 자리를 비운다', () => {
+  it('배너는 애니메이션 길이만큼만 보이고 그 뒤 show가 빠져 토스트 자리를 막지 않는다', () => {
+    const m = /#zone-banner\.show \{[^}]*animation: banner ([\d.]+)s/.exec(css)
+    expect(m).not.toBeNull()
+    const anim = Number(m![1]) * 1000
+    expect(BANNER_MS).toBeGreaterThanOrEqual(anim)
+    expect(BANNER_MS).toBeLessThan(anim + 500)
   })
 })

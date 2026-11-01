@@ -141,7 +141,15 @@ export function zoneBanner(name: string, sub: string): void {
   el.classList.remove('show')
   void el.offsetWidth
   el.classList.add('show')
+  // The animation ends at opacity 0, but a shown banner still takes room in the top-centre column,
+  // which squeezed every later toast away (or pushed it toward the crosshair): drop it when done.
+  window.clearTimeout(bannerTimer)
+  bannerTimer = window.setTimeout(() => el.classList.remove('show'), BANNER_MS)
 }
+
+/** Matches the 2.8 s `banner` animation in style.css (plus a frame). */
+export const BANNER_MS = 2900
+let bannerTimer = 0
 
 /** White dream-fade for portal hops: covers, runs the swap, then clears. */
 export function fadeThrough(swap: () => void): Promise<void> {
