@@ -13,7 +13,10 @@ import { Shooter, type ShotWorld } from './combat/shooter'
 import { TPS, loadSens, rayCapsule, setSens, SENS, type AimTarget } from './core/tps'
 import { WALK_RADIUS } from './world/town/island'
 import { Hero } from './actors/hero'
-import { axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, installInput, pad, runningHeld, shoulder } from './core/input'
+import { axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, installInput, pad, relockView, runningHeld, shoulder, syncCursor } from './core/input'
+import { ALT_LABEL, cursor, installAlt, saveAltMode, setAlt } from './core/cursor'
+import { hudArena, installLayout, placePocket } from './ui/layout'
+import { installTooltips } from './ui/tooltip'
 import { Landmarks } from './world/town/landmarks'
 import { Mochi } from './actors/mochi'
 import { killLoot, GameState, type Storageish } from './core/loop'
@@ -58,8 +61,12 @@ const stage = createStage(canvas)
 if (stage.touch) document.body.classList.add('touch')
 /** Touch or a small window: the thumb layout (stick, action buttons, skill row above them). */
 const compactHud = (): void => {
-  document.body.classList.toggle('compact', stage.touch || window.innerWidth <= 900 || window.innerHeight <= 520)
+  const compact = stage.touch || window.innerWidth <= 900 || window.innerHeight <= 520
+  document.body.classList.toggle('compact', compact)
+  placePocket(compact)
 }
+installLayout(document.getElementById('ui'))
+installTooltips()
 compactHud()
 window.addEventListener('resize', compactHud)
 installInput(canvas)
@@ -474,10 +481,19 @@ function paintContracts(): void {
   const chapter = mode === 'title' ? [] : questHud(game.save)
   contractHud.classList.toggle('hidden', list.length + chapter.length === 0)
   contractHud.innerHTML = ''
+  // Small screens fold the rows into one chip; a tap (or click) opens them.
+  const chip = document.createElement('button')
+  chip.type = 'button'
+  chip.id = 'quest-chip'
+  const doneCount = chapter.filter((q) => q.done).length + list.filter((c) => c.status === 'done').length
+  chip.textContent = `퀘스트 ${list.length + chapter.length}${doneCount ? ` · 완료 ${doneCount}` : ''} ${contractHud.classList.contains('open') ? '▴' : '▾'}`
+  chip.setAttribute('aria-expanded', String(contractHud.classList.contains('open')))
+  contractHud.append(chip)
   for (const q of chapter) {
     const row = document.createElement('div')
     row.className = q.done ? 'ch done' : 'ch'
     row.dataset.id = q.id
+    row.dataset.tip = `챕터 2 · ${q.title}\n진행 ${q.prog}${q.done ? '\n완료! 마을 게시판에서 보상을 받아.' : ''}\n${run ? '눌러서 길 안내 보기' : '눌러서 게시판 열기'}`
     const b = document.createElement('b')
     b.textContent = '챕터 2'
     row.append(b, document.createTextNode(`${q.title} ${q.prog}`))
@@ -487,6 +503,7 @@ function paintContracts(): void {
     const row = document.createElement('div')
     row.className = c.status === 'done' ? 'done' : ''
     row.dataset.id = c.id
+    row.dataset.tip = `의뢰\n${contractLine(c)}\n${run ? '꿈 하수도에서 진행 중' : '눌러서 게시판 열기'}`
     const b = document.createElement('b')
     b.textContent = '의뢰'
     row.append(b, document.createTextNode(contractLine(c)))
@@ -505,7 +522,7 @@ function contractHit(e: ContractEvent): void {
 }
 
 // ---- 챕터: the guide chapter and the 몽실 들판 quests ----
-const chapterUI = new ChapterUI(document.body)
+const chapterUI = new ChapterUI(document.getElementById('ui') ?? document.body)
 /** A chapter-clear card waits for the next calm moment (no summary or dialogue up). */
 let clearPending = false
 
@@ -726,7 +743,9 @@ function paintHotbar(): void {
     if (name && name.textContent !== def.name) name.textContent = def.name
     const veil = el.querySelector('s') as HTMLElement | null
     if (veil) veil.style.height = `${Math.round(ready * 100)}%`
-    el.title = r > 0 ? `${def.name} (${i + 1})` : `${def.name}: 아직 안 배웠어 (K)`
+    const tip = r > 0 ? `${def.name} [${i + 1}]\n${def.text(r)}${def.cooldown ? `\n대기 ${def.cooldown(r)}초` : ''}${ready > 0 ? '\n충전 중…' : ''}` : `${def.name}\n아직 안 배웠어. K 스킬 나무에서 배울 수 있어.`
+    if (el.dataset.tip !== tip) el.dataset.tip = tip
+    el.removeAttribute('title')
   })
 }
 
@@ -794,6 +813,50 @@ document.getElementById('fps-toggle')?.addEventListener('click', () => {
   showFps = !showFps
   fpsEl?.classList.toggle('hidden', !showFps)
 })
+const altBtn = document.getElementById('alt-mode')
+const paintAlt = () => {
+  if (altBtn) altBtn.textContent = ALT_LABEL[cursor.mode]
+}
+paintAlt()
+altBtn?.addEventListener('click', () => {
+  cursor.mode = cursor.mode === 'hold' ? 'toggle' : 'hold'
+  setAlt(false)
+  saveAltMode(cursor.mode)
+  paintAlt()
+  toast(cursor.mode === 'hold' ? 'Alt를 누르는 동안 마우스 커서가 나와.' : 'Alt를 한 번 누르면 커서가 나오고, 다시 누르면 들어가.', 'info')
+})
+const relockBtn = document.getElementById('relock')
+relockBtn?.addEventListener('click', () => relockView())
+const shown = (id: string) => {
+  const el = document.getElementById(id)
+  return !!el && !el.classList.contains('hidden')
+}
+/** Any panel up frees the mouse cursor (and Alt does, see core/cursor). */
+cursor.panel = () =>
+  menuUp() || talk.open || shown('settings') || shown('summary') || shown('quest-log') || shown('ending') || shown('down') || !!document.querySelector('.chapter-card') || !!run?.minimap.big
+let altTold = false
+installAlt((free) => {
+  document.body.classList.toggle('alt-free', free)
+  if (free && !altTold && mode === 'play') {
+    altTold = true
+    toast(cursor.mode === 'hold' ? 'Alt를 떼면 다시 조준해.' : 'Alt를 다시 누르거나 화면을 클릭하면 조준해.', 'info')
+  }
+})
+contractHud?.addEventListener('click', (event) => {
+  const t = event.target as HTMLElement
+  if (t.id === 'quest-chip') {
+    contractHud?.classList.toggle('open')
+    paintContracts()
+    return
+  }
+  const row = t.closest<HTMLElement>('#contract-hud > div')
+  if (!row) return
+  if (!run) {
+    if (mode === 'play' && !talk.open && !menuUp()) openTown('board')
+    return
+  }
+  toast(row.dataset.tip?.split('\n').slice(0, 2).join(' · ') ?? '', 'quest')
+})
 document.getElementById('retry')?.addEventListener('click', () => restart())
 document.getElementById('guide-skip')?.addEventListener('click', () => {
   showSettings(false)
@@ -809,7 +872,7 @@ document.getElementById('guide-skip')?.addEventListener('click', () => {
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup } } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, cursor, hudArena, levelUpFx } })
 
 void bootGame()
 
@@ -1251,6 +1314,7 @@ function frame(): void {
     dt *= 0.08
   }
   handleKeys()
+  relockBtn?.classList.toggle('hidden', !syncCursor(shoulder.on && mode === 'play', stage.touch))
   if (mode !== 'play') {
     stage.render()
     return

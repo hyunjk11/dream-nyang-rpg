@@ -38,7 +38,7 @@
       <button id="candy" type="button" title="하트 사탕 먹기 (Q)">사탕<span id="candy-count"></span></button>
       <div id="contract-hud" class="hidden" aria-label="맡은 의뢰"></div>
       <div class="stick" id="stick"><div id="knob"></div></div>
-      <div class="actions">
+      <div class="actions" id="actions">
         <button id="dash" type="button">대시</button>
         <button id="talk" class="hidden" type="button">대화</button>
         <button id="recall" type="button" title="귀환 주문서 (T)">귀환</button>
@@ -50,12 +50,14 @@
         <label>음량 <input id="vol" type="range" min="0" max="100" value="35" /></label>
         <label title="배경음악 크기 (저장됨)">배경음 <input id="bgm" type="range" min="0" max="100" value="80" /></label>
         <label title="마우스·터치 시점 감도 (저장됨)">감도 <input id="sens" type="range" min="0.3" max="2.5" step="0.05" value="1" /> <output id="sens-out">1.00</output></label>
+        <button id="alt-mode" type="button" title="Alt 키로 마우스 커서 꺼내기: 누르는 동안 / 눌러서 전환 (저장됨)">Alt: 누르는 동안 커서</button>
         <button id="guide-skip" type="button" title="가이드 챕터를 건너뛰고 챕터 2 열기">가이드 건너뛰기</button>
       </div>
       <div id="crosshair" class="hidden"><i></i><i></i><i></i><i></i><b></b></div>
       <div id="hurt-flash"></div>
       <div id="floats"></div>
       <span id="talk-tip" class="hidden">E 대화</span>
+      <button id="relock" class="hidden" type="button">🐾 클릭해서 계속</button>
       <div id="dialog" class="hidden">
         <img id="dlg-face" alt="" />
         <div><b id="dlg-name"></b><p id="dlg-text"></p><div id="dlg-choices"></div><small id="dlg-help">E · Enter · 탭으로 넘기기</small></div>

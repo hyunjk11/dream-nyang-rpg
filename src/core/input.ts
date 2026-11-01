@@ -1,3 +1,5 @@
+import { cursor, needsRelock, setAlt } from './cursor'
+
 export interface Pad {
   /** Virtual stick (touch), -1..1. */
   x: number
@@ -68,7 +70,11 @@ export function clickAction(locked: boolean, refused: boolean): 'lock' | 'fire' 
   return locked || refused ? 'fire' : 'lock'
 }
 
+let view: HTMLCanvasElement | null = null
+let lockAsked = 0
+
 function requestLock(canvas: HTMLCanvasElement): void {
+  lockAsked = typeof performance === 'undefined' ? 0 : performance.now()
   if (!canvas.requestPointerLock) {
     lockRefused = true
     return
@@ -81,7 +87,39 @@ function requestLock(canvas: HTMLCanvasElement): void {
   }
 }
 
+/** Take the view lock again (the "클릭해서 계속" button, the end of a free-cursor spell). */
+export function relockView(): void {
+  if (view && !lockRefused && !shoulder.locked) requestLock(view)
+}
+
+let wasFree = false
+/**
+ * Once a frame: drop the lock while the cursor should be free, take it back when that ends (the
+ * close click still counts as the user gesture browsers ask for), and paint the cursor state.
+ * Returns whether the "클릭해서 계속" button should show.
+ */
+export function syncCursor(armed: boolean, touch: boolean): boolean {
+  if (typeof document === 'undefined') return false
+  const free = cursor.free
+  const locked = shoulder.locked
+  if (free && locked) document.exitPointerLock?.()
+  if (free && fireFinger < 0) pad.fire = false
+  if (wasFree && !free && armed && !touch && everLocked && !locked) relockView()
+  wasFree = free
+  const body = document.body.classList
+  if (body.contains('cursor-free') === (touch || locked)) body.toggle('cursor-free', !touch && !locked)
+  const pending = performance.now() - lockAsked < 400
+  return !pending && needsRelock({ armed, touch, locked, free, hadLock: everLocked, refused: lockRefused })
+}
+
+let mapClick = false
+/** A click on the minimap (opens or closes the big map). */
+export function queueMap(): void {
+  mapClick = true
+}
+
 export function installInput(canvas: HTMLCanvasElement): void {
+  view = canvas
   // The browser menu would pop over the game.
   canvas.addEventListener('contextmenu', (event) => event.preventDefault())
   window.addEventListener('keydown', (event) => {
@@ -112,6 +150,14 @@ export function installInput(canvas: HTMLCanvasElement): void {
     if (!shoulder.on) return
     if (event.pointerType === 'mouse') {
       if (event.button !== 0) return
+      // A free cursor never shoots; a click on the game view ends an Alt spell and takes the lock.
+      if (cursor.free) {
+        if (cursor.alt && !cursor.panel()) {
+          setAlt(false)
+          requestLock(canvas)
+        }
+        return
+      }
       if (clickAction(shoulder.locked, lockRefused) === 'lock') requestLock(canvas)
       else pad.fire = true
       return
@@ -127,7 +173,7 @@ export function installInput(canvas: HTMLCanvasElement): void {
     if (!shoulder.on) return
     // Browsers report one bogus jump right after the lock engages; drop it and any absurd spike.
     if (event.pointerType === 'mouse') {
-      if (shoulder.locked && performance.now() - lockedAt > 90 && Math.abs(event.movementX) < 300 && Math.abs(event.movementY) < 300) {
+      if (shoulder.locked && !cursor.free && performance.now() - lockedAt > 90 && Math.abs(event.movementX) < 300 && Math.abs(event.movementY) < 300) {
         shoulder.look(event.movementX, event.movementY, false)
       }
     } else if (event.pointerId === lookFinger) {
@@ -200,8 +246,9 @@ export function installInput(canvas: HTMLCanvasElement): void {
 
 /** M: toggle the big dungeon map. */
 export function consumeMap(): boolean {
-  const had = mapQueued
+  const had = mapQueued || mapClick
   mapQueued = false
+  mapClick = false
   return had
 }
 

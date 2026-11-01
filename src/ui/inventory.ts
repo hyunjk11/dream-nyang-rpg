@@ -8,7 +8,7 @@ import { GUN_KO, gunDps } from '../data/guns'
 import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { BRANCH_KO, TIER_LEVEL, TREE, type Branch, type TreeSkill } from '../data/tree'
 import { xpToNext } from '../sim/formulas'
-import { bagItems, findItem, isEquipped, slotFor, equipItem } from '../sim/inventory'
+import { bagItems, findItem, isEquipped, slotFor, equipItem, slotFits } from '../sim/inventory'
 import { itemLines, itemName, itemPower, sellValue, dismantleYield } from '../sim/loot'
 import { fillCell, nameTitle } from './itemcell'
 import { dismantleOwned, sellOwned, tryEquip, tryUnequip } from '../sim/mutate'
@@ -170,7 +170,65 @@ export class InventoryUI {
       this.render()
     })
     b.addEventListener('dblclick', () => this.equip(item.uid))
+    // Right-click: wear it, or take it off when it is already worn.
+    b.addEventListener('contextmenu', (event) => {
+      event.preventDefault()
+      this.quick(item.uid)
+    })
+    // Drag a bag item onto a gear slot to wear it, or a worn item onto the bag to take it off.
+    b.draggable = true
+    b.addEventListener('dragstart', (event) => {
+      event.dataTransfer?.setData('text/x-dnr-item', item.uid)
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+      this.root?.classList.add('dragging')
+    })
+    b.addEventListener('dragend', () => this.root?.classList.remove('dragging'))
     return b
+  }
+
+  /** Right-click / QA: equip a bag item, unequip a worn one (the gun stays). */
+  quick(id: string): void {
+    const save = this.host.save()
+    const worn = EQUIP_SLOTS.find((s) => save.equipment[s] === id)
+    if (worn) {
+      if (worn !== 'weapon') this.unequip(worn)
+      return
+    }
+    const item = findItem(save, id)
+    if (item && ITEMS[item.defId]?.slot) this.equip(id)
+  }
+
+  /** Drop handler: an item dropped on a gear slot (slot) or on the bag (null). */
+  dropOn(id: string, slot: EquipSlot | null): void {
+    const save = this.host.save()
+    const worn = EQUIP_SLOTS.find((s) => save.equipment[s] === id)
+    if (slot) {
+      if (worn === slot) return
+      const def = findItem(save, id)
+      const fits = !!def && slotFits(ITEMS[def.defId]?.slot, slot)
+      if (!fits) {
+        this.host.toast('그 칸에는 못 끼워.')
+        return
+      }
+      this.picked = id
+      this.equip(id, slot)
+    } else if (worn && worn !== 'weapon') this.unequip(worn)
+  }
+
+  private dropZone(target: HTMLElement, slot: EquipSlot | null): void {
+    target.addEventListener('dragover', (event) => {
+      if (!event.dataTransfer?.types.includes('text/x-dnr-item')) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      target.classList.add('drop-on')
+    })
+    target.addEventListener('dragleave', () => target.classList.remove('drop-on'))
+    target.addEventListener('drop', (event) => {
+      event.preventDefault()
+      target.classList.remove('drop-on')
+      const id = event.dataTransfer?.getData('text/x-dnr-item')
+      if (id) this.dropOn(id, slot)
+    })
   }
 
   private renderBag(save: SaveData): void {
@@ -185,9 +243,15 @@ export class InventoryUI {
     for (const slot of EQUIP_SLOTS) {
       const c = this.cell(findItem(save, save.equipment[slot]), SLOT_KO[slot])
       c.dataset.slot = slot
+      if (!c.dataset.tip) c.dataset.tip = `${SLOT_KO[slot]}\n비어 있어. 가방에서 끌어다 놓으면 장착!`
+      this.dropZone(c, slot)
       slots.append(c)
     }
     grid.replaceChildren()
+    if (!grid.dataset.drop) {
+      grid.dataset.drop = '1'
+      this.dropZone(grid, null)
+    }
     const bag = bagItems(save)
     for (let i = 0; i < BAG_CAP; i += 1) grid.append(this.cell(bag[i]))
     if (count) count.textContent = `${bag.length}/${BAG_CAP}`
@@ -196,7 +260,7 @@ export class InventoryUI {
       Object.entries(MATERIAL_KO).forEach(([id, name], i) => {
         if (i) mats.append(' · ')
         const tag = el('span', 'mat', `${name} ${save.materials[id] ?? 0}`)
-        tag.title = MATERIAL_HELP[id] ?? ''
+        tag.dataset.tip = `${name}\n${MATERIAL_HELP[id] ?? ''}`
         mats.append(tag)
       })
     }
@@ -232,7 +296,7 @@ export class InventoryUI {
     box.replaceChildren()
     const item = this.picked ? findItem(save, this.picked) : undefined
     if (!item) {
-      box.append(el('p', 'inv-empty', '물건을 눌러 보면 지금 장비와 비교해 줄게. 두 번 누르면 바로 장착!'))
+      box.append(el('p', 'inv-empty', '물건을 눌러 보면 지금 장비와 비교해 줄게. 두 번 누르거나 오른쪽 클릭하면 바로 장착, 장비 칸으로 끌어다 놓아도 돼!'))
       return
     }
     const def = ITEMS[item.defId]
@@ -386,7 +450,7 @@ export class InventoryUI {
     if (block && r < skill.max) body.append(el('em', 'why', block))
     if (r > 0 && r < skill.max) body.append(el('em', 'next', `다음: ${skill.text(r + 1)}`))
     b.append(body)
-    b.title = block || '눌러서 배우기'
+    b.dataset.tip = `${skill.name} · ${r}/${skill.max}\n${skill.text(Math.max(1, r))}${skill.cooldown ? `\n대기 ${skill.cooldown(Math.max(1, r))}초` : ''}\n${block || '눌러서 배우기'}`
     b.addEventListener('click', () => {
       const out = learn(save, skill.id)
       if (!out.ok) {

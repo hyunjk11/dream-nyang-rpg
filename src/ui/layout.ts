@@ -1,0 +1,272 @@
+/**
+ * HUD layout system. Every HUD piece lives in one of five zones, so pieces stack inside a zone
+ * instead of being pinned to magic pixel offsets that collide on other screen sizes:
+ *
+ *   ┌ top bar (HP · Lv · XP · gold · ⚙) ───────────────────────────────┐
+ *   │ tl: tracker / delve   │ tc: wave · boss bar · banners · │ tr: minimap │
+ *   │                       │     guide · note · toasts        │  quest HUD  │
+ *   │                                                                    │
+ *   │ bl: loot toasts       (arena: crosshair, damage numbers, arrows)    │
+ *   │     bag · candy                                       br: skills    │
+ *   │     stick                                                actions   │
+ *   └────────────────────────────────────────────────────────────────────┘
+ *
+ * The run code and the chapter UI append their pieces to #ui as before; a MutationObserver moves
+ * any known id into its zone. CSS handles breakpoints (narrow portrait stacks tl/tr over tc) and
+ * safe areas; JS only measures the bottom clusters so the top columns stop above them.
+ */
+
+export type Zone = 'tl' | 'tc' | 'tr' | 'bl' | 'br' | 'pocket'
+
+/** Which zone each HUD id belongs to (order inside a zone comes from the CSS `order`). */
+export const ZONE_OF: Record<string, Zone> = {
+  tracker: 'tl',
+  delve: 'tl',
+  wave: 'tc',
+  bossbar: 'tc',
+  'zone-banner': 'tc',
+  levelup: 'tc',
+  guide: 'tc',
+  note: 'tc',
+  toasts: 'tc',
+  minimap: 'tr',
+  'contract-hud': 'tr',
+  'loot-toasts': 'bl',
+  stick: 'bl',
+  hotbar: 'br',
+  actions: 'br',
+  'bag-btn': 'pocket',
+  candy: 'pocket',
+}
+
+/** Zone for an element by id, or null when it floats freely (world tags, arrows, overlays). */
+export function zoneFor(el: Element): Zone | null {
+  return (el.id && ZONE_OF[el.id]) || null
+}
+
+/** Where the bag/candy pocket sits: above the stick on the thumb layout, bottom-right otherwise. */
+export function pocketHome(compact: boolean): 'bl' | 'br' {
+  return compact ? 'bl' : 'br'
+}
+
+/** Rects for the arena (the free middle of the screen) from the zone edges. Pure for tests. */
+export function arenaOf(view: { w: number; h: number }, topBottom: number, bottomTop: number, pad = 18): { cx: number; cy: number; rx: number; ry: number } {
+  const top = Math.min(Math.max(topBottom, 0) + pad, view.h * 0.45)
+  const bottom = Math.max(Math.min(bottomTop, view.h) - pad, view.h * 0.55)
+  return { cx: view.w / 2, cy: (top + bottom) / 2, rx: Math.max(40, view.w / 2 - pad - 12), ry: Math.max(30, (bottom - top) / 2) }
+}
+
+let zones: Record<'top' | Exclude<Zone, 'pocket'> | 'pocket', HTMLElement> | null = null
+let compactNow = false
+
+function make(id: string, parent: HTMLElement): HTMLElement {
+  const z = document.createElement('div')
+  z.id = id
+  z.className = 'hud-zone'
+  parent.append(z)
+  return z
+}
+
+function adopt(el: Element): void {
+  if (!zones) return
+  const zone = zoneFor(el)
+  if (!zone) return
+  const home = zone === 'pocket' ? zones.pocket : zones[zone]
+  if (el.parentElement !== home) home.append(el)
+}
+
+/** Build the zones in #ui and keep pieces in them. Safe to call once. */
+export function installLayout(ui: HTMLElement | null): void {
+  if (!ui || zones || typeof document === 'undefined') return
+  const top = make('hud-top', ui)
+  zones = {
+    top,
+    tl: make('hud-tl', top),
+    tc: make('hud-tc', top),
+    tr: make('hud-tr', top),
+    bl: make('hud-bl', ui),
+    br: make('hud-br', ui),
+    pocket: document.createElement('div'),
+  }
+  zones.pocket.id = 'hud-pocket'
+  zones.pocket.className = 'hud-zone'
+  placePocket(document.body.classList.contains('compact'))
+  for (const el of Array.from(ui.children)) adopt(el)
+  new MutationObserver((list) => {
+    for (const m of list) m.addedNodes.forEach((n) => n instanceof Element && adopt(n))
+  }).observe(ui, { childList: true })
+  const measure = () => {
+    if (!zones) return
+    ui.style.setProperty('--bl-h', `${Math.ceil(zones.bl.getBoundingClientRect().height)}px`)
+    ui.style.setProperty('--br-h', `${Math.ceil(zones.br.getBoundingClientRect().height)}px`)
+  }
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(measure)
+    ro.observe(zones.bl)
+    ro.observe(zones.br)
+  }
+  measure()
+  // Re-fit when toasts, loot cards, the guide or the quest list change, and a slow safety tick.
+  let queued = false
+  const soon = () => {
+    if (queued) return
+    queued = true
+    requestAnimationFrame(() => {
+      queued = false
+      fitHud()
+    })
+  }
+  const watch = new MutationObserver(soon)
+  for (const z of [zones.tc, zones.tl, zones.tr, zones.bl]) watch.observe(z, { childList: true, subtree: true, characterData: true })
+  for (const id of ['guide', 'bossbar', 'wave', 'delve', 'tracker', 'contract-hud', 'zone-banner', 'levelup', 'note']) {
+    const el = document.getElementById(id)
+    if (el) watch.observe(el, { attributes: true, attributeFilter: ['class'] })
+  }
+  window.addEventListener('resize', soon)
+  window.setInterval(fitHud, 300)
+}
+
+export type Box = { left: number; top: number; right: number; bottom: number }
+
+/** Do two boxes overlap by more than `slack` px on both axes? */
+export function boxHit(a: Box, b: Box, slack = 2): boolean {
+  return Math.min(a.right, b.right) - Math.max(a.left, b.left) > slack && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > slack
+}
+
+/**
+ * Pull an edge arrow (centre px, half size) toward the arena centre until it clears every HUD box,
+ * at most to 40% of the way. Returns where it ended (the last try when nothing is clear).
+ */
+export function nudgeIn(x: number, y: number, cx: number, cy: number, half: number, boxes: Box[]): { x: number; y: number; clear: boolean } {
+  for (let t = 1; t >= 0.4 - 1e-9; t -= 0.06) {
+    const px = cx + (x - cx) * t
+    const py = cy + (y - cy) * t
+    const me = { left: px - half, top: py - half, right: px + half, bottom: py + half }
+    if (!boxes.some((b) => boxHit(me, b, 0))) return { x: px, y: py, clear: true }
+  }
+  return { x: cx + (x - cx) * 0.4, y: cy + (y - cy) * 0.4, clear: false }
+}
+
+/**
+ * Pick which short-lived pieces to hide when the screen is too small for all of them: given the
+ * candidates (lowest priority first) and which of them collide, the lowest-priority colliding one goes.
+ */
+export function squeezeVictim(order: string[], colliding: Set<string>): string | null {
+  for (const id of order) if (colliding.has(id)) return id
+  return null
+}
+
+/** Pieces that always stay (fixed HUD). */
+const SOLID = ['#ui .top', '#tracker', '#delve', '#wave', '#bossbar', '#guide', '#minimap', '#contract-hud', '#hud-pocket > *', '#stick', '#hotbar > *', '#actions > button', '#hint', '#relock', '#dialog']
+let solidBoxes: Box[] = []
+
+function seen(el: Element): DOMRect | null {
+  let n: Element | null = el
+  while (n && n !== document.body) {
+    const cs = getComputedStyle(n)
+    if (cs.display === 'none' || cs.visibility === 'hidden') return null
+    n = n.parentElement
+  }
+  const r = el.getBoundingClientRect()
+  return r.width > 1 && r.height > 1 ? r : null
+}
+
+/** HUD boxes from the last fit (screen px): edge arrows steer around them. */
+export function hudBoxes(): Box[] {
+  return solidBoxes
+}
+
+/**
+ * Small screens: make the guide card tight when it runs into the bottom clusters, then hide the
+ * lowest-priority short-lived pieces (old toasts, note, banners, older loot cards) that still collide.
+ * Runs in one task, so nothing flashes.
+ */
+export function fitHud(): void {
+  if (!zones || typeof document === 'undefined') return
+  const flex = () => [
+    ...Array.from(document.querySelectorAll('#toasts > .toast')),
+    document.getElementById('note'),
+    document.getElementById('zone-banner'),
+    document.getElementById('levelup'),
+    ...Array.from(document.querySelectorAll('#loot-toasts > *')),
+  ].filter((e): e is HTMLElement => !!e)
+  const pieces = flex()
+  for (const el of pieces) el.classList.remove('squeezed')
+  const guide = document.getElementById('guide')
+  guide?.classList.remove('tight')
+  const solids = () => {
+    const out: { el: Element; r: DOMRect }[] = []
+    for (const sel of SOLID) document.querySelectorAll(sel).forEach((el) => {
+      const r = seen(el)
+      if (r) out.push({ el, r })
+    })
+    return out
+  }
+  let fixed = solids()
+  if (guide && compactNow) {
+    const g = fixed.find((f) => f.el === guide)
+    if (g && fixed.some((f) => f.el !== guide && f.el.closest('#hud-bl, #hud-br') && boxHit(f.r, g.r))) {
+      guide.classList.add('tight')
+      fixed = solids()
+    }
+  }
+  solidBoxes = fixed.map((f) => f.r)
+  // Priority: oldest toast lowest; loot cards newest-first highest.
+  const loot = pieces.filter((e) => e.parentElement?.id === 'loot-toasts')
+  const rest = pieces.filter((e) => e.parentElement?.id !== 'loot-toasts')
+  const order = [...rest, ...loot]
+  const ids = new Map(order.map((e, i) => [e, String(i)]))
+  for (let pass = 0; pass < 10; pass++) {
+    const live = order.map((el) => ({ el, r: el.classList.contains('squeezed') ? null : seen(el) })).filter((x) => x.r) as { el: HTMLElement; r: DOMRect }[]
+    const hits = new Set<string>()
+    for (let i = 0; i < live.length; i++) {
+      const a = live[i]
+      if (fixed.some((f) => boxHit(a.r, f.r))) hits.add(ids.get(a.el) ?? '')
+      for (let j = i + 1; j < live.length; j++) {
+        // The lower-priority of two colliding flexible pieces loses.
+        if (live[j].el.parentElement === a.el.parentElement) continue
+        if (boxHit(a.r, live[j].r)) hits.add(ids.get(a.el) ?? '')
+      }
+    }
+    const victim = squeezeVictim(order.map((e) => ids.get(e) ?? ''), hits)
+    if (victim === null) break
+    order[Number(victim)].classList.add('squeezed')
+  }
+  for (const el of order) {
+    const r = el.classList.contains('squeezed') ? null : seen(el)
+    if (r) solidBoxes.push(r)
+  }
+}
+
+/** Move the bag/candy pocket when the thumb layout turns on or off. */
+export function placePocket(compact: boolean): void {
+  compactNow = compact
+  if (!zones) return
+  const home = zones[pocketHome(compact)]
+  // Thumb layout: the pocket sits between the loot toasts and the stick. Desktop: above the skills.
+  const before = compact ? document.getElementById('stick') : home.firstElementChild
+  if (zones.pocket.parentElement !== home || zones.pocket.nextElementSibling !== before) home.insertBefore(zones.pocket, before && before.parentElement === home ? before : null)
+}
+
+/** The free middle of the screen (screen px) for edge arrows: below the top zone, above the bottom clusters. */
+export function hudArena(): { cx: number; cy: number; rx: number; ry: number } {
+  const w = typeof window === 'undefined' ? 1280 : window.innerWidth
+  const h = typeof window === 'undefined' ? 720 : window.innerHeight
+  if (!zones) return arenaOf({ w, h }, h * 0.12, h * 0.88)
+  let topBottom = 0
+  for (const c of Array.from(zones.tc.children)) {
+    const r = c.getBoundingClientRect()
+    if (r.height > 0 && getComputedStyle(c).display !== 'none') topBottom = Math.max(topBottom, r.bottom)
+  }
+  topBottom = Math.max(topBottom, (document.querySelector('#ui .top') as HTMLElement | null)?.getBoundingClientRect().bottom ?? 0)
+  let bottomTop = h
+  for (const z of [zones.bl, zones.br]) {
+    for (const c of Array.from(z.children)) {
+      const r = c.getBoundingClientRect()
+      if (r.height > 0 && r.left < w * 0.7 && r.right > w * 0.3) bottomTop = Math.min(bottomTop, r.top)
+    }
+  }
+  const hot = document.getElementById('hotbar')?.getBoundingClientRect()
+  if (hot && hot.height > 0 && !compactNow) bottomTop = Math.min(bottomTop, hot.top)
+  return arenaOf({ w, h }, topBottom, bottomTop)
+}
