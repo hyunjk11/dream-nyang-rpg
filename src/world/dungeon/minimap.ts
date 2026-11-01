@@ -2,7 +2,7 @@ import { queueMap } from '../../core/input'
 import { Tile, worldToTile, type Maze } from './maze'
 
 /** What a marker is; each draws its own little glyph. */
-export type MapIcon = 'portal' | 'exit' | 'chest' | 'shrine' | 'nest' | 'key' | 'door' | 'done'
+export type MapIcon = 'portal' | 'exit' | 'chest' | 'shrine' | 'nest' | 'key' | 'door' | 'done' | 'waypoint'
 
 interface Mark {
   id: string
@@ -77,6 +77,9 @@ export class Minimap {
     this.marks.push({ id, x, y, color, icon, always })
     return id
   }
+
+  /** Waypoint route in tiles (drawn as a gold line where seen); empty = none. */
+  path: { x: number; y: number }[] = []
 
   unmark(id: string): void {
     const i = this.marks.findIndex((m) => m.id === id)
@@ -161,6 +164,27 @@ export class Minimap {
         ctx.fillRect(tx * cell, ty * cell, cell, cell)
       }
     }
+    // Quest waypoint route (편의성): a gold line over the tiles she has seen.
+    if (this.path.length > 1) {
+      ctx.strokeStyle = 'rgba(255, 205, 90, 0.95)'
+      ctx.lineWidth = Math.max(1.5, cell * 0.22)
+      ctx.setLineDash([cell * 0.4, cell * 0.25])
+      ctx.beginPath()
+      let pen = false
+      for (const t of this.path) {
+        if (!this.seen[t.y * maze.w + t.x]) {
+          pen = false
+          continue
+        }
+        const px = (t.x + 0.5) * cell
+        const py = (t.y + 0.5) * cell
+        if (pen) ctx.lineTo(px, py)
+        else ctx.moveTo(px, py)
+        pen = true
+      }
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
     for (const m of this.marks) {
       if (!m.always && !this.seen[m.y * maze.w + m.x]) continue
       this.glyph(m)
@@ -229,6 +253,17 @@ export class Minimap {
           else ctx.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr)
         }
         ctx.closePath()
+        break
+      case 'waypoint':
+        // A map pin: round head over a point.
+        ctx.moveTo(x, y + r * 1.3)
+        ctx.arc(x, y - r * 0.25, r * 0.9, Math.PI * 0.8, Math.PI * 0.2)
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.fillStyle = '#3a2448'
+        ctx.arc(x, y - r * 0.25, r * 0.35, 0, Math.PI * 2)
         break
       case 'door':
         ctx.rect(x - r * 0.9, y - r * 0.9, r * 1.8, r * 1.8)

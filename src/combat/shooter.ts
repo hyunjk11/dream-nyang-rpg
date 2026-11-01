@@ -11,7 +11,7 @@ import { AdditiveBlending, BoxGeometry, Color, InstancedMesh, MeshBasicMaterial,
 import type { Hero } from '../actors/hero'
 import type { Vfx } from '../core/vfx'
 import {
-  ASSIST, TPS, anglesTo, assistPick, createView, kick, look, overlapsHer, perPixel, pose, rayCapsule, recover, wishFrom,
+  ASSIST, AUTO_AIM, TPS, anglesTo, assistPick, createView, kick, look, overlapsHer, perPixel, pose, rayCapsule, recover, wishFrom,
   type AimTarget, type RayFn, type TpsView,
 } from '../core/tps'
 import { Gun, hitStopFor, rollDamage, spreadDir } from './gunfeel'
@@ -46,6 +46,8 @@ export class ShoulderRig {
   shake = 0
   /** Last look came from a finger (touch gets a gentle pull toward foes). */
   touch = false
+  /** ⚙ 자동 조준: the wide AUTO_AIM cone instead of the mild assist. */
+  autoAim = false
   private readonly camera: PerspectiveCamera
   private readonly f = new Vector3()
 
@@ -126,7 +128,9 @@ export class ShoulderRig {
       return
     }
     this.onTarget = false
-    const pick = assistPick(o.x, o.y, o.z, f.x, f.y, f.z, targets, solid)
+    const pick = this.autoAim
+      ? assistPick(o.x, o.y, o.z, f.x, f.y, f.z, targets, solid, AUTO_AIM.slack, AUTO_AIM.maxCone)
+      : assistPick(o.x, o.y, o.z, f.x, f.y, f.z, targets, solid)
     if (pick && pick.dist > minAim) {
       this.near = true
       this.target = pick.index

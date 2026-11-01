@@ -13,22 +13,25 @@ export interface QolPrefs {
   /** Eat a heart candy by herself when HP falls under `autoCandyAt` of max. */
   autoCandy: boolean
   autoCandyAt: number
+  /** Aim assist: the shot snaps to the nearest foe near the crosshair (default on for touch). */
+  autoAim: boolean
 }
 
-export const QOL_DEFAULTS: QolPrefs = { autoSellCommon: false, autoCandy: true, autoCandyAt: 0.3 }
+export const QOL_DEFAULTS: QolPrefs = { autoSellCommon: false, autoCandy: true, autoCandyAt: 0.3, autoAim: false }
 export const QOL_KEY = 'dnr.qol'
 
 /** Read saved prefs (bad or missing JSON falls back to the defaults, field by field). */
-export function loadQol(raw: string | null | undefined): QolPrefs {
+export function loadQol(raw: string | null | undefined, touch = false): QolPrefs {
   try {
     const v = raw ? (JSON.parse(raw) as Partial<QolPrefs>) : {}
     return {
       autoSellCommon: typeof v.autoSellCommon === 'boolean' ? v.autoSellCommon : QOL_DEFAULTS.autoSellCommon,
       autoCandy: typeof v.autoCandy === 'boolean' ? v.autoCandy : QOL_DEFAULTS.autoCandy,
       autoCandyAt: typeof v.autoCandyAt === 'number' && v.autoCandyAt > 0 && v.autoCandyAt < 1 ? v.autoCandyAt : QOL_DEFAULTS.autoCandyAt,
+      autoAim: typeof v.autoAim === 'boolean' ? v.autoAim : touch,
     }
   } catch {
-    return { ...QOL_DEFAULTS }
+    return { ...QOL_DEFAULTS, autoAim: touch }
   }
 }
 

@@ -32,6 +32,7 @@ export const ZONE_OF: Record<string, Zone> = {
   toasts: 'tc',
   minimap: 'tr',
   'contract-hud': 'tr',
+  waypoint: 'tr',
   'loot-toasts': 'bl',
   stick: 'bl',
   hotbar: 'br',
@@ -124,7 +125,19 @@ export function installLayout(ui: HTMLElement | null): void {
     if (wait <= 0) requestAnimationFrame(run)
     else window.setTimeout(() => requestAnimationFrame(run), wait)
   }
-  const watch = new MutationObserver(soon)
+  // A new toast / banner, or the quest popover opening, is fitted before the next paint (the
+  // observer runs as a microtask), so it never flashes over the crosshair; text ticks stay throttled.
+  const now = () => {
+    lastFit = performance.now()
+    fitHud()
+  }
+  const urgent = (r: MutationRecord) =>
+    (r.type === 'childList' && r.addedNodes.length > 0 && !!zones && zones.tc.contains(r.target)) ||
+    (r.type === 'attributes' && (r.target as Element).id === 'contract-hud')
+  const watch = new MutationObserver((records) => {
+    if (records.some(urgent)) now()
+    else soon()
+  })
   for (const z of [zones.tc, zones.tl, zones.tr, zones.bl]) watch.observe(z, { childList: true, subtree: true, characterData: true })
   for (const id of ['guide', 'bossbar', 'wave', 'delve', 'tracker', 'contract-hud', 'zone-banner', 'levelup', 'note']) {
     const el = document.getElementById(id)
@@ -206,8 +219,32 @@ export function aimZone(w: number, h: number): Box {
   return { left: w / 2 - hw, right: w / 2 + hw, top: h / 2 - hh, bottom: h / 2 + hh }
 }
 
+/**
+ * The opened quest popover (small screens) must not reach the crosshair keep-out box: shorten it
+ * (rows scroll) when there is room above the box, else narrow it to the strip beside the box.
+ */
+export function popoverFit(r: Box, aim: Box, minHeight = 60, minWidth = 150): { maxHeight: number | null; width: number | null } {
+  if (!boxHit(r, aim, 0)) return { maxHeight: null, width: null }
+  const beside = Math.floor(r.right - aim.right - 6)
+  const above = Math.floor(aim.top - r.top - 6)
+  if (beside >= minWidth) return { maxHeight: null, width: beside }
+  if (above >= minHeight) return { maxHeight: above, width: null }
+  return { maxHeight: Math.max(0, above), width: Math.max(0, beside) }
+}
+
+function fitPopover(aim: Box): void {
+  const el = document.getElementById('contract-hud')
+  if (!el) return
+  el.style.maxHeight = ''
+  el.style.width = ''
+  if (!el.classList.contains('open') || getComputedStyle(el).position !== 'absolute') return
+  const fit = popoverFit(el.getBoundingClientRect(), aim)
+  if (fit.maxHeight !== null) el.style.maxHeight = `${fit.maxHeight}px`
+  if (fit.width !== null) el.style.width = `${fit.width}px`
+}
+
 /** Pieces that always stay (fixed HUD). */
-const SOLID = ['#ui .top', '#tracker', '#delve', '#wave', '#bossbar', '#guide', '#minimap', '#contract-hud', '#hud-pocket > *', '#stick', '#hotbar > *', '#actions > button', '#hint', '#relock', '#dialog']
+const SOLID = ['#ui .top', '#tracker', '#delve', '#wave', '#bossbar', '#guide', '#minimap', '#contract-hud', '#waypoint', '#hud-pocket > *', '#stick', '#hotbar > *', '#actions > button', '#hint', '#relock', '#dialog']
 let solidBoxes: Box[] = []
 
 function seen(el: Element): DOMRect | null {
@@ -246,6 +283,7 @@ export function fitHud(): void {
   guide?.classList.remove('tight', 'cramped')
   document.body.classList.remove('guide-cramped')
   const aim = aimZone(window.innerWidth, window.innerHeight)
+  fitPopover(aim)
   const solids = () => {
     const out: { el: Element; r: DOMRect }[] = []
     for (const sel of SOLID) document.querySelectorAll(sel).forEach((el) => {

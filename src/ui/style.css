@@ -575,7 +575,7 @@ body.guide-cramped #guide-chip.standby { display: block; }
 #hud-br #hud-pocket { order: 0; }
 #tracker, #wave { order: 1; } #delve, #bossbar { order: 2; } #guide-chip { order: 3; } #guide { order: 3; } #zone-banner { order: 4; } #levelup { order: 5; }
  #note { order: 6; } #toasts { order: 7; }
-#minimap { order: 1; } #contract-hud { order: 2; }
+#minimap { order: 1; } #waypoint { order: 2; } #contract-hud { order: 3; }
 #loot-toasts { order: 1; } #hud-bl #hud-pocket { order: 2; } #stick { order: 3; }
 #hotbar { order: 1; } #actions { order: 2; }
 #guide { position: relative; }
@@ -625,7 +625,9 @@ body.compact .actions { gap: 8px; }
   body.compact #contract-hud > div { font-size: 11px; }
   /* Opened on a small screen it drops down over the view like a menu (tap the chip to close). */
   body.compact #hud-tr { position: relative; overflow: visible; }
-  body.compact #contract-hud.open { position: absolute; right: 0; top: calc(var(--map) + 8px); z-index: 3; width: min(260px, calc(100vw - 28px)); max-height: calc(100vh - var(--edge-t) - var(--bar-h) - var(--map) - var(--edge-b) - var(--br-h, 0px) - 24px); padding: 6px; border-radius: 16px; background: rgba(40, 24, 60, 0.35); align-items: flex-end; }
+  body.compact #contract-hud.open { position: absolute; right: 0; top: calc(var(--map) + 8px); z-index: 3; width: min(260px, calc(100vw - 28px)); max-width: none; max-height: calc(100vh - var(--edge-t) - var(--bar-h) - var(--map) - var(--edge-b) - var(--br-h, 0px) - 24px); padding: 6px; border-radius: 16px; background: rgba(40, 24, 60, 0.35); align-items: flex-end; }
+  /* In town there is no minimap above it: open right under the top bar. */
+  body.compact:not(.sewer) #contract-hud.open { top: 0; }
   body.compact #loot-toasts { max-width: min(220px, calc(100vw - 28px)); }
   body.compact #map-legend { font-size: 11px; gap: 8px; padding: 5px 10px; }
 }
@@ -680,3 +682,13 @@ body.alt-free #crosshair { display: none; }
 /* Shortcut hints on the pocket buttons (desktop only). */
 .key-hint { font: normal 10px "Jua", sans-serif; margin-left: 5px; padding: 0 4px; border-radius: 4px; background: rgba(138, 79, 176, 0.14); color: #8a4fb0; line-height: 15px; }
 body.touch .key-hint, body.compact .key-hint { display: none; }
+
+/* 편의성: quest waypoint chip (distance to the tracked quest) and the tracked row. */
+#waypoint { flex: none; display: flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border-radius: 14px; background: rgba(58, 36, 72, 0.82); color: #ffe7a8; font: 13px "Jua", sans-serif; pointer-events: auto; box-shadow: 0 0 0 1px rgba(255, 211, 107, 0.6), 0 0 12px rgba(255, 211, 107, 0.35); max-width: 100%; }
+#waypoint.hidden { display: none; }
+#waypoint i { width: 9px; height: 9px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: #ffd36b; box-shadow: 0 0 6px #ffd36b; flex: none; }
+#waypoint span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#waypoint button { flex: none; min-width: 26px; min-height: 26px; padding: 0; border-radius: 50%; border: 0; background: rgba(255, 255, 255, 0.14); color: #ffe7a8; font-size: 12px; cursor: pointer; }
+body.touch #waypoint button { min-width: 44px; min-height: 44px; }
+#contract-hud > div.wp { box-shadow: inset 0 0 0 2px #ffd36b; }
+#contract-hud > div.wp::after { content: " ◆"; color: #e0a020; }

@@ -41,6 +41,12 @@ export const ASSIST = {
   reach: 34,
 } as const
 
+/**
+ * Auto-aim (⚙ 자동 조준, 편의성): a much wider cone, so the shot snaps onto the foe nearest the
+ * crosshair (≈12.6°). Off = only the mild ASSIST magnetism above.
+ */
+export const AUTO_AIM = { slack: 1.2, maxCone: 0.22 } as const
+
 /** Sensitivity multiplier on TPS.mouse / TPS.touch (saved, set from the settings slider). */
 export const SENS = { min: 0.3, max: 2.5, key: 'dnr3d.sens', value: 1 }
 
