@@ -1,7 +1,8 @@
 /**
- * Every difficulty knob in one place. The first playtest said "too hard", so the defaults below
- * are a clearly gentler game: more health that comes back, longer mercy after a hit, foes that
- * hit softer, die sooner and wind up longer, and sewer waves that start small and ramp up.
+ * Every difficulty knob in one place. The first playtest said "too hard" (the wave hordes), the
+ * explore floors that replaced them then read "too easy", so these defaults (보통) sit between:
+ * fuller packs that hit harder and swing sooner, slower regen, fewer heart candies, elites that
+ * enrage and charge, and a steeper climb per floor and per depth. 쉬움/어려움 scale on top (DIFF_MODES).
  * Multipliers are on the raw tables (HORDE, FOE_SPECS, BOSS); 1 = the old value.
  */
 export const DIFFICULTY = {
@@ -9,23 +10,27 @@ export const DIFFICULTY = {
     /** Was 100. */
     maxHp: 150,
     /** Mercy seconds after a hit (was 0.45). She blinks the whole time. */
-    iframes: 0.95,
+    iframes: 0.85,
     /** Health comes back after this long without a hit... */
-    regenDelay: 3.2,
+    regenDelay: 3.8,
     /** ...at this many HP per second. */
-    regenRate: 7,
+    regenRate: 5.5,
   },
   /** Sewer horde (multipliers on HORDE). */
   horde: {
-    hp: 0.72,
-    damage: 0.55,
-    speed: 0.86,
+    hp: 0.78,
+    damage: 0.62,
+    speed: 0.92,
     /** Longer, easier-to-read melee wind-up (was 0.32 s) and a longer rest between swings (was 1.1 s). */
-    windup: 0.48,
-    cooldown: 1.6,
+    windup: 0.44,
+    cooldown: 1.45,
   },
-  /** Elite multipliers (were hp 4.5, damage 2). */
-  elite: { hp: 3.2, damage: 1.5 },
+  /**
+   * Elite multipliers (were hp 4.5, damage 2), plus their extra tricks: below rageAt of their hp
+   * they enrage (faster, harder hits), and every chargeEvery s they crouch for chargeWind s and
+   * then charge at chargeSpeed× for chargeTime s when she is chargeMin..chargeMax m away.
+   */
+  elite: { hp: 3.5, damage: 1.6, rageAt: 0.5, rageSpeed: 1.3, rageDamage: 1.25, chargeMin: 3.5, chargeMax: 9, chargeWind: 0.55, chargeTime: 0.45, chargeSpeed: 3.2, chargeEvery: 6 },
   /** Sewer waves: size = base + step·(n-1) + curve·(n-1)², times the early ease. */
   waves: {
     base: 8,
@@ -45,7 +50,7 @@ export const DIFFICULTY = {
     liveCap: 70,
   },
   /** The sewer boss (multipliers on BOSS). */
-  boss: { hp: 0.7, damage: 0.55, orbSpeed: 0.85, ringCount: 0.72 },
+  boss: { hp: 0.95, damage: 0.75, orbSpeed: 0.95, ringCount: 0.85 },
   /**
    * The delve: depth (act) → floors 1..3 + a boss floor. Depth 1, floor 1 is exactly the old
    * sewer (all multipliers 1, wave roster from wave 1); everything after creeps up gently.
@@ -53,12 +58,12 @@ export const DIFFICULTY = {
   delve: {
     /** Normal floors per depth before the boss floor. */
     floors: 3,
-    /** Foe hp / damage growth per extra floor inside a depth (+4% / +2%). */
-    hpPerFloor: 0.04,
-    damagePerFloor: 0.02,
-    /** ...and per extra depth (+20% / +10%). */
-    hpPerDepth: 0.2,
-    damagePerDepth: 0.1,
+    /** Foe hp / damage growth per extra floor inside a depth (+6% / +4%). */
+    hpPerFloor: 0.06,
+    damagePerFloor: 0.04,
+    /** ...and per extra depth (+27% / +14%). */
+    hpPerDepth: 0.27,
+    damagePerDepth: 0.14,
     /** Floors start this many waves further into the roster (floor 1 of depth 1 = wave 1). */
     wavesPerFloor: 1,
     wavesPerDepth: 2,
@@ -69,8 +74,8 @@ export const DIFFICULTY = {
     /** Nest pipe hp (×foe hp scale). Roughly five slimes of water. */
     nestHp: 110,
     /** Boss hp / damage growth per depth. */
-    bossHpPerDepth: 0.3,
-    bossDamagePerDepth: 0.1,
+    bossHpPerDepth: 0.45,
+    bossDamagePerDepth: 0.2,
     /** Gold drop growth per depth. */
     goldPerDepth: 0.35,
     /** Fall down there: this share of the gold picked up this run is dropped (items are kept). */
@@ -86,4 +91,39 @@ export function waveSize(n: number): number {
   const k = n - 1
   const ease = w.ease[k] ?? 1
   return Math.max(4, Math.min(w.max, Math.round((w.base + w.step * k + w.curve * k * k) * ease)))
+}
+
+/** Selectable difficulty (title screen). 보통 is the default tuning above. */
+export type DiffMode = 'easy' | 'normal' | 'hard'
+export const DIFF_MODES: Record<DiffMode, { label: string; foeHp: number; foeDamage: number; regen: number; potion: number }> = {
+  easy: { label: '쉬움', foeHp: 0.75, foeDamage: 0.6, regen: 1.6, potion: 1.6 },
+  normal: { label: '보통', foeHp: 1, foeDamage: 1, regen: 1, potion: 1 },
+  hard: { label: '어려움', foeHp: 1.3, foeDamage: 1.3, regen: 0.7, potion: 0.7 },
+}
+export const DIFF_KEY = 'dnr3d.difficulty'
+let mode: DiffMode = 'normal'
+try {
+  const raw = globalThis.localStorage?.getItem(DIFF_KEY)
+  if (raw === 'easy' || raw === 'normal' || raw === 'hard') mode = raw
+} catch {
+  // storage blocked: keep 보통
+}
+
+export function diffMode(): DiffMode {
+  return mode
+}
+
+/** Multipliers for the current mode. */
+export function diff(): (typeof DIFF_MODES)[DiffMode] {
+  return DIFF_MODES[mode]
+}
+
+export function setDiffMode(m: DiffMode): DiffMode {
+  mode = m
+  try {
+    globalThis.localStorage?.setItem(DIFF_KEY, m)
+  } catch {
+    // ignore
+  }
+  return mode
 }

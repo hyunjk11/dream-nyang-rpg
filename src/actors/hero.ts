@@ -26,7 +26,7 @@ import { addOutline, applyToon, characterGradient, toon } from '../core/material
 import { WATER_LOOK, buildToyGun, createToyGun, type GunLook } from './toygun'
 import type { WeaponKind } from '../sim/types'
 import { KNOCK, MOVE, gaitBlend, gaitRate, knockDecay, legYaw, turnToward } from '../core/motion'
-import { DIFFICULTY } from '../combat/difficulty'
+import { DIFFICULTY, diff } from '../combat/difficulty'
 import { Wear, type WearLook } from './wear'
 
 const loader = new GLTFLoader()
@@ -230,7 +230,7 @@ export class Hero {
     this.dashCd = Math.max(0, this.dashCd - dt)
     this.iframes = Math.max(0, this.iframes - dt)
     this.sinceHit += dt
-    if (this.alive && this.sinceHit > this.regenDelay && this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + DIFFICULTY.hero.regenRate * this.regenMul * dt)
+    if (this.alive && this.sinceHit > this.regenDelay && this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + DIFFICULTY.hero.regenRate * diff().regen * this.regenMul * dt)
     this.hitT = Math.max(0, this.hitT - dt)
     this.shootT = Math.max(0, this.shootT - dt)
     if (!this.alive) {

@@ -13,28 +13,28 @@ import type { FloorPlan } from '../../sim/delve'
 /** Every explore-floor knob in one place (numbers from the approved audit plan). */
 export const EXPLORE = {
   /** Packs on a depth-1 floor, and the growth per extra depth. */
-  packs: [10, 14] as const,
-  packGrowth: 0.15,
+  packs: [11, 15] as const,
+  packGrowth: 0.2,
   /** Foes in an ordinary pack: small near the start, bigger further in. */
-  packSize: [3, 6] as const,
+  packSize: [4, 6] as const,
   /** Elite packs: one leader + minions. */
-  elitePacks: [1, 2] as const,
-  minions: 4,
+  elitePacks: [1, 3] as const,
+  minions: 5,
   /** Wake when she is in sight this close (m); the whole pack wakes together. */
-  aggro: 12,
+  aggro: 13,
   /** Give up after this long (s) out of sight or farther than `leash` (m), then walk home. */
   leash: 18,
   leashTime: 6,
   /** At most this many foes chase her at once (more wake as others fall). */
-  chaseCap: 8,
+  chaseCap: 9,
   /** Optional nest pipes: count, burst size, seconds between bursts, live cap per pipe, wake range (m). */
   nests: [2, 3] as const,
   nestBurst: [2, 3] as const,
-  nestEvery: 6,
+  nestEvery: 5,
   nestCap: 6,
   nestRange: 14,
   /** A pipe runs dry after this many foes (plugging it still pays the chest). */
-  nestTotal: 15,
+  nestTotal: 18,
   /** Dead-end chests, the shrine buff (s) and the chance of a secret pocket. */
   chests: [3, 5] as const,
   shrineTime: 30,
