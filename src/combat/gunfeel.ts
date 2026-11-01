@@ -143,7 +143,8 @@ export function rollDamage(r: number, damage: number = GUN.damage, critChance: n
 export function hitStopFor(hit: { elite?: boolean; kill?: boolean; boss?: boolean; crit?: boolean }): number {
   if (hit.boss) return hit.kill ? 0.16 : hit.crit ? 0.018 : 0
   if (hit.elite) return hit.kill ? 0.075 : hit.crit ? 0.03 : 0.012
-  return 0
+  // Regular foes: a whisker of a freeze on kills and crits so each pop lands (never on chip hits).
+  return hit.kill ? 0.022 : hit.crit ? 0.012 : 0
 }
 
 /**

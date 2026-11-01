@@ -55,11 +55,12 @@ describe('두두두 연사 손맛', () => {
     }
   })
 
-  it('치명타는 가끔 크게 들어가고, 정예·보스만 히트스톱이 걸린다', () => {
+  it('치명타는 가끔 크게 들어가고, 히트스톱은 처치·치명타에만 짧게(잔타 없음)', () => {
     expect(rollDamage(0.05)).toEqual({ amount: Math.round(GUN.damage * GUN.critMul), crit: true })
     expect(rollDamage(0.5)).toEqual({ amount: GUN.damage, crit: false })
     expect(hitStopFor({})).toBe(0)
-    expect(hitStopFor({ kill: true })).toBe(0)
+    expect(hitStopFor({ kill: true })).toBeGreaterThan(0)
+    expect(hitStopFor({ kill: true })).toBeLessThan(0.03)
     expect(hitStopFor({ elite: true })).toBeGreaterThan(0)
     expect(hitStopFor({ elite: true, kill: true })).toBeGreaterThan(hitStopFor({ elite: true }))
     expect(hitStopFor({ boss: true, kill: true })).toBeGreaterThan(0.1)
@@ -79,7 +80,7 @@ describe('두두두 연사 손맛', () => {
   })
 
   it('합성 총소리는 클리핑 없이 짧고, 변형마다 조금씩 다르다', () => {
-    for (const cue of ['shot', 'tail', 'tick', 'crit', 'pop', 'thunk', 'hiss'] as const) {
+    for (const cue of ['shot', 'tail', 'tick', 'crit', 'pop', 'thunk', 'hiss', 'snap', 'star', 'boing', 'puff'] as const) {
       const a = synth(cue, 44100, 0)
       let peak = 0
       for (const v of a) peak = Math.max(peak, Math.abs(v))

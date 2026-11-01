@@ -100,6 +100,8 @@ interface Casing {
   spin: number
   age: number
   bubble: boolean
+  /** Confetti flake colour index (-1 = not confetti). */
+  confetti: number
 }
 
 interface Splat {
@@ -110,7 +112,9 @@ interface Splat {
   color: Color
 }
 
-const CASINGS = 48
+const CASINGS = 64
+const FLASH_TINTS = [0xc8f0ff, 0xffc2ea, 0xfff0a0, 0xd8c8ff]
+const CONFETTI = [0xff8fc8, 0xffe07a, 0x9ad7ff, 0xb8f0c0, 0xd0a8ff]
 const SPLATS = 72
 const CASING_LIFE = 1.3
 const SPLAT_LIFE = 3.6
@@ -124,6 +128,8 @@ export class GunFx {
   private flashT = 0
   private readonly stars: InstancedMesh
   private readonly bubbles: InstancedMesh
+  /** Little paper confetti flakes that flutter out with the casings. */
+  private readonly confetti: InstancedMesh
   private readonly splats: InstancedMesh
   private readonly casings: Casing[] = []
   private readonly splatList: Splat[] = []
@@ -152,10 +158,12 @@ export class GunFx {
       new MeshBasicMaterial({ color: new Color(0xbfeaff).multiplyScalar(1.4), transparent: true, opacity: 0.55, blending: AdditiveBlending, depthWrite: false }),
       CASINGS,
     )
+    this.confetti = new InstancedMesh(new PlaneGeometry(0.06, 0.035), new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide }), CASINGS)
+    this.confetti.setColorAt(0, new Color(1, 1, 1))
     const splatGeo = new PlaneGeometry(1, 1)
     this.splats = new InstancedMesh(splatGeo, new MeshBasicMaterial({ map: splatTexture(), transparent: true, blending: AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }), SPLATS)
     this.splats.setColorAt(0, new Color(1, 1, 1))
-    for (const im of [this.stars, this.bubbles, this.splats]) {
+    for (const im of [this.stars, this.bubbles, this.confetti, this.splats]) {
       im.count = 0
       im.frustumCulled = false
       this.group.add(im)
@@ -163,9 +171,13 @@ export class GunFx {
   }
 
   /** One shot: flash at the muzzle facing the lens, and a casing flicked out to her right. */
-  shot(tip: Vector3, dir: Vector3, camera: Camera, n: number): void {
+  shot(tip: Vector3, dir: Vector3, camera: Camera, n: number, tint = 0xc8f0ff): void {
     this.flashT = 0.05
-    const sz = 0.44 + Math.random() * 0.24
+    // Muzzle variety: the flash colour walks a little palette and every 5th one blooms big.
+    const big = n % 5 === 0
+    const mat = this.flash.material as MeshBasicMaterial
+    mat.color.set(FLASH_TINTS[n % FLASH_TINTS.length] ?? tint).lerp(this.c.set(tint), 0.35).multiplyScalar(big ? 2.8 : 2.2)
+    const sz = (0.44 + Math.random() * 0.24) * (big ? 1.45 : 1)
     const petal = this.flashSide
     petal.visible = true
     petal.position.copy(tip).addScaledVector(dir, 0.22)
@@ -200,7 +212,28 @@ export class GunFx {
       spin: 8 + Math.random() * 10,
       age: 0,
       bubble: n % 3 === 2,
+      confetti: -1,
     })
+    // Every other shot a couple of confetti flakes flutter out too.
+    if (n % 2 === 0) {
+      for (let k = 0; k < 2; k += 1) {
+        if (this.casings.length >= CASINGS) this.casings.shift()
+        this.casings.push({
+          x: tip.x,
+          y: tip.y + 0.04,
+          z: tip.z,
+          vx: (-rx / rl) * (1 + Math.random()) + (Math.random() - 0.5) * 1.6,
+          vy: 1.4 + Math.random() * 1.2,
+          vz: (-rz / rl) * (1 + Math.random()) + (Math.random() - 0.5) * 1.6,
+          rx: Math.random() * 6,
+          ry: Math.random() * 6,
+          spin: 10 + Math.random() * 12,
+          age: 0,
+          bubble: false,
+          confetti: Math.floor(Math.random() * CONFETTI.length),
+        })
+      }
+    }
   }
 
   /** A droplet landed: a glowing splat flat on the surface (normal n). */
@@ -220,6 +253,7 @@ export class GunFx {
     this.flashSide.visible = on
     let si = 0
     let bi = 0
+    let fi = 0
     for (let i = this.casings.length - 1; i >= 0; i -= 1) {
       const c = this.casings[i]
       c.age += dt
@@ -227,7 +261,14 @@ export class GunFx {
         this.casings.splice(i, 1)
         continue
       }
-      c.vy -= (c.bubble ? 1.2 : 9) * dt
+      const flake = c.confetti >= 0
+      c.vy -= (c.bubble ? 1.2 : flake ? 2.2 : 9) * dt
+      if (flake) {
+        // Paper drag: flutter down slowly.
+        c.vx *= Math.exp(-dt * 2.5)
+        c.vz *= Math.exp(-dt * 2.5)
+        c.vy = Math.max(c.vy, -1.1)
+      }
       c.x += c.vx * dt
       c.y += c.vy * dt
       c.z += c.vz * dt
@@ -245,9 +286,15 @@ export class GunFx {
       this.e.rotation.set(c.rx, c.ry, 0)
       this.e.scale.setScalar(fade * (c.bubble ? 1 + c.age * 0.6 : 1))
       this.e.updateMatrix()
-      if (c.bubble) this.bubbles.setMatrixAt(bi++, this.e.matrix)
+      if (flake) {
+        this.confetti.setMatrixAt(fi, this.e.matrix)
+        this.confetti.setColorAt(fi++, this.c.set(CONFETTI[c.confetti]))
+      } else if (c.bubble) this.bubbles.setMatrixAt(bi++, this.e.matrix)
       else this.stars.setMatrixAt(si++, this.e.matrix)
     }
+    this.confetti.count = fi
+    this.confetti.instanceMatrix.needsUpdate = true
+    if (this.confetti.instanceColor) this.confetti.instanceColor.needsUpdate = true
     this.stars.count = si
     this.bubbles.count = bi
     this.stars.instanceMatrix.needsUpdate = true
@@ -279,7 +326,7 @@ export class GunFx {
   }
 
   dispose(): void {
-    for (const im of [this.stars, this.bubbles, this.splats]) im.dispose()
+    for (const im of [this.stars, this.bubbles, this.confetti, this.splats]) im.dispose()
     this.group.removeFromParent()
   }
 }

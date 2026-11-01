@@ -130,6 +130,7 @@ const shooter = new Shooter(
     hud: crosshair?.parentElement ?? null,
     sfx: (cue, gain) => audio.sfx(cue, gain),
     gun: (cue, gain, pitch) => gunSfx(cue, gain, pitch),
+    lowPower: stage.mobile,
     hitStop: (seconds) => {
       combat.hitStop = Math.max(combat.hitStop, seconds)
     },
@@ -169,6 +170,7 @@ const townWorld: ShotWorld = {
     for (const f of townFoes) townTargets.push(combat.capsule(f))
     return townTargets
   },
+  bodies: () => townSkillWorld.bodies(),
   strike: (o, d, max, amount, procs) => {
     const hit = combat.raycast(o, d, max)
     if (!hit) return null
@@ -298,6 +300,8 @@ function applyBuild(): void {
     sparkle: stats.sparkle,
     ice: stats.ice,
     candy: stats.candy,
+    starShot: stats.starShot,
+    cloud: stats.cloud,
     fireRate: stats.fireRate,
     tint: gem && gunItem && (gunItem.rarity === 'epic' || gunItem.rarity === 'legendary') ? gem : look.tracer,
   })

@@ -204,6 +204,9 @@ body.sewer #tracker { display: none; }
 .dmg.crit { font-size: 32px; color: #ffe27a; -webkit-text-stroke: 1.5px #a0306a; text-shadow: 0 0 10px rgba(255, 120, 190, 0.9), 0 2px 0 #a0306a, 0 4px 8px rgba(80, 10, 50, 0.5); letter-spacing: -0.5px; }
 .dmg.elite { color: #ffd0a0; font-size: 23px; }
 .dmg.boss { color: #ffb0dc; font-size: 22px; }
+.dmg.star { color: #fff09a; font-size: 24px; -webkit-text-stroke: 1px #9a6a10; text-shadow: 0 0 8px rgba(255, 230, 120, 0.9), 0 2px 0 #9a6a10; }
+.dmg.star::before { content: "★"; font-size: 0.7em; margin-right: 1px; }
+.dmg.candy { color: #ffd2ec; font-size: 16px; -webkit-text-stroke: 1px #b0407a; text-shadow: 0 0 6px rgba(255, 170, 220, 0.9), 0 1px 0 #b0407a; }
 #heat { position: absolute; left: 50%; top: calc(50% + 34px); transform: translateX(-50%); width: 56px; height: 5px; border-radius: 999px; background: rgba(36, 22, 58, 0.45); pointer-events: none; opacity: 0; transition: opacity 0.2s; --heat: 0; }
 #heat.on { opacity: 1; }
 #heat b { display: block; height: 100%; width: calc(var(--heat) * 100%); border-radius: 999px; background: linear-gradient(90deg, #9ad7ff, #ffb0dc 70%, #ff6f9a); }

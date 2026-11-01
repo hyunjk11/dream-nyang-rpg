@@ -28,6 +28,10 @@ export type StatKey =
   | 'sparkle'
   | 'ice'
   | 'candy'
+  /** Chance per droplet to throw a ricochet star. */
+  | 'starShot'
+  /** Chance per landed droplet to puff a cotton-candy cloud. */
+  | 'cloud'
 
 /** Toy gun bases: full-auto water gun, bubble shotgun, star burst rifle, dream dart sniper. */
 export type WeaponKind = 'water' | 'bubble' | 'star' | 'dart'
@@ -188,6 +192,8 @@ export const STAT_KO: Record<StatKey, string> = {
   sparkle: '반짝 속성',
   ice: '얼음 속성',
   candy: '사탕 속성',
+  starShot: '별도탄 확률',
+  cloud: '솜사탕 구름',
 }
 
 export const DEFAULT_SETTINGS: Settings = {

@@ -4,7 +4,7 @@
  * a compressor on the gun bus. Hit ticks, kill pops, elite thunks and the overheat hiss share it.
  */
 
-export type GunCue = 'shot' | 'tail' | 'tick' | 'crit' | 'pop' | 'thunk' | 'hiss'
+export type GunCue = 'shot' | 'tail' | 'tick' | 'crit' | 'pop' | 'thunk' | 'hiss' | 'snap' | 'star' | 'boing' | 'puff'
 
 /** Tiny seeded noise so every variant is stable between runs. */
 function noise(seed: number): () => number {
@@ -19,7 +19,7 @@ function noise(seed: number): () => number {
 
 /** Mono samples for one cue variant at `rate` Hz, peak-normalised to `peak` (< 1, no clipping). */
 export function synth(cue: GunCue, rate: number, variant = 0, peak = 0.8): Float32Array<ArrayBuffer> {
-  const len: Record<GunCue, number> = { shot: 0.085, tail: 0.18, tick: 0.045, crit: 0.07, pop: 0.11, thunk: 0.16, hiss: 0.6 }
+  const len: Record<GunCue, number> = { shot: 0.085, tail: 0.18, tick: 0.045, crit: 0.07, pop: 0.11, thunk: 0.16, hiss: 0.6, snap: 0.035, star: 0.24, boing: 0.14, puff: 0.32 }
   const n = Math.round(len[cue] * rate)
   const out = new Float32Array(n)
   const rnd = noise(1234 + variant * 977 + cue.length * 31)
@@ -56,6 +56,29 @@ export function synth(cue: GunCue, rate: number, variant = 0, peak = 0.8): Float
       phase += (2 * Math.PI * f * v) / rate
       lp += (rnd() - lp) * 0.5
       s = Math.sin(phase) * Math.exp(-t * 30) + lp * 0.5 * Math.exp(-t * 60)
+    } else if (cue === 'snap') {
+      // Bright crack on top of each shot: high-passed noise burst with a tiny tonal ping.
+      const w = rnd()
+      lp += (w - lp) * 0.25
+      phase += (2 * Math.PI * 4200 * v) / rate
+      s = ((w - lp) * 1.2 + Math.sin(phase) * 0.35) * Math.exp(-t * 140)
+    } else if (cue === 'star') {
+      // Twinkle: two bell partials with a shimmer, for a ricochet star leaving the gun.
+      phase += (2 * Math.PI * 1760 * v) / rate
+      const shimmer = 0.6 + 0.4 * Math.sin(t * 120)
+      s = (Math.sin(phase) + 0.6 * Math.sin(phase * 1.5) + 0.3 * Math.sin(phase * 2.01)) * Math.exp(-t * 16) * shimmer
+    } else if (cue === 'boing') {
+      // Springy ricochet: a fast upward sweep with a wobble.
+      const f = (420 + 900 * Math.min(1, t / 0.06) + 60 * Math.sin(t * 260)) * v
+      phase += (2 * Math.PI * f) / rate
+      s = Math.sin(phase) * Math.exp(-t * 22)
+    } else if (cue === 'puff') {
+      // Cotton-candy whoomph: soft low-passed noise that swells and breathes out, plus a low hum.
+      const w = rnd()
+      lp += (w - lp) * 0.06
+      bp += (lp - bp) * 0.3
+      phase += (2 * Math.PI * (140 - 60 * t) * v) / rate
+      s = (bp * 3 + Math.sin(phase) * 0.4) * Math.min(1, t / 0.03) * Math.exp(-t * 9)
     } else if (cue === 'thunk') {
       const f = (60 + 110 * Math.exp(-t * 25)) * v
       phase += (2 * Math.PI * f) / rate
@@ -97,8 +120,8 @@ export class VoicePool<T> {
   }
 }
 
-const VARIANTS: Record<GunCue, number> = { shot: 4, tail: 2, tick: 2, crit: 1, pop: 3, thunk: 1, hiss: 1 }
-const LEVEL: Record<GunCue, number> = { shot: 0.34, tail: 0.16, tick: 0.22, crit: 0.26, pop: 0.3, thunk: 0.42, hiss: 0.2 }
+const VARIANTS: Record<GunCue, number> = { shot: 4, tail: 2, tick: 2, crit: 1, pop: 3, thunk: 1, hiss: 1, snap: 3, star: 2, boing: 2, puff: 2 }
+const LEVEL: Record<GunCue, number> = { shot: 0.34, tail: 0.16, tick: 0.22, crit: 0.26, pop: 0.3, thunk: 0.42, hiss: 0.2, snap: 0.16, star: 0.2, boing: 0.18, puff: 0.3 }
 
 interface Voice {
   src: AudioBufferSourceNode
@@ -107,7 +130,7 @@ interface Voice {
 
 export class GunSound {
   private readonly bufs = new Map<GunCue, AudioBuffer[]>()
-  private readonly pool = new VoicePool<Voice>(9)
+  private readonly pool = new VoicePool<Voice>(12)
   private readonly bus: GainNode
   private lastVariant = -1
 
