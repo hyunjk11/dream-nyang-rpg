@@ -493,24 +493,53 @@ export class Decor {
         for (let i = 0; i < n; i += 1) spots.push({ x: bx + (hash(tx, ty, 30 + i) - 0.5) * 0.7, z: bz + (hash(tx, ty, 40 + i) - 0.5) * 0.7, s: 0.6 + hash(tx, ty, 50 + i) * 0.9, c })
       }
     }
-    const stems = new InstancedMesh(new CylinderGeometry(0.045, 0.075, 0.42, 7).translate(0, 0.21, 0), new MeshToonMaterial({ color: 0xf5eefc, gradientMap: toonGradient() }), Math.max(1, spots.length))
-    const caps = new InstancedMesh(new SphereGeometry(0.2, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.75, 1).translate(0, 0.38, 0), new MeshBasicMaterial({ color: 0xffffff }), Math.max(1, spots.length))
+    // Big open floors (몽실 들판) used to grow ~1700 mushrooms in one instanced batch that was never
+    // culled: 300k triangles a frame. Now: a cap, lighter shapes, and one batch per map chunk so
+    // what is behind the camera is skipped.
+    const kept = thinSpots(spots, MUSHROOM_CAP)
+    const stemGeo = new CylinderGeometry(0.045, 0.075, 0.42, 5, 1, true).translate(0, 0.21, 0)
+    const capGeo = new SphereGeometry(0.2, 9, 3, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.75, 1).translate(0, 0.38, 0)
+    const stemMat = new MeshToonMaterial({ color: 0xf5eefc, gradientMap: toonGradient() })
+    const capMat = new MeshBasicMaterial({ color: 0xffffff })
+    const chunks = new Map<string, typeof kept>()
+    const span = TILE * MUSHROOM_CHUNK
+    for (const sp of kept) {
+      const key = `${Math.floor(sp.x / span)},${Math.floor(sp.z / span)}`
+      let list = chunks.get(key)
+      if (!list) chunks.set(key, (list = []))
+      list.push(sp)
+    }
+    const out: Mesh[] = []
     const o = new Object3D()
     const col = new Color()
-    spots.forEach((s, i) => {
-      o.position.set(s.x, 0, s.z)
-      o.rotation.set((hash(i, 1, 60) - 0.5) * 0.3, hash(i, 2, 61) * 6, (hash(i, 3, 62) - 0.5) * 0.3)
-      o.scale.setScalar(s.s)
-      o.updateMatrix()
-      stems.setMatrixAt(i, o.matrix)
-      caps.setMatrixAt(i, o.matrix)
-      caps.setColorAt(i, col.set(s.c).multiplyScalar(1.9))
-    })
-    stems.count = spots.length
-    caps.count = spots.length
-    stems.name = 'sewer-mushroom-stems'
-    caps.name = 'sewer-mushroom-caps'
-    return [stems, caps]
+    let n = 0
+    for (const list of chunks.values()) {
+      const stems = new InstancedMesh(stemGeo, stemMat, list.length)
+      const caps = new InstancedMesh(capGeo, capMat, list.length)
+      list.forEach((sp, i) => {
+        const k = n + i
+        o.position.set(sp.x, 0, sp.z)
+        o.rotation.set((hash(k, 1, 60) - 0.5) * 0.3, hash(k, 2, 61) * 6, (hash(k, 3, 62) - 0.5) * 0.3)
+        o.scale.setScalar(sp.s)
+        o.updateMatrix()
+        stems.setMatrixAt(i, o.matrix)
+        caps.setMatrixAt(i, o.matrix)
+        caps.setColorAt(i, col.set(sp.c).multiplyScalar(1.9))
+      })
+      n += list.length
+      stems.computeBoundingSphere()
+      caps.computeBoundingSphere()
+      stems.name = 'sewer-mushroom-stems'
+      caps.name = 'sewer-mushroom-caps'
+      out.push(stems, caps)
+    }
+    if (!out.length) {
+      const empty = new InstancedMesh(capGeo, capMat, 1)
+      empty.count = 0
+      empty.name = 'sewer-mushroom-caps'
+      out.push(empty)
+    }
+    return out
   }
 
   private moons(): InstancedMesh {
@@ -643,4 +672,18 @@ export class Decor {
     })
     this.group.removeFromParent()
   }
+}
+
+/** Most dream mushrooms on one floor (open fields used to grow ~1700). */
+export const MUSHROOM_CAP = 520
+/** Mushroom batches cover this many tiles a side, so off-screen ones are culled. */
+export const MUSHROOM_CHUNK = 10
+
+/** Evenly keep at most `cap` spots (deterministic: every k-th), so a big floor stays light. */
+export function thinSpots<T>(spots: T[], cap: number): T[] {
+  if (spots.length <= cap) return spots
+  const out: T[] = []
+  const step = spots.length / cap
+  for (let i = 0; i < cap; i += 1) out.push(spots[Math.floor(i * step)])
+  return out
 }

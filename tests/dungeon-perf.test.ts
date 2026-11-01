@@ -236,3 +236,16 @@ describe('HUD 레이아웃 측정 캐시', () => {
     expect(cache.misses).toBe(3)
   })
 })
+
+describe('들판 버섯 삼각형 예산', () => {
+  it('버섯 자리는 상한까지만 고르게 남긴다', async () => {
+    const { thinSpots, MUSHROOM_CAP } = await import('../src/world/dungeon/dream')
+    const spots = Array.from({ length: 1746 }, (_, i) => i)
+    const kept = thinSpots(spots, MUSHROOM_CAP)
+    expect(kept.length).toBe(MUSHROOM_CAP)
+    expect(new Set(kept).size).toBe(MUSHROOM_CAP)
+    // Spread over the whole floor, not just the first rooms.
+    expect(kept.at(-1)).toBeGreaterThan(1700)
+    expect(thinSpots([1, 2, 3], MUSHROOM_CAP)).toEqual([1, 2, 3])
+  })
+})
