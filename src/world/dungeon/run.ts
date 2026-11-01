@@ -22,6 +22,7 @@ import { ExploreDirector, type ExploreEvent } from './explore'
 import { CrackedWall, Shrine, StarDoor } from './props'
 import { Decor } from './dream'
 import { Minimap } from './minimap'
+import { hudArena, hudBoxes, nudgeIn } from '../../ui/layout'
 import { Portal } from './portal'
 import { Sewer } from './sewer'
 import { TPS, type AimTarget, type RayFn, type TpsView } from '../../core/tps'
@@ -1155,6 +1156,7 @@ export class DungeonRun {
       off.push({ f, d })
     }
     off.sort((a, b) => a.d - b.d)
+    const arena = off.length ? hudArena() : { cx: 0, cy: 0, rx: 0, ry: 0 }
     this.arrowEls.forEach((el, i) => {
       const o = off[i]
       if (!o) {
@@ -1164,8 +1166,14 @@ export class DungeonRun {
       const a = this.bearing(o.f.x, o.f.z)
       el.classList.remove('hidden')
       el.classList.toggle('elite', o.f.elite)
-      el.style.left = `${50 + Math.sin(a) * 44}%`
-      el.style.top = `${52 - Math.cos(a) * 40}%`
+      // Ring inside the free middle of the screen, clear of the top columns and thumb buttons.
+      const spot = nudgeIn(arena.cx + Math.sin(a) * arena.rx, arena.cy - Math.cos(a) * arena.ry, arena.cx, arena.cy, 20, hudBoxes())
+      if (!spot.clear) {
+        el.classList.add('hidden')
+        return
+      }
+      el.style.left = `${spot.x}px`
+      el.style.top = `${spot.y}px`
       el.style.transform = `translate(-50%, -50%) rotate(${a}rad)`
       el.style.opacity = `${Math.max(0.35, 1 - o.d / 22)}`
     })

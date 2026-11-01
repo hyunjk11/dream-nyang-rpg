@@ -174,7 +174,41 @@ export class TownUI {
       this.host.sfx('ui')
       this.render()
     })
+    const quick = this.quickText(from)
+    if (quick) b.dataset.tip = `${b.dataset.tip ?? ''}\n오른쪽 클릭: ${quick}`
+    b.addEventListener('contextmenu', (event) => {
+      event.preventDefault()
+      this.quick(from, item)
+    })
     return b
+  }
+
+  /** What a right-click on a cell from `from` does in this panel ('' = nothing quick). */
+  private quickText(from: NonNullable<Pick>['from']): string {
+    if (this.panel === 'shop' && from === 'bag') return '바로 팔기 (되사기 가능)'
+    if (this.panel === 'stash' && from === 'bag') return '보관함에 넣기'
+    if (this.panel === 'stash' && from === 'stash') return '가방으로 꺼내기'
+    return ''
+  }
+
+  /** Right-click: sell from the bag at 포포's, move between bag and stash; elsewhere just pick it. */
+  quick(from: NonNullable<Pick>['from'], item: ItemInstance): void {
+    const save = this.host.save()
+    if (this.panel === 'shop' && from === 'bag' && !isEquipped(save, item.uid)) {
+      this.picked = null
+      this.run(sellItem(save, item.uid), `${itemName(item)}을(를) 팔았어. (되사기 가능)`, 'sell', item)
+    } else if (this.panel === 'stash' && from === 'bag') {
+      const r = stashPut(save, item.uid)
+      if (r.ok) this.picked = { from: 'stash', key: item.uid }
+      this.run(r, '보관함에 넣었어.', 'stash', item)
+    } else if (this.panel === 'stash' && from === 'stash') {
+      const r = stashTake(save, item.uid)
+      if (r.ok) this.picked = { from: 'bag', key: item.uid }
+      this.run(r, '가방에 넣었어.', 'stash', item)
+    } else {
+      this.picked = { from, key: item.uid }
+      this.render()
+    }
   }
 
   private grid(items: (ItemInstance | undefined)[], from: NonNullable<Pick>['from'], prices?: number[], sold?: boolean[]): HTMLElement {

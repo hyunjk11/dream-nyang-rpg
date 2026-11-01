@@ -4,7 +4,7 @@
  */
 import { ITEMS } from '../data/items'
 import { powerVsWorn } from '../sim/inventory'
-import { itemName, itemNameParts, itemPower } from '../sim/loot'
+import { itemLines, itemName, itemNameParts, itemPower } from '../sim/loot'
 import { RARITY_COLOR, RARITY_KO, type ItemInstance, type SaveData } from '../sim/types'
 import { iconSvg } from './icons'
 
@@ -39,7 +39,13 @@ export function fillCell(b: HTMLElement, item: ItemInstance, save: SaveData | nu
     }
   }
   b.append(span('ilvl', `Lv${item.itemLevel}`))
-  b.title = `${itemName(item)} · ${RARITY_KO[item.rarity]} · 파워 ${power}`
+  b.dataset.tip = itemTip(item)
+}
+
+/** Hover card text: name, rarity line, then the item's stat lines (first line is the title). */
+export function itemTip(item: ItemInstance): string {
+  const lines = itemLines(item).slice(2)
+  return [itemName(item), `${RARITY_KO[item.rarity]} · 파워 ${itemPower(item)} · 아이템 레벨 ${item.itemLevel}`, ...lines].join('\n')
 }
 
 /** Item title with the prefix and suffix words coloured (detail cards, tooltips). */

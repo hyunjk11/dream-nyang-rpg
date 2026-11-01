@@ -80,3 +80,9 @@ export function powerVsWorn(save: SaveData, item: ItemInstance, power: (i: ItemI
   }
   return power(item) - now
 }
+
+/** Can an item made for `itemSlot` go into the `slot` cell (drag and drop)? Either ring cell takes a ring. */
+export function slotFits(itemSlot: string | undefined, slot: string): boolean {
+  if (!itemSlot) return false
+  return itemSlot === slot || (itemSlot === 'accessory' && slot.startsWith('accessory'))
+}

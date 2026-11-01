@@ -1,3 +1,4 @@
+import { queueMap } from '../../core/input'
 import { Tile, worldToTile, type Maze } from './maze'
 
 /** What a marker is; each draws its own little glyph. */
@@ -54,6 +55,9 @@ export class Minimap {
     el.id = 'minimap'
     el.width = maze.w * cell
     el.height = maze.h * cell
+    // Free cursor (Alt or a panel): a click opens or closes the big map.
+    el.dataset.tip = '지도\n눌러서 크게 보기 (M)'
+    el.addEventListener('click', () => queueMap())
     parent.appendChild(el)
     this.el = el
     this.ctx = el.getContext('2d')
