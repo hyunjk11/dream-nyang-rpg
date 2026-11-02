@@ -59,9 +59,9 @@ const int = (v: unknown, min: number, fallback: number): number => Math.max(min,
 export function sanitizeFloor(raw: unknown): FloorState | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Partial<FloorState>
-  const depth = int(o.depth, 1, 0)
-  const floor = int(o.floor, 1, 0)
-  if (!depth || !floor) return null
+  if (num(o.depth) < 1 || num(o.floor) < 1) return null
+  const depth = int(o.depth, 1, 1)
+  const floor = int(o.floor, 1, 1)
   const at = o.at && typeof o.at === 'object' ? o.at : { x: 0, z: 0, yaw: 0 }
   const pairs = (v: unknown): [number, number][] => (Array.isArray(v) ? v.filter((p) => Array.isArray(p) && p.length === 2).map((p) => [num(p[0]), num(p[1])] as [number, number]) : [])
   const f = o.field

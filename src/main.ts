@@ -47,7 +47,7 @@ import { computeStats, gainXp, type ComputedStats } from './sim/stats'
 import { bossXp, killXp, nestXp, objectiveXp, townKillXp } from './sim/xp'
 import { xpToNext } from './sim/formulas'
 import { findItem } from './sim/inventory'
-import { itemName, makeItem } from './sim/loot'
+import { ilvText, itemName, makeItem } from './sim/loot'
 import { skillSvg } from './ui/skillicons'
 import { Help, keepHintItems } from './ui/help'
 import { RARITY_COLOR, type ItemInstance } from './sim/types'
@@ -1505,7 +1505,7 @@ function lootToast(item: ItemInstance): void {
   el.dataset.uid = item.uid
   el.innerHTML = `<b></b><small></small>`
   ;(el.firstChild as HTMLElement).textContent = itemName(item)
-  ;(el.lastChild as HTMLElement).textContent = `아이템 레벨 ${item.itemLevel} · I 가방에서 비교`
+  ;(el.lastChild as HTMLElement).textContent = `${ilvText(item.itemLevel)} · I 가방에서 비교`
   // Quick equip: what it would change, and a button (G) to wear it right away.
   if (findItem(game.save, item.uid) && !isEquipped(game.save, item.uid)) {
     lastPickup = item.uid

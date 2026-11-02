@@ -9,7 +9,7 @@ import { GEAR_IDS, WEAPON_IDS } from '../data/items'
 import { addItem, bagItems, findItem, isEquipped, removeItem } from './inventory'
 import { delveOf, itemLevelFor } from './delve'
 import { baseValue, capRarity, makeItem, maxRarityFor, rollRarity, sellValue } from './loot'
-import { migrateItem } from './migrate-item'
+import { fallbackItemLevel, migrateItem } from './migrate-item'
 import { computeStats, gainGold, reclampHp, spendGold } from './stats'
 import { BAG_CAP, POTION_CAP, type ItemInstance, type Rarity, type SaveData } from './types'
 
@@ -70,12 +70,14 @@ const normalized = new WeakSet<object>()
 export function townOf(save: SaveData): TownSave {
   if (save.town && normalized.has(save.town)) return save.town
   const raw = (save.town ?? {}) as Partial<TownSave>
+  const lv = fallbackItemLevel(save)
+  const mig = (i: ItemInstance) => migrateItem(i, lv)
   const t: TownSave = {
     scrolls: Math.min(SCROLL_CAP, int(raw.scrolls, 0, 0)),
-    stock: Array.isArray(raw.stock) ? raw.stock.filter((e) => e && okItem(e.item)).map((e) => ({ item: migrateItem(e.item), price: int(e.price, 1, 1), sold: Boolean(e.sold) })) : [],
+    stock: Array.isArray(raw.stock) ? raw.stock.filter((e) => e && okItem(e.item)).map((e) => ({ item: mig(e.item), price: int(e.price, 1, 1), sold: Boolean(e.sold) })) : [],
     stockAt: int(raw.stockAt, -1, -1),
-    buyback: Array.isArray(raw.buyback) ? raw.buyback.filter((e) => e && okItem(e.item)).slice(0, BUYBACK_CAP).map((e) => ({ item: migrateItem(e.item), price: int(e.price, 1, 1) })) : [],
-    stash: Array.isArray(raw.stash) ? raw.stash.filter(okItem).map(migrateItem).slice(0, STASH_CAP) : [],
+    buyback: Array.isArray(raw.buyback) ? raw.buyback.filter((e) => e && okItem(e.item)).slice(0, BUYBACK_CAP).map((e) => ({ item: mig(e.item), price: int(e.price, 1, 1) })) : [],
+    stash: Array.isArray(raw.stash) ? raw.stash.filter(okItem).map(mig).slice(0, STASH_CAP) : [],
     contracts: Array.isArray(raw.contracts) ? raw.contracts.filter((c) => c && typeof c.id === 'string') : [],
     boardAt: int(raw.boardAt, -1, -1),
     contractsDone: int(raw.contractsDone, 0, 0),

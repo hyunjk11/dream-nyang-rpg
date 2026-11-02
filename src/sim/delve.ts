@@ -77,7 +77,7 @@ export function delveOf(save: SaveData): DelveSave {
       : null
   const fs = sanitizeFloor(raw.floorState)
   const floorState = fs && (fs.field || fs.depth <= unlocked) ? fs : null
-  const d: DelveSave = { unlocked, cleared: Math.min(unlocked, int(raw.cleared, 0, 0)), checkpoint, runs: int(raw.runs, 0, 0), open, floorState }
+  const d: DelveSave = { unlocked, cleared: Math.min(unlocked, int(raw.cleared, 0, 0)), checkpoint, runs: int(raw.runs, 0, 0), open, ...(floorState ? { floorState } : {}) }
   save.delve = d
   return d
 }
@@ -260,7 +260,7 @@ export function delveDrops(depth: number, elite: boolean, boss: boolean, rng: ()
   const table = boss
     ? { gold: [40, 60] as [number, number], gear: 0.98, weapon: 0.6, dust: 1, part: 1, potion: 1 }
     : { ...DELVE_TABLE, potion: DELVE_TABLE.potion * diff().potion, gold: [DELVE_TABLE.gold[0], Math.round(DELVE_TABLE.gold[1] * s.gold)] as [number, number] }
-  const drops = rollDrops({ table, luck, elite, boss, rng, itemLevel: itemLevelFor(depth, floor, boss), bias: (depth - 1) * 5, cap: maxRarityFor(depth, boss) })
+  const drops = rollDrops({ table, luck, elite, boss, rng, itemLevel: itemLevelFor(depth, floor, boss) + (elite && !boss ? 1 : 0), bias: (depth - 1) * 5, cap: maxRarityFor(depth, boss) })
   if (boss) for (const d of drops) if (d.kind === 'gold') d.amount = Math.round(d.amount * s.gold)
   return drops
 }
