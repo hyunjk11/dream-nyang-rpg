@@ -291,7 +291,7 @@ export class DungeonRun {
     if (this.layout) {
       this.horde.scale.hp *= EXPLORE.hp
       const nestHp = Math.round(DIFFICULTY.delve.nestHp * this.plan.scale.hp)
-      this.explore = new ExploreDirector(maze, this.layout, this.horde, Math.random, nestHp)
+      this.explore = new ExploreDirector(maze, this.layout, this.horde, rng(this.plan.seed ^ 0x2545f491), nestHp) // seeded: a rebuilt floor gets the same packs (던전 유지)
       if (this.horde.aggro) this.horde.aggro.sight = (ax, az, bx2, bz) => this.sees(ax, az, bx2, bz)
       this.nests = this.explore.nests
       this.buildProps(this.layout)
@@ -396,6 +396,7 @@ export class DungeonRun {
       depth: this.plan.depth,
       floor: this.plan.floor,
       salt,
+      seed: this.plan.seed,
       field: this.plan.objective === 'field' ? (this.plan.field ?? null) : null,
       at: { x: Math.round(p.x * 100) / 100, z: Math.round(p.z * 100) / 100, yaw: Math.round(p.yaw * 100) / 100 },
       dead,

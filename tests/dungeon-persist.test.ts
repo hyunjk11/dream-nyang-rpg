@@ -16,7 +16,7 @@ async function src(path: string): Promise<string> {
 
 function state(over: Partial<FloorState> = {}): FloorState {
   return {
-    depth: 2, floor: 3, salt: 7, field: null, at: { x: 1.5, z: -2, yaw: 0.4 }, dead: [1, 4], initial: 12, hurt: [[3, 20]],
+    depth: 2, floor: 3, salt: 7, seed: 99, field: null, at: { x: 1.5, z: -2, yaw: 0.4 }, dead: [1, 4], initial: 12, hurt: [[3, 20]],
     nests: [[0, 5]], key: true, doors: true, secret: false, chests: ['4_5'], shrine: true, arrived: false, boss: null, seen: 'f0a',
     ...over,
   }

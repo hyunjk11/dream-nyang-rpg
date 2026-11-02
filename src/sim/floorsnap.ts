@@ -10,6 +10,8 @@ export interface FloorState {
   floor: number
   /** Trip salt the maze seed was mixed with. */
   salt: number
+  /** The floor's maze seed (normally floorSeed(depth, floor, salt); QA can pin another). */
+  seed: number
   /** 몽실 들판 trips rebuild from these needs (null = a sewer floor). */
   field: FieldNeeds | null
   at: { x: number; z: number; yaw: number }
@@ -71,6 +73,7 @@ export function sanitizeFloor(raw: unknown): FloorState | null {
     depth,
     floor,
     salt: int(o.salt, 0, 0),
+    seed: int(o.seed, 0, 0),
     field,
     at: { x: num(at.x), z: num(at.z), yaw: num(at.yaw) },
     dead: Array.isArray(o.dead) ? o.dead.filter((n) => typeof n === 'number' && Number.isFinite(n)) : [],

@@ -250,7 +250,7 @@ async function returnFromSave(kept: FloorState): Promise<void> {
     delveUnlocked = -1
     hero.hp = hero.maxHp
     paintReturnPortal()
-    buildFloor(mod, trip.plan)
+    buildFloor(mod, kept.seed ? { ...trip.plan, seed: kept.seed } : trip.plan)
     if (run && !run.restore(kept)) keepFloor(null)
     skills.reset()
     game.persist(store)
@@ -1229,7 +1229,7 @@ document.getElementById('guide-skip')?.addEventListener('click', () => {
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, aimZone, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() } } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, aimZone, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, get keptFloor() { return savedFloor() }, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() } } })
 
 void bootGame()
 
