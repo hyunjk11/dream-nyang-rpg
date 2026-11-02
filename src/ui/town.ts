@@ -9,17 +9,21 @@
 import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { boardOf, claimContract, contractTitle, dropContract, rewardText, takeContract, type Contract } from '../sim/contracts'
 import { addItem, bagItems, findItem, isEquipped, slotFor } from '../sim/inventory'
-import { ilvText, itemLines, itemName, itemPower, plusOf, sellValue, upgradeMul } from '../sim/loot'
+import { formatAffix, ilvText, itemLines, itemName, itemPower, plusOf, sellValue, upgradeMul } from '../sim/loot'
 import { fillCell, ilvRow, nameTitle } from './itemcell'
 import { buyBack, buyConsumable, buyStock, consumableCount, CONSUMABLES, RESTOCK_COST, restock, sellItem, shopStock, STASH_CAP, stashPut, stashTake, townOf } from '../sim/town'
 import { canPay, changeElement, ELEMENT_COST, elementOf, MAX_PLUS, rerollAffix, rerollAffixCost, rerollChoices, upgradeCost, upgradeGun, type Cost } from '../sim/workshop'
 import { CHAPTER2, CHAPTER_TITLE, chapter2Open, chapterProgress, chaptersOf, claimQuest, questRewardText, takeQuest } from '../sim/chapters'
 import { BAG_CAP, type MutationResult, type Element, type ItemInstance, type SaveData } from '../sim/types'
 import { compareEquip } from './inventory'
+import { iconSvg } from './icons'
+import { MOD_KO } from '../data/mods'
+import { attachMod, bagMods, detachMod, fitCost, gunMods, isMod, MAX_MOD_SLOTS, MOD_SLOT_ILV, modKind, modSlots, modUpgradeCost, upgradeMod } from '../sim/mods'
+import { RARITY_COLOR, RARITY_KO } from '../sim/types'
 
 export type TownPanel = 'shop' | 'workshop' | 'board' | 'stash'
 
-export type TownSuccess = 'buy' | 'sell' | 'upgrade' | 'reroll' | 'element' | 'take' | 'claim' | 'stash'
+export type TownSuccess = 'buy' | 'sell' | 'upgrade' | 'reroll' | 'element' | 'take' | 'claim' | 'stash' | 'mod'
 
 export interface TownHost {
   save(): SaveData
@@ -127,7 +131,8 @@ export class TownUI {
     this.root.innerHTML = ''
     const card = el('div', `inv-card town-card town-${this.panel}`)
     const head = el('header')
-    const h = el('h2', 'town-title', TITLE[this.panel])
+    // 몽실 마을's gunsmith is 볼트 (same workshop, same save).
+    const h = el('h2', 'town-title', this.panel === 'workshop' && document.body.classList.contains('mongsil') ? '볼트의 총 개조 공방' : TITLE[this.panel])
     head.append(h, el('small', 'town-sub', SUB[this.panel]))
     const wallet = el('span', 'town-wallet')
     wallet.id = 'town-gold'
@@ -365,7 +370,7 @@ export class TownUI {
       .map((id) => findItem(save, id))
       .filter((i): i is ItemInstance => Boolean(i))
     const gunsFirst = (a: ItemInstance, b: ItemInstance) => Number(ITEMS[b.defId]?.slot === 'weapon') - Number(ITEMS[a.defId]?.slot === 'weapon')
-    return [...worn.sort(gunsFirst), ...bagItems(save).sort(gunsFirst)]
+    return [...worn.sort(gunsFirst), ...bagItems(save).filter((i) => !isMod(i)).sort(gunsFirst)]
   }
 
   private renderWorkshop(save: SaveData, body: HTMLElement): void {
@@ -398,6 +403,8 @@ export class TownUI {
       right.append(box)
     }
 
+    if (gun) right.append(this.modBox(save, item))
+
     if (item.affixes.length) {
       const box = el('div', 'town-job')
       const cost = rerollAffixCost(item)
@@ -425,6 +432,81 @@ export class TownUI {
       }
       right.append(box)
     }
+  }
+
+  /**
+   * 총 개조: the gun's slots and the bag's parts. Tap a part to fit it (same kind swaps), or drag
+   * it onto a slot; tap 빼기 (or Alt+click a slot) to pull it; 부품 강화 spends salvage.
+   */
+  private modBox(save: SaveData, gun: ItemInstance): HTMLElement {
+    const box = el('div', 'town-job town-mods')
+    box.id = 'work-mods'
+    const mods = gunMods(gun)
+    const slots = modSlots(gun)
+    box.append(el('h4', '', `총 개조 ${mods.length}/${slots}칸`))
+    box.append(el('small', '', '부품을 눌러 끼우거나 칸으로 끌어다 놔 · Alt+클릭으로 빼기 · 같은 종류는 서로 바뀌어'))
+    const row = el('div', 'mod-slots')
+    const fit = (uid: string) => {
+      const part = findItem(save, uid)
+      this.run(attachMod(save, gun.uid, uid), part ? `${itemName(part)} 장착! 총이 달라졌어.` : '부품을 끼웠어!', 'mod', gun)
+    }
+    for (let i = 0; i < MAX_MOD_SLOTS; i += 1) {
+      const m = mods[i]
+      const cell = el('div', `mod-slot${m ? ' on' : ''}${i >= slots ? ' locked' : ''}`)
+      cell.dataset.slot = String(i)
+      if (m) {
+        cell.style.setProperty('--rar', RARITY_COLOR[m.rarity])
+        cell.innerHTML = iconSvg(ITEMS[m.defId]?.icon, 26)
+        cell.append(el('b', '', MOD_KO[modKind(m) ?? 'chip']), el('small', '', `${RARITY_KO[m.rarity]} · ${m.affixes.map(formatAffix).join(' · ')}`))
+        cell.title = `${itemName(m)} (Alt+클릭: 빼기)`
+        cell.addEventListener('click', (e) => {
+          if (e.altKey) this.run(detachMod(save, gun.uid, m.uid), `${itemName(m)}을(를) 뺐어.`, 'mod', gun)
+        })
+        const acts = el('div', 'mod-acts')
+        acts.append(this.button('빼기', () => this.run(detachMod(save, gun.uid, m.uid), `${itemName(m)}을(를) 뺐어.`, 'mod', gun), { id: `work-mod-out-${i}` }))
+        const up = modUpgradeCost(m)
+        if (up) acts.append(this.button(`강화 ${costText(up)}`, () => this.run(upgradeMod(save, m.uid), `${MOD_KO[modKind(m) ?? 'chip']} 부품이 ${RARITY_KO[m.rarity]}(으)로!`, 'upgrade', gun), { disabled: !canPay(save, up), id: `work-mod-up-${i}` }))
+        cell.append(acts)
+      } else if (i < slots) cell.append(el('small', '', '빈 칸'))
+      else cell.append(el('small', '', i < 4 && gun.itemLevel < MOD_SLOT_ILV ? `더 높은 등급 · iLv ${MOD_SLOT_ILV}` : '더 높은 등급'))
+      if (i < slots) {
+        cell.addEventListener('dragover', (e) => {
+          e.preventDefault()
+          cell.classList.add('over')
+        })
+        cell.addEventListener('dragleave', () => cell.classList.remove('over'))
+        cell.addEventListener('drop', (e) => {
+          e.preventDefault()
+          const uid = e.dataTransfer?.getData('text/plain')
+          if (uid) fit(uid)
+        })
+      }
+      row.append(cell)
+    }
+    box.append(row)
+    const parts = bagMods(save)
+    box.append(el('h4', '', `가방 속 부품 ${parts.length}개`))
+    if (!parts.length) box.append(el('small', '', '부품은 던전 몹·보물 상자·보스에게서 나와. (보스와 비밀 상자가 잘 줘)'))
+    const list = el('div', 'mod-parts')
+    parts.forEach((p, i) => {
+      const kind = modKind(p)
+      const swap = mods.some((m) => modKind(m) === kind)
+      const b = el('button', 'mod-part')
+      b.type = 'button'
+      b.id = `work-mod-part-${i}`
+      b.draggable = true
+      b.dataset.uid = p.uid
+      b.style.setProperty('--rar', RARITY_COLOR[p.rarity])
+      b.innerHTML = iconSvg(ITEMS[p.defId]?.icon, 22)
+      b.append(el('span', '', `${ITEMS[p.defId]?.name ?? p.defId} · ${RARITY_KO[p.rarity]}`), el('small', '', `${swap ? '바꾸기' : '끼우기'} ${fitCost(p)}골드`))
+      b.title = itemLines(p).join('\n')
+      b.disabled = (!swap && mods.length >= slots) || save.gold < fitCost(p)
+      b.addEventListener('dragstart', (e) => e.dataTransfer?.setData('text/plain', p.uid))
+      b.addEventListener('click', () => fit(p.uid))
+      list.append(b)
+    })
+    box.append(list)
+    return box
   }
 
   // ---- 퀘스트 게시판 ----

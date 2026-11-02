@@ -15,6 +15,10 @@ export interface GunLook {
   tracer: number
   barrelLen: number
   size: number
+  /** 총 개조 visuals: a scope on top (lens colour), a round drum magazine, a glowing side chip. */
+  scope?: number
+  mag?: number
+  chip?: number
 }
 
 export const WATER_LOOK: GunLook = { body: 0xffa9cd, tank: 0x8fd0ff, barrel: 0x7ec8ff, tracer: 0xbfeaff, barrelLen: 1, size: 1 }
@@ -106,6 +110,28 @@ export function buildToyGun(gun: Group, muzzle: Object3D, kind: WeaponKind = 'wa
     const star = add(new Mesh(new ConeGeometry(0.018, 0.03, 5), toon(0xffe08a, 0xffe08a, 0.35)))
     star.position.set(0, 0.097, 0.09)
     tip = 0.12 + 0.12 * L + 0.03
+  }
+  // 총 개조 parts on top of the base shape.
+  if (look.scope !== undefined) {
+    const tube = add(new Mesh(new CylinderGeometry(0.013, 0.013, 0.075, 10), toon(0x5b4a7a)))
+    tube.rotation.x = Math.PI / 2
+    tube.position.set(0.0, kind === 'dart' || kind === 'star' ? 0.15 : 0.135, 0.05)
+    const lens = add(new Mesh(new SphereGeometry(0.014, 10, 8), toon(look.scope, look.scope, 0.9)))
+    lens.position.set(0, tube.position.y, 0.09)
+    lens.userData.noOutline = true
+    tube.name = 'mod-scope'
+  }
+  if (look.mag !== undefined) {
+    const drum = add(new Mesh(new CylinderGeometry(0.034, 0.034, 0.03, 14), toon(look.mag, look.mag, 0.25)))
+    drum.rotation.z = Math.PI / 2
+    drum.position.set(0, -0.005, 0.1)
+    drum.name = 'mod-mag'
+  }
+  if (look.chip !== undefined) {
+    const chip = add(new Mesh(new BoxGeometry(0.008, 0.03, 0.04), toon(look.chip, look.chip, 1.2)))
+    chip.position.set(0.034, 0.06, 0.05)
+    chip.userData.noOutline = true
+    chip.name = 'mod-chip'
   }
   const nose = add(new Mesh(new SphereGeometry(kind === 'bubble' ? 0.012 : 0.022, 10, 8), toon(0xe8f8ff, 0xffffff, 0.5)))
   nose.position.set(0, 0.06, tip - 0.025)

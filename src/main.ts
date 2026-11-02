@@ -1,3 +1,4 @@
+import { gunLookWithMods, makeMod } from './sim/mods'
 import { GunSound, type GunCue } from './audio/gunsound'
 import '@fontsource/jua/400.css'
 import '@fontsource/noto-sans-kr/400.css'
@@ -466,8 +467,8 @@ function applyBuild(): void {
   hero.regenMul = stats.regenMul
   hero.regenDelay = stats.regenDelay
   hero.guard = stats.armor
-  const look = GUN_PROFILES[stats.weaponKind].look
   const gunItem: ItemInstance | undefined = findItem(game.save, game.save.equipment.weapon)
+  const look = gunLookWithMods(GUN_PROFILES[stats.weaponKind].look, gunItem)
   const gem = gunItem && gunItem.rarity !== 'common' ? hexOf(RARITY_COLOR[gunItem.rarity]) : null
   shooter.setLoadout({
     profile: stats.gun,
@@ -632,6 +633,10 @@ function townSuccess(kind: TownSuccess, item?: ItemInstance): void {
     vfx.ring(hero.object.position.clone().setY(0.06), 0xffd66b, 0.3, 2.4, 0.5)
     vfx.burst(at, 0xffe9a0, { count: 26, speed: 3.4, up: 2.4, life: 0.7, size: 0.14, gravity: 2, drag: 1.6, additive: true })
     if (item) float(`+${item.plus ?? 0} 강화 성공!`, at.clone().setY(1.9), '#ffe08a')
+  } else if (kind === 'mod') {
+    chime('forge')
+    vfx.burst(at, 0xc9f0ff, { count: 20, speed: 2.8, up: 2, life: 0.6, size: 0.12, gravity: 1.6, drag: 1.7, additive: true })
+    applyBuild()
   } else if (kind === 'reroll' || kind === 'element') {
     chime('reroll')
     vfx.burst(at, kind === 'element' ? 0x9fdcff : 0xd7b8ff, { count: 18, speed: 2.6, up: 1.8, life: 0.6, size: 0.12, gravity: 1.5, drag: 1.8, additive: true })
@@ -1206,7 +1211,7 @@ cursor.panel = () =>
 let altTold = false
 installAlt((free) => {
   document.body.classList.toggle('alt-free', free)
-  if (free && !altTold && mode === 'play') {
+  if (free && !altTold && mode === 'play' && !townUI.isOpen && !inventory.isOpen) {
     altTold = true
     toast(cursor.mode === 'hold' ? 'Alt를 떼면 다시 조준해.' : 'Alt를 다시 누르거나 화면을 클릭하면 조준해.', 'info')
   }
@@ -1246,7 +1251,7 @@ document.getElementById('guide-skip')?.addEventListener('click', () => {
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, aimZone, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, get keptFloor() { return savedFloor() }, enterArea, enterMongsil, mongsilToIsland, get travelling() { return travelling }, get dream() { return dreamOf(game.save) }, dreamHit, placeMazeQuest, spotUsed, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() } } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, makeMod, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, aimZone, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, get keptFloor() { return savedFloor() }, enterArea, enterMongsil, mongsilToIsland, get travelling() { return travelling }, get dream() { return dreamOf(game.save) }, dreamHit, placeMazeQuest, spotUsed, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() } } })
 
 void bootGame()
 

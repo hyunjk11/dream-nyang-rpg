@@ -64,6 +64,8 @@ export function gearSum(items: ItemInstance[]): Partial<Record<StatKey, number>>
   for (const item of items) {
     for (const [k, v] of Object.entries(implicitStats(item)) as [StatKey, number][]) add(k, v)
     for (const a of item.affixes) add(a.stat, a.value)
+    // 총 개조: a gun's parts count with it.
+    for (const m of item.mods ?? []) for (const a of m.affixes) add(a.stat, a.value)
   }
   return sum
 }

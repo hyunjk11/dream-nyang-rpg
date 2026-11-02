@@ -55,6 +55,8 @@ export interface ItemInstance {
   v?: 2
   /** Gun workshop upgrade level (+1..+10); absent = +0. */
   plus?: number
+  /** 총 개조: mod parts slotted into this gun (absent = none; old saves). */
+  mods?: ItemInstance[]
 }
 
 export type QuestStatus = 'inactive' | 'active' | 'completed' | 'turnedIn'

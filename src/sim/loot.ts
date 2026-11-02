@@ -1,3 +1,4 @@
+import { gunMods, modLabel, modSlots, rollMod } from './mods'
 import { AFFIX_COUNT, AFFIXES, GEAR_AFFIX, PERCENT_STATS } from '../data/affixes'
 import { GUN_PROFILES, gunDps } from '../data/guns'
 import { GEAR_IDS, ITEMS, WEAPON_IDS } from '../data/items'
@@ -173,6 +174,7 @@ export function itemPower(item: ItemInstance): number {
   if (def?.gun) p += gunDps(GUN_PROFILES[def.gun], gunLevelScale(item.itemLevel) * GUN_RARITY[item.rarity] * upgradeMul(plusOf(item))) * 0.5
   for (const [key, value] of Object.entries(implicitStats(item)) as [StatKey, number][]) p += value * (POWER_WEIGHT[key] ?? 0)
   for (const a of item.affixes) p += a.value * (POWER_WEIGHT[a.stat] ?? 0)
+  for (const m of item.mods ?? []) for (const a of m.affixes) p += a.value * (POWER_WEIGHT[a.stat] ?? 0)
   return Math.round(p)
 }
 
@@ -199,7 +201,7 @@ function pick(ids: string[], rng: () => number): string {
 }
 
 export function rollDrops(opts: {
-  table: Pick<EnemyDef, 'gold' | 'gear' | 'weapon' | 'dust' | 'part' | 'potion'>
+  table: Pick<EnemyDef, 'gold' | 'gear' | 'weapon' | 'dust' | 'part' | 'potion'> & { mod?: number }
   luck: number
   elite: boolean
   boss?: boolean
@@ -237,6 +239,9 @@ export function rollDrops(opts: {
   if (rng() < opts.table.dust) out.push({ kind: 'material', amount: rng() < 0.28 ? 2 : 1, matId: 'dream_dust' })
   if (rng() < opts.table.part) out.push({ kind: 'material', amount: 1, matId: 'toy_part' })
   if (rng() < opts.table.potion) out.push({ kind: 'potion', amount: 1 })
+  // 총 개조 부품: only tables that list them roll (dungeon foes, chests, bosses).
+  const modChance = Math.min(0.98, (opts.table.mod ?? 0) * (opts.elite ? 2.1 : 1))
+  if (modChance > 0 && rng() < modChance) out.push({ kind: 'item', amount: 1, item: rollMod(rng, rollRarity(opts.luck, rng, bias, opts.cap), opts.itemLevel) })
   return out
 }
 
@@ -267,6 +272,7 @@ export function gunLevelScale(itemLevel: number): number {
 
 /** What dismantling an item gives back (for the stage 4 workshop). */
 export function dismantleYield(item: ItemInstance): Record<string, number> {
+  if (ITEMS[item.defId]?.mod) return modYield(item.rarity)
   switch (item.rarity) {
     case 'common':
       return { dream_dust: 1 }
@@ -281,13 +287,27 @@ export function dismantleYield(item: ItemInstance): Record<string, number> {
   }
 }
 
+/** Breaking a mod part: salvage for upgrading other parts. */
+export function modYield(rarity: Rarity): Record<string, number> {
+  if (rarity === 'legendary') return { toy_part: 3, star_shard: 2 }
+  if (rarity === 'epic') return { toy_part: 2, star_shard: 1 }
+  if (rarity === 'rare') return { toy_part: 2 }
+  return { toy_part: 1 }
+}
+
 export function itemLines(item: ItemInstance): string[] {
   const def = ITEMS[item.defId]
   const lines: string[] = []
   if (def?.slot) lines.push(SLOT_KO[def.slot])
+  if (def?.mod) lines.push(`총 개조 부품 · ${modLabel(item)}`)
   lines.push(RARITY_KO[item.rarity])
   for (const [key, value] of Object.entries(implicitStats(item)) as [StatKey, number][]) lines.push(formatStat(key, value))
   for (const affix of item.affixes) lines.push(formatAffix(affix))
+  if (def?.slot === 'weapon') {
+    const mods = gunMods(item)
+    lines.push(`개조 칸 ${mods.length}/${modSlots(item)}`)
+    for (const m of mods) lines.push(`· ${modLabel(m)}: ${m.affixes.map(formatAffix).join(', ')}`)
+  }
   lines.push(`판매 ${sellValue(item)} 골드`)
   return lines
 }

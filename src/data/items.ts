@@ -12,6 +12,8 @@ export interface ItemDef {
   gun?: WeaponKind
   /** Little icon in the bag grid. */
   icon: string
+  /** 총 개조 부품 (see data/mods.ts): no slot, it goes into a gun. */
+  mod?: true
 }
 
 const D = (d: ItemDef): ItemDef => d
@@ -34,6 +36,12 @@ export const ITEMS: Record<string, ItemDef> = {
   acc_bell: D({ id: 'acc_bell', name: '딸랑 방울 팔찌', description: '찰랑일 때마다 좋은 꿈이 더 자주 떨어지고, 손이 조금 빨라진다.', price: 90, slot: 'accessory', stats: { luck: 12, fireRate: 0.06 }, icon: 'bracelet' }),
   collar_bell: D({ id: 'collar_bell', name: '방울 목걸이', description: '모찌의 방울. 찰랑일 때마다 운이 붙는다.', price: 75, slot: 'collar', stats: { luck: 10 }, icon: 'bell' }),
   collar_ribbon: D({ id: 'collar_ribbon', name: '별빛 리본', description: '모찌가 앞장설 때 총구가 조금 더 매서워진다.', price: 100, slot: 'collar', stats: { damage: 0.06 }, icon: 'ribbon' }),
+  mod_scope: D({ id: 'mod_scope', name: '별눈 조준경', description: '총 위에 얹는 작은 망원경. 빈틈이 더 잘 보인다. (치명타)', price: 60, icon: 'mod_scope', mod: true }),
+  mod_barrel: D({ id: 'mod_barrel', name: '긴 꿈 총열', description: '길쭉한 총열. 물방울이 더 세게 나간다. (피해)', price: 60, icon: 'mod_barrel', mod: true }),
+  mod_mag: D({ id: 'mod_mag', name: '방울 탄창', description: '동글동글 큰 탄창. 더 빨리 쏜다. (연사)', price: 60, icon: 'mod_mag', mod: true }),
+  mod_chip_sparkle: D({ id: 'mod_chip_sparkle', name: '별빛 칩', description: '총에 꽂는 별빛 속성 칩. 총이 노랗게 빛난다.', price: 70, icon: 'mod_chip', mod: true }),
+  mod_chip_ice: D({ id: 'mod_chip_ice', name: '서리 칩', description: '총에 꽂는 서리 속성 칩. 총이 하늘색으로 빛난다.', price: 70, icon: 'mod_chip_ice', mod: true }),
+  mod_chip_candy: D({ id: 'mod_chip_candy', name: '사탕 칩', description: '총에 꽂는 사탕 속성 칩. 총이 분홍색으로 빛난다.', price: 70, icon: 'mod_chip_candy', mod: true }),
 }
 
 export const WEAPON_IDS = ['gun_water', 'gun_bubble', 'gun_star', 'gun_dart']
@@ -64,7 +72,7 @@ export const MATERIAL_HELP: Record<string, string> = {
   fluff: '몽실 들판 괴물이 떨어뜨리는 솜사탕. 챕터 2 "몽실 솜사탕 모으기" 퀘스트에 필요해.',
   dream_dust: '괴물과 장비 분해에서 나와. 공방에서 강화하거나 옵션을 다시 굴릴 때 써.',
   toy_part: '정예 괴물과 희귀 장비 분해에서 나와. 공방에서 속성(얼음·사탕·별빛)을 붙일 때 써.',
-  star_shard: '영웅·전설 장비 분해와 보스 의뢰에서 나와. +8부터 강화할 때 필요해.',
+  star_shard: '영웅·전설 장비 분해와 보스 의뢰에서 나와. +8부터 강화하거나 개조 부품을 영웅 이상으로 올릴 때 필요해.',
 }
 
 export interface ShopEntry {

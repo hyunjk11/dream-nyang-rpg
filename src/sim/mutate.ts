@@ -1,3 +1,4 @@
+import { stripMods } from './mods'
 import { ITEMS, SHOP } from '../data/items'
 import { SKILLS } from '../data/skills'
 import { dismantleYield, makeItem, rerollCost, rollAffixes, sellValue } from './loot'
@@ -102,6 +103,7 @@ export function sellOwned(save: SaveData, id: string): { ok: boolean; reason?: s
   const item = findItem(save, id)
   if (!item) return { ok: false, reason: '없는 물건이야.' }
   if (save.equipment.weapon === id) return { ok: false, reason: '쓰고 있는 총은 팔 수 없어.' }
+  stripMods(save, item)
   const before = computeStats(save).maxHp
   const gold = sellValue(item)
   removeItem(save, id)
@@ -115,6 +117,7 @@ export function dismantleOwned(save: SaveData, id: string): { ok: boolean; reaso
   const item = findItem(save, id)
   if (!item) return { ok: false, reason: '없는 물건이야.' }
   if (save.equipment.weapon === id) return { ok: false, reason: '쓰고 있는 총은 분해할 수 없어.' }
+  stripMods(save, item)
   const before = computeStats(save).maxHp
   const got = dismantleYield(item)
   removeItem(save, id)

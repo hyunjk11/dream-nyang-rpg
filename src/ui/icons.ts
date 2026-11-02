@@ -41,6 +41,13 @@ const BODY: Record<string, string> = {
   bell: `<path d="M4 9c4 4 20 4 24 0v4c-4 4-20 4-24 0z" fill="#ff6b7d" ${S}/><path d="M10 25c0-6 2.6-9 6-9s6 3 6 9z" fill="#ffd35a" ${S}/><path d="M9 25h14" ${S}/><circle cx="16" cy="22" r="1.4" fill="${INK}"/>${shine(13.5, 19.5, 1)}`,
   // Starlight ribbon: pink bow with a star knot.
   ribbon: `<path d="M16 15L5 8c-2 3-2 11 0 14z" fill="#ff9fd0" ${S}/><path d="M16 15l11-7c2 3 2 11 0 14z" fill="#ff9fd0" ${S}/><path d="M14 17l-4 11 3-1 2 2 1-11zM18 17l4 11-3-1-2 2-1-11z" fill="#ffc6e5" ${S}/><path d="M16 11l1.3 2.6 2.9.4-2.1 2 .5 2.9-2.6-1.4-2.6 1.4.5-2.9-2.1-2 2.9-.4z" fill="#ffe066" ${S}/>`,
+  // 개조 부품: scope (tube + lens + star), barrel (long tube + ring), magazine (round drum), chips.
+  mod_scope: `<rect x="5" y="12" width="20" height="7" rx="3.5" fill="#7a6aa8" ${S}/><circle cx="25" cy="15.5" r="4" fill="#bfe9ff" ${S}/><path d="M10 19v4h8v-4" fill="#c9b8ff" ${S}/><path d="M12 6l1 2 2.2.3-1.6 1.5.4 2.2-2-1-2 1 .4-2.2L8.8 8.3 11 8z" fill="#ffe066" ${S}/>${shine(24, 14)}`,
+  mod_barrel: `<rect x="3" y="13" width="24" height="6" rx="3" fill="#8fd3ff" ${S}/><rect x="24" y="11.5" width="5" height="9" rx="2" fill="#fff" ${S}/><path d="M9 13v6M14 13v6" ${S}/>${shine(7, 15, 1)}`,
+  mod_mag: `<circle cx="16" cy="17" r="10" fill="#ffc6e5" ${S}/><circle cx="16" cy="17" r="4.5" fill="#fff1d6" ${S}/><rect x="13" y="3.5" width="6" height="5" rx="1.5" fill="#c9b8ff" ${S}/><circle cx="11" cy="12" r="1.6" fill="#fff"/><circle cx="21.5" cy="21.5" r="1.3" fill="#fff"/>`,
+  mod_chip: `<rect x="7" y="7" width="18" height="18" rx="3" fill="#ffe27a" ${S}/><path d="M10 4v3M16 4v3M22 4v3M10 25v3M16 25v3M22 25v3" ${S}/><path d="M16 10.5l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6-2.6-2.5 3.6-.5z" fill="#fff" ${S}/>`,
+  mod_chip_ice: `<rect x="7" y="7" width="18" height="18" rx="3" fill="#9fe6ff" ${S}/><path d="M10 4v3M16 4v3M22 4v3M10 25v3M16 25v3M22 25v3" ${S}/><path d="M16 10v12M10.8 13l10.4 6M21.2 13l-10.4 6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>`,
+  mod_chip_candy: `<rect x="7" y="7" width="18" height="18" rx="3" fill="#ff9fd6" ${S}/><path d="M10 4v3M16 4v3M22 4v3M10 25v3M16 25v3M22 25v3" ${S}/><circle cx="16" cy="16" r="4.5" fill="#fff" ${S}/><path d="M13.5 16a2.5 2.5 0 0 1 5 0" fill="none" stroke="#ff6fae" stroke-width="1.4"/>`,
 }
 
 /** Old icon keys (saves, other callers) → the new art. */
