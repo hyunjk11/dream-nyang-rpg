@@ -22,6 +22,8 @@ export const BOSS = {
   ringEvery: 3.1,
   ringCount: Math.round(14 * DIFFICULTY.boss.ringCount),
   windup: 0.7,
+  /** She stops this far from her (m) and fights at range, so she never fills the camera (fix/boss-floor). */
+  keep: 4.4,
 }
 
 export interface Orb {
@@ -109,7 +111,7 @@ export class Boss {
     const dz = hz - this.z
     const d = Math.hypot(dx, dz)
     this.yaw = Math.atan2(dx, dz)
-    if (this.windup <= 0 && d > BOSS.radius + 1.2 && heroAlive) {
+    if (this.windup <= 0 && d > BOSS.keep && heroAlive) {
       this.x += (dx / d) * BOSS.speed * dt
       this.z += (dz / d) * BOSS.speed * dt
       const out = collideCircle(this.maze, this.x, this.z, BOSS.radius)

@@ -5,6 +5,7 @@ import {
   AdditiveBlending,
   SphereGeometry,
   type Group,
+  type Mesh,
   type MeshToonMaterial,
   Color,
   InstancedMesh,
@@ -35,7 +36,7 @@ import { RARITY_COLOR } from '../../sim/types'
 import { collideCircle, rayHit } from './walls'
 import { HORDE, Horde, type HordeFoe } from './horde'
 import { HordeView } from './horde-view'
-import { DRAIN, Director, LIVE_CAP } from './waves'
+import { DRAIN, Director, LIVE_CAP, waveFor } from './waves'
 import { BOSS, Boss } from './boss'
 import { foePose, makeFoeBody } from '../../combat/foes'
 import { hitNormal } from '../../combat/gunfeel'
@@ -50,7 +51,13 @@ import { LootView } from './loot-view'
 import { FIELD, FieldDirector } from './field'
 
 /** Adds the boss calls at two-thirds and one-third health. */
-export const BOSS_ADDS = 6
+export const BOSS_ADDS = 4
+/**
+ * Boss floor (fix/boss-floor): no waves. A small guard wakes with the boss, she calls BOSS_ADDS
+ * twice more, and never more than BOSS_LIVE foes stand at once (the old floor piled up 70).
+ */
+export const BOSS_GUARD = 4
+export const BOSS_LIVE = 8
 import { NAMED } from '../../sim/chapters'
 import type { HordeKind } from './horde'
 import { Chest } from './chest'
@@ -144,7 +151,12 @@ export { themeOf }
 export const MOTH_NAME = '꿈먹는 밤나방'
 
 /** Boss body is drawn at this multiple of its island size. */
-const BOSS_SCALE = 1.4
+const BOSS_SCALE = 1.25
+/**
+ * The boss fades to a ghost when the camera gets inside this many metres of its body (plus its
+ * radius), so a close fight never fills the screen with petals (fix/boss-floor).
+ */
+export const BOSS_FADE = { near: 0.6, span: 2.6, min: 0.22 }
 /** Cracked-wall hit band height (m). */
 const CEIL_HIT = 3.2
 /** Shrine blessings (one at random, EXPLORE.shrineTime seconds). */
@@ -289,6 +301,8 @@ export class DungeonRun {
     this.plan = typeof plan === 'number' ? { ...floorPlan(1, 1), seed: plan } : plan
     this.maze = floorMaze(this.plan)
     this.director = new Director(this.plan.scale.firstWave)
+    // The boss floor is a boss room, not a wave shooter: the pipes stay quiet.
+    if (this.plan.objective === 'boss') this.director.quiet = true
     const exploring = this.plan.objective === 'exit'
     const field = this.plan.objective === 'field' ? this.plan.field ?? { kinds: ['slime'], fluff: false, named: false, boss: false } : null
     // Lay out packs, nests, chests, shrine and the secret before the geometry (it carves).
@@ -1351,10 +1365,12 @@ export class DungeonRun {
     if (!boss) return
     for (const ev of boss.update(dt, p.x, p.z, hero.alive, strike)) {
       if (ev === 'wake') {
+        if (!this.field) this.callAdds(BOSS_GUARD, false)
         if (this.plan.area === 'moon') this.host.banner(MOTH_NAME, '잊힌 꿈을 먹는 나방이 날개를 펼쳤다')
         else this.host.banner(this.plan.depth > 1 ? `깊이 ${this.plan.depth}의 악몽 꽃` : '악몽 꽃', '꿈 하수도의 주인이 깨어났다')
         this.host.sfx('windup', 1)
       } else if (ev === 'ring') this.host.sfx('windup', 0.45)
+      else if (ev === 'summon' && !this.field) this.callAdds(BOSS_ADDS, true)
       else if (ev === 'summon') {
         const near = nestDistance
           .map((d, i) => ({ d, i }))
@@ -1369,6 +1385,30 @@ export class DungeonRun {
         }
       }
     }
+  }
+
+  /** Boss-room adds: a few of this floor's kinds bubble up round the arena edge, away from her, capped at BOSS_LIVE. */
+  callAdds(n: number, elite: boolean): number {
+    const kinds = waveFor(Math.max(1, Math.round(this.plan.scale.firstWave))).kinds.slice(-3)
+    const p = this.host.hero.object.position
+    const r = this.maze.bossRoom
+    const spots: { x: number; z: number }[] = []
+    for (let y = r.y; y < r.y + r.h; y += 1)
+      for (let x = r.x; x < r.x + r.w; x += 1) {
+        const edge = x === r.x || y === r.y || x === r.x + r.w - 1 || y === r.y + r.h - 1
+        if (!edge || this.maze.tiles[y * this.maze.w + x] === Tile.Solid) continue
+        const c = tileCentre(this.maze, x, y)
+        if (Math.hypot(c.x - p.x, c.z - p.z) >= 7) spots.push(c)
+      }
+    let made = 0
+    for (let i = 0; i < n && this.horde.alive < BOSS_LIVE && spots.length; i += 1) {
+      const at = spots.splice(Math.floor(Math.random() * spots.length), 1)[0]
+      const f = this.horde.spawn(kinds[i % kinds.length], at.x, at.z, elite && i === 0)
+      if (!f) break
+      made += 1
+      this.host.vfx.burst(new Vector3(at.x, 0.1, at.z), 0xd8b8ff, { count: 8, speed: 2, up: 2.4, life: 0.5, size: 0.24, gravity: -2, drag: 2 })
+    }
+    return made
   }
 
   /** One foe out of a nest pipe mouth (explore floors). */
@@ -1736,6 +1776,41 @@ export class DungeonRun {
     this.host.bossDown?.()
   }
 
+  /** Boss opacity now (1 = solid; QA reads it). */
+  bossOpacity = 1
+  private bossInk: Mesh[] | null = null
+
+  /** Fade the boss body when the camera is inside it or right up against it. */
+  private fadeBoss(b: Boss): void {
+    const cam = this.host.camera.position
+    const r = BOSS.radius * (this.bossBody.scale.x / BOSS_SCALE)
+    const gap = Math.hypot(cam.x - b.x, cam.z - b.z) - r - BOSS_FADE.near
+    const k = Math.max(0, Math.min(1, gap / BOSS_FADE.span))
+    const op = Math.round((BOSS_FADE.min + (1 - BOSS_FADE.min) * k) * 20) / 20
+    if (op === this.bossOpacity) return
+    const solid = op >= 1
+    const flip = solid !== this.bossOpacity >= 1
+    this.bossOpacity = op
+    for (const m of this.bossMats) {
+      m.opacity = op
+      if (flip) {
+        m.transparent = !solid
+        m.depthWrite = solid
+        m.needsUpdate = true
+      }
+    }
+    if (flip) {
+      if (!this.bossInk) {
+        const ink: Mesh[] = []
+        this.bossBody.traverse((o) => {
+          if ((o as Mesh).isMesh && o.userData.outline) ink.push(o as Mesh)
+        })
+        this.bossInk = ink
+      }
+      for (const o of this.bossInk) o.visible = solid
+    }
+  }
+
   private drawBoss(): void {
     const b = this.boss
     if (!b) return
@@ -1752,6 +1827,7 @@ export class DungeonRun {
       inner.rotation.set(pose.lean, 0, pose.roll)
     }
     for (const m of this.bossMats) m.emissiveIntensity = (m.userData.lift ?? 0.2) + b.hurt * 0.9 + b.windup * 0.5
+    this.fadeBoss(b)
     let n = 0
     for (const o of b.orbs) {
       this.dummy.position.set(o.x, o.y, o.z)
@@ -1782,6 +1858,12 @@ export class DungeonRun {
         ? chasing
           ? `탐험 · 쫓아오는 몹 ${chasing} · 총 처치 ${kills}`
           : `탐험 · 총 처치 ${kills}`
+        : this.plan.objective === 'boss'
+        ? boss?.awake && boss.alive
+          ? `보스전 · 졸개 ${this.horde.alive} · 이 층 처치 ${this.horde.kills}`
+          : boss && !boss.alive
+            ? `보스 처치! · 이 층 처치 ${this.horde.kills}`
+            : '보스 방으로 들어가자'
         : boss?.awake
         ? boss.alive
           ? `보스전 · 총 처치 ${kills}`

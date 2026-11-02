@@ -172,3 +172,40 @@ export function roomMaze(seed: number, slots = 4, exitSize = 5): RoomMaze {
   }
   return { seed, w, h, tiles, start: { x: startRoom.x + 1, y: startRoom.y + 1 }, startRoom, bossRoom, chambers, nests: [], side, path }
 }
+
+/**
+ * Boss floor since 2026-11 (fix/boss-floor): no tile maze and no wave pipes. A small start room,
+ * one wide (2-tile) hall, and one big open arena (the boss room) with four pillars near its
+ * corners, so the camera has room to breathe and the fight reads at a glance.
+ */
+export const BOSS_ARENA = {
+  /** Arena size in tiles (odd so the boss and the chest sit on a centre tile). */
+  size: 9,
+  /** Tiles of hall between the start room and the arena. */
+  hall: 4,
+}
+
+export function bossMaze(seed: number, size: number = BOSS_ARENA.size): RoomMaze {
+  const s = Math.max(7, size | 1)
+  const w = s + 4
+  const startRoom: Rect = { x: Math.floor(w / 2) - 1, y: 1, w: 3, h: 3 }
+  const hallY = startRoom.y + startRoom.h
+  const bossRoom: Rect = { x: 2, y: hallY + BOSS_ARENA.hall, w: s, h: s }
+  const h = (bossRoom.y + bossRoom.h + 2) | 1
+  const tiles = new Uint8Array(w * h)
+  const set = (x: number, y: number, v: Tile) => {
+    if (x > 0 && y > 0 && x < w - 1 && y < h - 1) tiles[y * w + x] = v
+  }
+  const fill = (r: Rect, v: Tile) => {
+    for (let y = r.y; y < r.y + r.h; y += 1) for (let x = r.x; x < r.x + r.w; x += 1) set(x, y, v)
+  }
+  fill(startRoom, Tile.Start)
+  // The hall: two lanes, the seed picks which side of centre the second lane takes.
+  const cx = startRoom.x + 1
+  const lanes = rng(seed)() < 0.5 ? [cx - 1, cx] : [cx, cx + 1]
+  for (let y = hallY; y < bossRoom.y; y += 1) for (const x of lanes) set(x, y, Tile.Corridor)
+  fill(bossRoom, Tile.Boss)
+  // Four pillars two tiles in from the corners: cover from the orb rings, never on the centre lines.
+  for (const [px, py] of [[2, 2], [s - 3, 2], [2, s - 3], [s - 3, s - 3]]) tiles[(bossRoom.y + py) * w + bossRoom.x + px] = Tile.Solid
+  return { seed, w, h, tiles, start: { x: startRoom.x + 1, y: startRoom.y + 1 }, startRoom, bossRoom, chambers: [], nests: [], side: [], path: [{ x: 0, y: 0 }, { x: 0, y: 1 }] }
+}
