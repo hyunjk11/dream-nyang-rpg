@@ -44,6 +44,9 @@ import { chestDrops, delveDrops, floorIntro, floorLabel, floorPlan, objectiveTex
 import type { Drop } from '../../sim/loot'
 import { LootView } from './loot-view'
 import { FIELD, FieldDirector } from './field'
+
+/** Adds the boss calls at two-thirds and one-third health. */
+export const BOSS_ADDS = 6
 import { NAMED } from '../../sim/chapters'
 import type { HordeKind } from './horde'
 import { Chest } from './chest'
@@ -979,7 +982,8 @@ export class DungeonRun {
           .filter((n) => n.d >= 0)
           .sort((a, b) => a.d - b.d)
           .slice(0, 3)
-        for (let i = 0; i < 12 && this.horde.alive < LIVE_CAP; i += 1) {
+        // 6 adds (was 12): each one is ~8× tankier since the 2026-11 hp pass.
+        for (let i = 0; i < BOSS_ADDS && this.horde.alive < LIVE_CAP; i += 1) {
           const n = near[i % near.length]
           // The field has no pipes: the adds bubble up out of the grass round the ring.
           this.pour(n ? n.i : DRAIN, i % 3 === 0 ? 'bug' : 'slime', i === 0)

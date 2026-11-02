@@ -308,6 +308,16 @@ export function planLayout(maze: Maze, plan: Pick<FloorPlan, 'depth' | 'floor'>,
       homes.push(c)
     }
   }
+  // Fewer packs since 2026-11: make sure a few sit on her side of the doors (elites and the key need them).
+  const openSide = (c: Spot) => before[c.y * m.w + c.x] >= 0 && !inRect(exit, c.x, c.y)
+  for (const c of cands) {
+    if (homes.filter(openSide).length >= EXPLORE.elitePacks[1]) break
+    const i = c.y * m.w + c.x
+    if (!openSide(c) || dist[i] < EXPLORE.safe || taken.has(i) || homes.some((h) => h.x === c.x && h.y === c.y)) continue
+    const near = distances(m.tiles, m.w, m.h, c.x, c.y)
+    if (homes.some((h) => near[h.y * m.w + h.x] >= 0 && near[h.y * m.w + h.x] < 3)) continue
+    homes.push(c)
+  }
   homes.sort((a, b) => dist[a.y * m.w + a.x] - dist[b.y * m.w + b.x])
   const far = Math.max(1, dist[homes[homes.length - 1] ? homes[homes.length - 1].y * m.w + homes[homes.length - 1].x : 0])
   const packs: Pack[] = homes.map((h, id) => {

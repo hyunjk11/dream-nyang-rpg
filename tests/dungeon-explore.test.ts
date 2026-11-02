@@ -17,7 +17,7 @@ function floor(depth: number, f: number, salt = 0) {
 }
 
 describe('탐험 층 배치', () => {
-  it('깊이 1: 무리 11–15개(4–6마리), 정예 1–3, 둥지 2–3, 상자 3–5, 제단 1', () => {
+  it('깊이 1: 무리 6–9개(2–4마리), 정예 1–3, 둥지 2–3, 상자 3–5, 제단 1', () => {
     for (let salt = 0; salt < 8; salt += 1) {
       for (const f of [1, 2, 3]) {
         const { layout } = floor(1, f, salt)
@@ -25,8 +25,8 @@ describe('탐험 층 배치', () => {
         const elites = layout.packs.filter((p) => p.elite)
         expect(layout.packs.length).toBeGreaterThanOrEqual(EXPLORE.packs[0])
         expect(layout.packs.length).toBeLessThanOrEqual(EXPLORE.packs[1] + EXPLORE.elitePacks[1])
-        for (const p of normal) expect(p.size).toBeGreaterThanOrEqual(3)
-        for (const p of normal) expect(p.size).toBeLessThanOrEqual(6)
+        for (const p of normal) expect(p.size).toBeGreaterThanOrEqual(2)
+        for (const p of normal) expect(p.size).toBeLessThanOrEqual(4)
         expect(elites.length).toBeGreaterThanOrEqual(1)
         expect(elites.length).toBeLessThanOrEqual(EXPLORE.elitePacks[1])
         expect(layout.nests.length).toBeGreaterThanOrEqual(2)

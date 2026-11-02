@@ -40,14 +40,14 @@ describe('깊이 2 진입 완화', () => {
       expect(hp).toBeGreaterThan(prev)
       prev = hp
     }
-    const old = DIFFICULTY.delve.hpPerDepth
-    expect(floorScale(2, 1).hp - floorScale(1, 3).hp).toBeLessThan(old / 2)
+    // 깊이 2 첫 층은 깊이 한 단계(×2.35)를 다 받지 않는다.
+    expect(floorScale(2, 1).hp).toBeLessThan(DIFFICULTY.delve.hpDepthGrowth * 1.0)
   })
 
-  it('보통·어려움의 깊이 3과 보스는 예전 배율 그대로라 계속 도전적이다', () => {
+  it('깊이 3과 보스는 깊이 배율을 다 받아 계속 도전적이다', () => {
     const k = DIFFICULTY.delve
-    expect(floorScale(3, 1).hp).toBeCloseTo(1 + 2 * k.hpPerDepth)
-    expect(floorScale(2, BOSS_FLOOR).boss.hp).toBeCloseTo(1 + k.bossHpPerDepth)
+    expect(floorScale(3, 1).hp).toBeCloseTo(k.hpDepthGrowth ** 2)
+    expect(floorScale(2, BOSS_FLOOR).boss.hp).toBeCloseTo(k.bossHpGrowth)
     expect(floorScale(2, 1).firstWave).toBe(1 + k.wavesPerDepth)
     expect(floorScale(2, 1).gold).toBeCloseTo(1 + k.goldPerDepth)
   })

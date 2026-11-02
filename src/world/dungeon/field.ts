@@ -11,9 +11,10 @@ export const FIELD = {
   /** Field size in tiles (odd). */
   size: 35,
   /** Live foes the field keeps topped up to (desktop, mobile). */
-  alive: [18, 13] as const,
+  /** Was 18/13: field foes are ~8× tankier since 2026-11, so fewer at once. */
+  alive: [12, 9] as const,
   /** Foes per pack. */
-  pack: [3, 5] as const,
+  pack: [2, 4] as const,
   /** New packs walk in this far from her (m). */
   near: 15,
   far: 34,
@@ -27,7 +28,7 @@ export const FIELD = {
   aggro: 14,
   leash: 22,
   leashTime: 6,
-  chaseCap: 10,
+  chaseCap: 5,
   /** Foe hp on the field, on top of DIFFICULTY.horde.hp × the plan scale. */
   hp: 1.3,
   /** Safe radius round the arrival portal (tiles). */

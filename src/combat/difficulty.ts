@@ -84,7 +84,7 @@ export const DIFFICULTY = {
      */
     entryEase: [0.5, 0.7, 0.75] as readonly number[],
     /** Foe hp share of the depth step on depth 2's normal floors (2.35^share). */
-    entryHpEase: [0.75, 0.9, 1] as readonly number[],
+    entryHpEase: [0.85, 0.92, 1] as readonly number[],
     /** ...and their explore packs draw from the roster this many tiers back (floor 3 met wave-6 kinds). */
     entryRoster: [0, 0, -1] as readonly number[],
     /** Survive floor: waves to outlast (floor 1 of depth 1 stays short and sweet). */
