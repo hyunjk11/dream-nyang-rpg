@@ -4,6 +4,7 @@
  * doors / chests / nests are done, where she stood and what the minimap has seen.
  */
 import type { FieldNeeds } from './delve'
+import { areaLabel, isArea, type AreaId } from './areas'
 
 export interface FloorState {
   depth: number
@@ -14,6 +15,9 @@ export interface FloorState {
   seed: number
   /** 몽실 들판 trips rebuild from these needs (null = a sewer floor). */
   field: FieldNeeds | null
+  /** 챕터 2 area floors (꿈 미로): the area and its own floor number. */
+  area?: AreaId
+  areaFloor?: number
   at: { x: number; z: number; yaw: number }
   /** Ids of the floor's first-spawned foes that are gone (ids count up from 1 in spawn order). */
   dead: number[]
@@ -75,6 +79,7 @@ export function sanitizeFloor(raw: unknown): FloorState | null {
     salt: int(o.salt, 0, 0),
     seed: int(o.seed, 0, 0),
     field,
+    ...(isArea(o.area) ? { area: o.area, areaFloor: int(o.areaFloor, 1, 1) } : {}),
     at: { x: num(at.x), z: num(at.z), yaw: num(at.yaw) },
     dead: Array.isArray(o.dead) ? o.dead.filter((n) => typeof n === 'number' && Number.isFinite(n)) : [],
     initial: int(o.initial, 0, 0),
@@ -92,6 +97,7 @@ export function sanitizeFloor(raw: unknown): FloorState | null {
 }
 
 /** Short label for the return portal toast. */
-export function floorStateLabel(s: Pick<FloorState, 'depth' | 'floor' | 'field'>): string {
+export function floorStateLabel(s: Pick<FloorState, 'depth' | 'floor' | 'field' | 'area' | 'areaFloor'>): string {
+  if (s.area) return areaLabel(s.area, s.areaFloor ?? 1)
   return s.field ? '몽실 들판' : `깊이 ${s.depth} · ${s.floor}층`
 }

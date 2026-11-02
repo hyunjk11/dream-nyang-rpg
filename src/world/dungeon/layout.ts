@@ -10,6 +10,7 @@ import type { HordeKind } from './horde'
 import { Tile, distances, generateMaze, walkable, type Maze, type Nest, type Rect } from './maze'
 import { SLOT, roomMaze, type RoomMaze } from './rooms'
 import { depthStep, rosterShift, type FloorPlan } from '../../sim/delve'
+import { townMaze } from './town'
 import { fieldMaze } from './field'
 
 /** Every explore-floor knob in one place (numbers from the approved audit plan). */
@@ -160,6 +161,7 @@ export function roomDistance(m: Maze, r: Rect): number {
 export function floorMaze(plan: Pick<FloorPlan, 'seed' | 'cells' | 'bossRoom' | 'objective'>): Maze {
   if (plan.objective === 'boss') return generateMaze(plan.seed, plan.cells, plan.cells, plan.bossRoom)
   if (plan.objective === 'field') return fieldMaze(plan.seed)
+  if (plan.objective === 'town') return townMaze(plan.seed)
   let best: Maze | null = null
   let bestD = -1
   for (let k = 0; k < 16 && bestD < EXPLORE.exitMin; k += 1) {

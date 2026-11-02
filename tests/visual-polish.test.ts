@@ -14,7 +14,8 @@ describe('던전 테마', () => {
     expect(themeFor(2).id).toBe('candy')
     expect(themeFor(3).id).toBe('library')
     expect(themeFor(4).id).toBe('sewer')
-    expect(new Set(Object.values(THEMES).map((t) => t.fog)).size).toBe(3)
+    // 챕터 2 지역 테마(미로·다락·시계탑·둥지·야시장)까지 테마마다 안개 색이 다르다.
+    expect(new Set(Object.values(THEMES).map((t) => t.fog)).size).toBe(Object.keys(THEMES).length)
   })
 
   it('테마 소품은 인스턴스 메시 몇 개로만 그려지고 개수 상한을 넘지 않는다', () => {
@@ -25,7 +26,7 @@ describe('던전 테마', () => {
       expect(meshes.length).toBeLessThanOrEqual(2)
       // 벽면은 PROP_CAP 개까지, 벽면마다 소품 최대 3개.
       for (const m of meshes) expect(m.count).toBeLessThanOrEqual(PROP_CAP * 3)
-      if (t.id !== 'sewer') expect(meshes.reduce((n, m) => n + m.count, 0)).toBeGreaterThan(0)
+      if (t.props !== 'none') expect(meshes.reduce((n, m) => n + m.count, 0)).toBeGreaterThan(0)
     }
   })
 })

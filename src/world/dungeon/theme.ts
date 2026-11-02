@@ -9,7 +9,7 @@ import { wallFaces } from './walls'
  * Each one is a palette (fog, sky light, brick districts, floor/ceiling tints, lamp colours) plus
  * one cheap family of props along the walls (one or two instanced draw calls).
  */
-export type ThemeId = 'sewer' | 'candy' | 'library'
+export type ThemeId = 'sewer' | 'candy' | 'library' | 'maze' | 'cloud' | 'clock' | 'moon' | 'market'
 
 export interface DungeonTheme {
   id: ThemeId
@@ -67,6 +67,76 @@ export const THEMES: Record<ThemeId, DungeonTheme> = {
     pipes: [0xbcd4ff, 0xd9c9a6, 0xe0c8ff, 0xffe9a0],
     props: 'shelves',
   },
+  // 챕터 2 areas (plan.theme): 꿈 미로, 구름 다락, 멈춘 시계탑, 달빛 둥지, and 몽실 마을's night market.
+  maze: {
+    id: 'maze',
+    name: '꿈 미로',
+    fog: 0x2f5a6e,
+    sky: 0xd4f4ff,
+    brick: [0x8fd8d0, 0xb8b0f0, 0xa0c8f0],
+    floor: { corridor: 0x5e8aa0, chamber: 0x6a9a96, start: 0x86a8d8, boss: 0x9a86c0 },
+    ceiling: 0x22405a,
+    lamps: [0x9fffe8, 0xbcd4ff, 0xffe9a0, 0xd8b8ff],
+    pipes: [0x9fe8d8, 0xbcd4ff, 0xd8b8ff, 0xffe9a0],
+    props: 'crystals',
+  },
+  cloud: {
+    id: 'cloud',
+    name: '구름 다락',
+    fog: 0x8a7ab0,
+    sky: 0xfff0fa,
+    brick: [0xf4e8ff, 0xffe0ee, 0xe0ecff],
+    floor: { corridor: 0xb8a8d0, chamber: 0xd0b8d8, start: 0xc8d0ee, boss: 0xd8a8c8 },
+    ceiling: 0x6a5a90,
+    lamps: [0xffe9f6, 0xbfe4ff, 0xfff0b0, 0xffc8e8],
+    pipes: [0xffc8e8, 0xbfe4ff, 0xfff0b0, 0xe0d0ff],
+    props: 'none',
+  },
+  clock: {
+    id: 'clock',
+    name: '멈춘 시계탑',
+    fog: 0x3a2e4a,
+    sky: 0xffe8c8,
+    brick: [0xc8a878, 0xa88a9a, 0xd8c098],
+    floor: { corridor: 0x7a6a7a, chamber: 0x8a7a6a, start: 0x8a8aa8, boss: 0x9a7080 },
+    ceiling: 0x2a2038,
+    lamps: [0xffd27a, 0xffe9a0, 0xffb36b, 0xfff0d0],
+    pipes: [0xd9c9a6, 0xffd27a, 0xc8a878, 0xffe9a0],
+    props: 'shelves',
+  },
+  moon: {
+    id: 'moon',
+    name: '달빛 둥지',
+    fog: 0x1c1a40,
+    sky: 0xd8d0ff,
+    brick: [0x6a6aa8, 0x8a7ab8, 0xb8b0e0],
+    floor: { corridor: 0x4a4a7a, chamber: 0x5a5a8a, start: 0x6a7aa8, boss: 0x6a5a98 },
+    ceiling: 0x141430,
+    lamps: [0xfff6c8, 0xd8d0ff, 0xbfe4ff, 0xffe9a0],
+    pipes: [0xd8d0ff, 0xfff6c8, 0xbfe4ff, 0xb8b0e0],
+    props: 'crystals',
+  },
+  market: {
+    id: 'market',
+    name: '몽실 마을',
+    fog: 0x3a2a5e,
+    sky: 0xffe6f4,
+    brick: [0xffd6e8, 0xd8ccff, 0xc8eef0],
+    floor: { corridor: 0x9a88c0, chamber: 0xa894c8, start: 0xb0a0d8, boss: 0xa894c8 },
+    ceiling: 0x2a1e4a,
+    lamps: [0xffe08a, 0xff9fd2, 0x9fe8d8, 0xbfe4ff],
+    pipes: [0xff9fd2, 0x9fe8d8, 0xffe08a, 0xd8b8ff],
+    props: 'none',
+  },
+}
+
+export function isThemeId(v: unknown): v is ThemeId {
+  return typeof v === 'string' && v in THEMES
+}
+
+/** A plan's look: its own theme (chapter 2 areas) or the depth rotation. */
+export function themeOf(plan: { depth: number; theme?: string }): DungeonTheme {
+  return isThemeId(plan.theme) ? THEMES[plan.theme] : themeFor(plan.depth)
 }
 
 const ORDER: ThemeId[] = ['sewer', 'candy', 'library']

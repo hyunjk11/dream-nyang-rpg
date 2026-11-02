@@ -455,11 +455,11 @@ export class TownUI {
       return
     }
     const prog = chapterProgress(save)
-    const head = c.cleared.includes(2) ? `챕터 2 · ${CHAPTER_TITLE[2]} 클리어!` : `챕터 2 · ${CHAPTER_TITLE[2]} (${prog.claimed}/${prog.total})`
+    const head = prog.claimed >= prog.total ? `몽실 들판 퀘스트 · 모두 완료!` : `몽실 들판 퀘스트 (${prog.claimed}/${prog.total}) · 챕터 2 ${CHAPTER_TITLE[2]}${c.cleared.includes(2) ? ' 클리어' : ''}`
     box.append(el('b', 'town-chapter-head', head))
-    box.append(el('small', '', '맡은 퀘스트는 광장 별문의 "몽실 들판"에서 진행돼. 끝나면 여기서 보상!'))
+    box.append(el('small', '', '맡은 퀘스트는 몽실 마을 별문의 "몽실 들판"에서 진행돼. 끝나면 여기서 보상!'))
     const shown = CHAPTER2.filter((d) => c.quests[d.id].status !== 'locked' && c.quests[d.id].status !== 'claimed')
-    if (!shown.length && c.cleared.includes(2)) box.append(el('small', '', '다음 챕터는 준비 중이야. 들판 사냥은 계속할 수 있어.'))
+    if (!shown.length && c.cleared.includes(2)) box.append(el('small', '', '들판 퀘스트를 모두 마쳤어. 들판 사냥은 계속할 수 있어.'))
     for (const d of shown) {
       const q = c.quests[d.id]
       const card = el('div', `town-contract chapter s-${q.status}`)

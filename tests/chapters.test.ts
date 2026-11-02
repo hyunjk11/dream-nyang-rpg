@@ -236,12 +236,12 @@ describe('챕터 2 몽실 들판 퀘스트', () => {
     expect(n.kinds).toContain('slime')
   })
 
-  it('끝까지 하면 챕터 2가 클리어된다', () => {
+  it('들판 퀘스트를 끝까지 해도 챕터 2는 몽이의 이야기로만 클리어된다', () => {
     const save = open()
     const r = playChapter2(save)
-    expect(r.cleared).toBe(2)
+    expect(r.cleared).toBe(0)
     expect(r.gold).toBe(CHAPTER2.reduce((n, d) => n + d.reward.gold, 0))
-    expect(chaptersOf(save).cleared).toEqual(expect.arrayContaining([1, 2]))
+    expect(chaptersOf(save).cleared).not.toContain(2)
     expect(save.level).toBeGreaterThan(1)
   })
 })

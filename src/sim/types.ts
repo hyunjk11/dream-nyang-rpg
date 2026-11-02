@@ -111,6 +111,8 @@ export interface SaveData {
   town?: import('./town').TownSave
   /** 챕터 progress (가이드 챕터 → 몽실 들판 quests). Old saves get it on load. */
   chapters?: import('./chapters').ChapterSave
+  /** 챕터 2 · 꿈 미로와 몽실 마을 이야기 (see sim/dreamstory.ts). */
+  dream?: import('./dreamstory').DreamSave
 }
 
 export interface OpenRun {
