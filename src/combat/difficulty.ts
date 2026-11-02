@@ -25,8 +25,8 @@ export const DIFFICULTY = {
      */
     hp: 9,
     /** Was 0.62: tougher foes hit a little softer, so a fight lasts longer without being deadlier. */
-    /** Was 0.36: fights last ~8× longer, so each swing lands softer and less often (cooldown 1.45 → 2.1 s). */
-    damage: 0.18,
+    /** Was 0.36: fights last ~8× longer, so each swing lands softer and less often (cooldown 1.45 → 2.1 s). 0.18 → 0.15 to smooth depth 3. */
+    damage: 0.15,
     speed: 0.92,
     /** Longer, easier-to-read melee wind-up (was 0.32 s) and a longer rest between swings (was 1.1 s). */
     windup: 0.44,
@@ -70,9 +70,9 @@ export const DIFFICULTY = {
     /** Foe hp / damage growth per extra floor inside a depth (hp +50%: gear and levels grow fast; damage +4%). */
     hpPerFloor: 0.5,
     damagePerFloor: 0.04,
-    /** ...and per extra depth: hp ×2.35 each depth (geometric, like the gear), damage +14%. */
+    /** ...and per extra depth: hp ×2.35 each depth (geometric, like the gear), damage +8% (was 14%: depth 3 was a wall in the sim). */
     hpDepthGrowth: 2.35,
-    damagePerDepth: 0.14,
+    damagePerDepth: 0.08,
     /** Floors start this many waves further into the roster (floor 1 of depth 1 = wave 1). */
     wavesPerFloor: 1,
     wavesPerDepth: 2,
