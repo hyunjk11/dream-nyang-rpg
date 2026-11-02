@@ -48,7 +48,7 @@ import { xpToNext } from './sim/formulas'
 import { findItem } from './sim/inventory'
 import { itemName, makeItem } from './sim/loot'
 import { skillSvg } from './ui/skillicons'
-import { Help } from './ui/help'
+import { Help, keepHintItems } from './ui/help'
 import { RARITY_COLOR, type ItemInstance } from './sim/types'
 import { InventoryUI, compareEquip, dpsOf } from './ui/inventory'
 import { TownUI, type TownPanel, type TownSuccess } from './ui/town'
@@ -223,7 +223,7 @@ const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · �
 function showHint(): void {
   if (!hint) return
   const sewer = run ? (stage.touch ? ' · 귀환 버튼' : ' · M 지도 · T 귀환') : ''
-  hint.textContent = (stage.touch ? TPS_HINT_TOUCH : TPS_HINT_MOUSE) + sewer
+  hint.textContent = keepHintItems((stage.touch ? TPS_HINT_TOUCH : TPS_HINT_MOUSE) + sewer)
   hint.classList.remove('fade')
   void hint.offsetWidth
   hint.classList.add('fade')

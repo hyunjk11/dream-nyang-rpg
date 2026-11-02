@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ACTIVES, TREE_BY_ID, hotbarName } from '../src/data/tree'
 import { BOSS_FLOOR, Delve } from '../src/sim/delve'
 import { freshSave } from '../src/sim/mutate'
+import { keepHintItems } from '../src/ui/help'
 import { summaryLines } from '../src/ui/summary'
 
 const fsName = 'node:fs'
@@ -19,6 +20,12 @@ describe('자체 QA 스윕에서 찾은 버그', () => {
     const css = read('../src/ui/style.css')
     expect(css).toMatch(/#hint \{[^}]*word-break: keep-all/)
     expect(css).toMatch(/#hotbar b \{[^}]*text-overflow: ellipsis/)
+  })
+
+  it('조작 안내는 " · " 사이에서만 줄바꿈된다 (M 지도가 둘로 쪼개지지 않음)', () => {
+    const t = keepHintItems('Space 대시 · M 지도 · T 귀환')
+    expect(t).toBe('Space\u00a0대시 · M\u00a0지도 · T\u00a0귀환')
+    expect(t.split(' ')).toEqual(['Space\u00a0대시', '·', 'M\u00a0지도', '·', 'T\u00a0귀환'])
   })
 
   it('보스만 잡고 끝내도 요약의 처치 수에 보스가 들어간다 (한 번만)', () => {

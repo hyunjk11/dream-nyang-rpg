@@ -34,6 +34,14 @@ export const HELP_QOL: [string, string][] = [
   ['쓰러짐', '3초 뒤 자동으로 다시 일어나'],
 ]
 
+/** Control hint: lines may wrap only at the " · " separators, never inside "M 지도". */
+export function keepHintItems(text: string): string {
+  return text
+    .split(' · ')
+    .map((item) => item.replace(/ /g, '\u00a0'))
+    .join(' · ')
+}
+
 export class Help {
   readonly root: HTMLElement
   private shown = false
