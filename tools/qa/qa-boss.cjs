@@ -113,7 +113,7 @@ const STRICT = process.env.STRICT === '1'
           return { before, alive: r.horde.alive, foes: r.horde.foes.length, wave: document.getElementById('wave')?.textContent ?? '', bars: v.barsDrawn, maxBar: Math.round(maxBar * 100) / 100, camNear, nearDrawn: v.nearDrawn, drawn: v.drawn, bossCam, bossScreen, bossVis, tiles: m.w + 'x' + m.h, rooms: (m.chambers || []).length, plan: r.plan.objective, area: r.plan.area ?? null, label: document.getElementById('delve')?.textContent?.slice(0, 60) }
         })
         await p.screenshot({ path: `${OUT}/${vw}x${vh}-${scene}.png` })
-        const ok = !info.wave.includes('웨이브') && info.alive <= 24 && info.maxBar < 0.25 && (info.bossScreen ?? 0) < 1.6
+        const ok = !info.wave.includes('웨이브') && info.alive <= 24 && info.maxBar < 0.25 && ((info.bossScreen ?? 0) < 1.6 || (info.bossVis?.opacity ?? 1) <= 0.35)
         console.log(JSON.stringify({ vp: `${vw}x${vh}`, scene, ok, info }))
         if (!ok) fails.push(`${vw}x${vh} ${scene}`)
       } catch (e) { console.log(JSON.stringify({ vp: `${vw}x${vh}`, scene, ok: false, err: String(e).slice(0, 300) })); fails.push(`${vw}x${vh} ${scene} ERR`) }

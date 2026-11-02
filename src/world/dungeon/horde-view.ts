@@ -242,6 +242,11 @@ export const BAR_RANGE = 24
  */
 export const BAR_MIN_DEPTH = 2.4
 export const BAR_SHOWN = 14
+/**
+ * Most a bar may span on screen (half-width in NDC, 1 = half the screen). A tall phone has a
+ * narrow horizontal view, so a 0.7 m bar 3 m out still crossed a third of it; near bars shrink.
+ */
+export const BAR_MAX_NDC = 0.09
 export const CAM_CLEAR = 0.75
 const BAR_BACK = new Color(0x2a1830)
 const BAR_FILL = new Color(0xff6fae)
@@ -361,6 +366,7 @@ export class HordeView {
     let rings = 0
     let lanes = 0
     let bars = 0
+    const p00 = camera.projectionMatrix.elements[0]
     camera.getWorldQuaternion(this.cq)
     this.right.set(1, 0, 0).applyQuaternion(this.cq)
     this.fwd.set(0, 0, -1).applyQuaternion(this.cq)
@@ -445,16 +451,18 @@ export class HordeView {
       mesh.setColorAt(i, this.c)
       // Hp bar once she has hurt it (tanky foes since 2026-11: show the progress).
       if (f.dying <= 0 && f.hp < f.maxHp && d < BAR_RANGE * BAR_RANGE && depth > BAR_MIN_DEPTH && bars < BAR_SHOWN) {
-        const w = (f.elite ? 1.15 : 0.72) * Math.min(1.5, Math.max(1, look.height / 1.1))
+        const w0 = (f.elite ? 1.15 : 0.72) * Math.min(1.5, Math.max(1, look.height / 1.1))
+        const k = Math.min(1, (BAR_MAX_NDC * depth) / ((w0 / 2) * p00))
+        const w = w0 * k
         const y = h + (look.hover ?? 0) + 0.3
         this.p.set(f.x, y, f.z)
-        this.s.set(w + 0.07, 0.12, 1)
+        this.s.set(w + 0.07 * k, 0.12 * k, 1)
         this.m.compose(this.p, this.cq, this.s)
         this.bars.setMatrixAt(bars, this.m)
         this.bars.setColorAt(bars, BAR_BACK)
         const frac = Math.max(0.02, Math.min(1, f.hp / f.maxHp))
         this.p.addScaledVector(this.right, -w / 2)
-        this.s.set(w * frac, 0.08, 1)
+        this.s.set(w * frac, 0.08 * k, 1)
         this.m.compose(this.p, this.cq, this.s)
         this.fills.setMatrixAt(bars, this.m)
         this.c.copy(f.elite ? (f.rage ? BAR_RAGE : BAR_ELITE) : BAR_FILL)
