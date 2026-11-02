@@ -1622,7 +1622,7 @@ function leaveSewer(why: DelveEnd = 'recall'): void {
   // 편의성: a recall mid-floor leaves a return portal (not after the boss, not when she fell).
   // 던전 유지: a fall keeps the floor too (she wakes in town, the portal takes her back).
   if (delve?.town) return
-  const home = tripHome(delve)
+  const home = tripHome(delve, why)
   const keep = home === 'island' && (why === 'recall' || why === 'down') && delveUnlocked < 0 && !!delve && !delve.bossBeaten && !!dungeonMod
   const parkAs = keep && delve && run && dungeonMod ? { run, mod: dungeonMod, depth: delve.depth, floor: delve.floor, salt: delve.salt, field: delve.fieldPlan, area: delve.area, areaFloor: delve.area ? delve.floor : undefined } : null
   const snap = parkAs && delve ? parkAs.run.snapshot(delve.salt) : null
@@ -1673,8 +1673,10 @@ function inMongsil(): boolean {
 }
 
 /** Where a trip comes home to: 몽실 for its areas (and the field once the maze is behind her). */
-function tripHome(trip: Delve | null): 'island' | 'mongsil' {
+function tripHome(trip: Delve | null, why?: DelveEnd): 'island' | 'mongsil' {
   if (!trip) return 'island'
+  // 꿈 미로 starts at the island but its far end opens onto 몽실 마을.
+  if (trip.area === 'maze' && why === 'clear' && dreamOf(game.save).maze.passed) return 'mongsil'
   if (trip.area) return AREAS[trip.area].home === 'mongsil' ? 'mongsil' : 'island'
   if (trip.fieldPlan && dreamOf(game.save).maze.passed) return 'mongsil'
   return 'island'

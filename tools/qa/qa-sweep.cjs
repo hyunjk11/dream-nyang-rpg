@@ -46,6 +46,7 @@ const VPS = (process.env.VPS || '1280x720,390x844').split(',').map((s) => s.spli
         const at = r.portalAt; if (at === 'stairs') r.use()
         return { at, active: r.stairsPortal.active, want }
       }, want)
+      const dbg = {}
       try {
         await fresh(); for (let i = 0; i < 3; i++) { await p.evaluate(() => window.__slice.talk.close()); await p.waitForTimeout(200) }
         await p.evaluate(() => { const c = window.__slice.chapters; c.guide.done = true; if (!c.cleared.includes(1)) c.cleared.push(1); c.current = 2; c.card = 0; window.__slice.enterArea('maze') })
@@ -72,7 +73,9 @@ const VPS = (process.env.VPS || '1280x720,390x844').split(',').map((s) => s.spli
           return out
         })
         await p.screenshot({ path: `${OUT}/${vw}x${vh}-maze-quests.png` })
+        dbg.q = q
         const ups = []
+        dbg.ups = ups
         for (let f = 1; f <= 3; f += 1) {
           ups.push(await stairs(f))
           ups.push(await p.waitForFunction((f) => window.__slice.run?.plan.areaFloor === f + 1, f, { timeout: 30000 }).then(() => 'ok', () => 'NO'))
@@ -81,6 +84,8 @@ const VPS = (process.env.VPS || '1280x720,390x844').split(',').map((s) => s.spli
         await p.screenshot({ path: `${OUT}/${vw}x${vh}-maze4.png` })
         ups.push(await stairs(5))
         const town = await p.waitForFunction(() => window.__slice.run?.plan.objective === 'town' && !window.__slice.travelling, null, { timeout: 60000 }).then(() => 'ok', () => 'NO')
+        dbg.town = town
+        dbg.state = await p.evaluate(() => ({ obj: window.__slice.run?.plan.objective ?? null, area: window.__slice.run?.plan.area ?? null, fl: window.__slice.run?.plan.areaFloor ?? null, tr: window.__slice.travelling, dream: window.__slice.dream }))
         await settle()
         // The summary card is up after the maze: close it.
         await p.evaluate(() => document.getElementById('summary-close')?.click()); await p.waitForTimeout(800)
@@ -128,7 +133,7 @@ const VPS = (process.env.VPS || '1280x720,390x844').split(',').map((s) => s.spli
         await p.screenshot({ path: `${OUT}/${vw}x${vh}-ch2-clear.png` })
         const ok = q.steps[q.steps.length - 1] === 4 && town === 'ok' && m.spots.split(',').length >= 6 && m.mongiTalk && m.gateTalk && moon.bossDead && back === 'ok' && fin.done && fin.cleared.includes(2)
         note('chapter2', ok, { fps: fr, q, ups, town, m, moon, back, fin })
-      } catch (e) { note('chapter2', false, String(e).slice(0, 300)) }
+      } catch (e) { note('chapter2', false, { err: String(e).slice(0, 300), dbg }) }
     }
     for (const [d, f] of FLOORS) {
       try {
