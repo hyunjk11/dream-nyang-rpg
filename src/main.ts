@@ -34,7 +34,8 @@ import type { DungeonRun } from './world/dungeon/run'
 import { Portal } from './world/dungeon/portal'
 import { WaypointView } from './world/waypoint-view'
 import { WAYPOINT_REACH, distanceText, goalForContract, goalForQuest, trailDots, type Waypoint, type WaypointGoal } from './sim/waypoint'
-import { Delve, portalChoices, type DelveEnd, type DelveSummary, type FloorPlan } from './sim/delve'
+import { Delve, delveOf, fieldPlan, portalChoices, type DelveEnd, type DelveSummary, type FloorPlan } from './sim/delve'
+import { floorStateLabel, type FloorState } from './sim/floorsnap'
 import { showSummary } from './ui/summary'
 import { playChime, type Chime } from './audio/chime'
 import { blast, SkillRunner, type SkillBody, type SkillWorld } from './combat/skills'
@@ -152,25 +153,48 @@ returnPortal.active = false
 const RETURN_PLACE: Place = { kind: 'portal', x: RETURN_SPOT.x, z: RETURN_SPOT.z, turn: 0, height: 2.4, solid: 0, talk: 'return' }
 
 /** The return portal stands only in the village while a floor is parked. */
+/** The floor kept on disk (던전 유지 across a reload), when nothing is parked in memory. */
+function savedFloor(): FloorState | null {
+  return delveOf(game.save).floorState ?? null
+}
+/** Write (or clear) the kept floor in the save block. */
+function keepFloor(s: FloorState | null): void {
+  delveOf(game.save).floorState = s
+}
+
+/** "깊이 2 · 3층" / "몽실 들판" for the kept floor (in memory or on disk), or '' when none. */
+function keptLabel(): string {
+  if (parked) return parked.field ? '몽실 들판' : `깊이 ${parked.depth} · ${parked.floor}층`
+  const s = savedFloor()
+  return s ? floorStateLabel(s) : ''
+}
+
 function paintReturnPortal(): void {
-  const on = !!parked && !run && game.zone === 'village'
+  const on = (!!parked || !!savedFloor()) && !run && game.zone === 'village'
   if (on && returnPortal.group.parent !== stage.scene) stage.scene.add(returnPortal.group)
   returnPortal.active = on
 }
 
 /** Throw the parked floor away (a new trip started, or it can no longer be reached). */
 function dropParked(): void {
-  if (!parked) return
-  parked.run.dispose()
-  parked = null
+  keepFloor(null)
+  if (parked) {
+    parked.run.dispose()
+    parked = null
+  }
   paintReturnPortal()
 }
 
 /** Through the return portal: back onto the parked floor, same spot. */
 function returnThrough(): void {
-  if (!parked || run || travelling) return
+  if (run || travelling) return
+  if (!parked) {
+    const kept = savedFloor()
+    if (kept) void returnFromSave(kept)
+    return
+  }
   const p = parked
-  const trip = p.field ? Delve.reopenField(game.save, p.field) : Delve.reopen(game.save, p.depth, p.floor, p.salt)
+  const trip = p.field ? Delve.reopenField(game.save, p.field, p.salt) : Delve.reopen(game.save, p.depth, p.floor, p.salt)
   if (!trip) {
     dropParked()
     return
@@ -203,6 +227,42 @@ function returnThrough(): void {
     travelling = false
   })
 }
+/** After a reload: rebuild the kept floor from its seed, then put the saved state back onto it. */
+async function returnFromSave(kept: FloorState): Promise<void> {
+  const trip = kept.field ? Delve.reopenField(game.save, fieldPlan(kept.salt, kept.field), kept.salt) : Delve.reopen(game.save, kept.depth, kept.floor, kept.salt)
+  if (!trip) {
+    dropParked()
+    return
+  }
+  travelling = true
+  audio.sfx('windup', 0.7)
+  const mod = await loadDungeon()
+  await fadeThrough(() => {
+    talk.close()
+    combat.setRoster([])
+    combat.places = []
+    landmarks.group.visible = false
+    const theme = mod.themeFor(trip.depth)
+    stage.setWorld('sewer', kept.field ? { ...mod.themeFog(1), near: 14, far: 62 } : mod.themeFog(trip.depth))
+    setMood({ fog: theme.fog, sky: theme.sky, clear: theme.fog })
+    zonePlaces = []
+    delve = trip
+    delveUnlocked = -1
+    hero.hp = hero.maxHp
+    paintReturnPortal()
+    buildFloor(mod, trip.plan)
+    if (run && !run.restore(kept)) keepFloor(null)
+    skills.reset()
+    game.persist(store)
+    document.body.classList.add('sewer')
+    if (kept.field) document.body.classList.add('field')
+    showHint()
+    if (waypoint) refreshWaypoint(true)
+  }).finally(() => {
+    travelling = false
+  })
+}
+
 /** The sewer lives in its own chunk: fetched (with its horde art) while the title shows, awaited on entry. */
 let dungeonModule: Promise<typeof import('./world/dungeon/run')> | null = null
 /** The loaded dungeon module (parking a floor needs it to come back). */
@@ -1395,6 +1455,7 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
       bossDown: () => {
         if (!delve) return
         if (field) {
+          keepFloor(null)
           delve.kill(false) // the bloom counts (delve.bossCleared counts it below)
           giveXp(bossXp(2))
           questHit({ type: 'boss' })
@@ -1402,6 +1463,7 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
           return
         }
         guideHit({ type: 'boss', depth: plan.depth })
+        keepFloor(null)
         delveUnlocked = delve.bossCleared(game.save)
         giveXp(bossXp(plan.depth))
         contractHit({ type: 'boss', depth: plan.depth })
@@ -1486,6 +1548,7 @@ function nextFloor(): void {
     run?.dispose()
     run = null
     const plan = trip.nextFloor(game.save)
+    keepFloor(null)
     game.persist(store)
     buildFloor(mod, plan)
   })).finally(() => {
@@ -1512,12 +1575,16 @@ function leaveSewer(why: DelveEnd = 'recall'): void {
   travelling = true
   audio.sfx('windup', 0.7)
   // 편의성: a recall mid-floor leaves a return portal (not after the boss, not when she fell).
-  const keep = why === 'recall' && delveUnlocked < 0 && !!delve && !delve.bossBeaten && !!dungeonMod
+  // 던전 유지: a fall keeps the floor too (she wakes in town, the portal takes her back).
+  const keep = (why === 'recall' || why === 'down') && delveUnlocked < 0 && !!delve && !delve.bossBeaten && !!dungeonMod
   const parkAs = keep && delve && run && dungeonMod ? { run, mod: dungeonMod, depth: delve.depth, floor: delve.floor, salt: delve.salt, field: delve.fieldPlan } : null
+  const snap = parkAs && delve ? parkAs.run.snapshot(delve.salt) : null
   const sum = endDelve(why)
+  keepFloor(snap)
+  game.persist(store)
   void fadeThrough(() => {
     if (parkAs) {
-      dropParked()
+      if (parked) parked.run.dispose()
       parkAs.run.park()
       parked = parkAs
     } else run?.dispose()
@@ -1531,7 +1598,7 @@ function leaveSewer(why: DelveEnd = 'recall'): void {
     paintReturnPortal()
   }).then(() => {
     travelling = false
-    if (parkAs) toast(`별문 옆에 돌아가기 포털이 열렸어 (${parkAs.field ? '몽실 들판' : `깊이 ${parkAs.depth} · ${parkAs.floor}층`})`, 'quest')
+    if (parkAs) toast(`별문 옆에 돌아가기 포털이 열렸어 (${keptLabel()})`, 'quest')
     if (!sum) return
     mode = 'menu'
     releaseLook()
@@ -1616,7 +1683,7 @@ function gateTalk(): TalkDef {
   return {
     lines: [{ speaker: '별문', portrait: 'prop_portal', text: '별빛 문이 일렁인다. 어디로 갈까?' }],
     choices: [
-      ...(parked && game.zone === 'village' ? [{ text: `돌아가기 포털 · ${parked.field ? '몽실 들판' : `깊이 ${parked.depth} · ${parked.floor}층`} (그 자리로)`, go: 'return' }] : []),
+      ...(keptLabel() && game.zone === 'village' ? [{ text: `돌아가기 포털 · ${keptLabel()} (그 자리로)`, go: 'return' }] : []),
       ...dests.map((d) => ({ text: d.label, go: d.to })),
       ...rememberFirst(
         [
@@ -1771,6 +1838,8 @@ function sewerFrame(dt: number, raw: number): void {
     // Keep the open trip (run gold, kills) on disk so a reload mid-run banks it.
     saveClock = 0
     delve.sync(game.save)
+    // 던전 유지: the floor as it stands now, so a reload mid-floor comes back to it.
+    keepFloor(!delve.bossBeaten && delveUnlocked < 0 && hero.alive ? run.snapshot(delve.salt) : null)
     game.persist(store)
   }
   vfx.update(dt)
