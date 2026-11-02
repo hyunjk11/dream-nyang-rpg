@@ -46,11 +46,11 @@ describe('난이도 상향 (보통 기본)', () => {
     expect(d3.damage).toBeGreaterThan(d1.damage)
   })
 
-  it('몹이 단단해진 만큼 무리는 적고 작다 (팩 6–9, 2–4마리, 추격 최대 4)', () => {
-    expect(EXPLORE.packs[0]).toBeGreaterThanOrEqual(6)
+  it('몹이 단단해진 만큼 무리는 적고 작다 (팩 5–8, 2–4마리, 추격 최대 3)', () => {
+    expect(EXPLORE.packs[0]).toBeGreaterThanOrEqual(5)
     expect(EXPLORE.packs[1]).toBeLessThanOrEqual(10)
     expect(EXPLORE.packSize[1]).toBeLessThanOrEqual(4)
-    expect(EXPLORE.chaseCap).toBeGreaterThanOrEqual(4)
+    expect(EXPLORE.chaseCap).toBeGreaterThanOrEqual(3)
   })
 
   it('쉬움/보통/어려움: 기본은 보통, 바꾸면 저장되고 새로 나오는 몬스터 체력에 반영된다', () => {
