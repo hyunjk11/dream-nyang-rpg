@@ -291,7 +291,8 @@ export class HordeView {
       t.setColorAt(0, new Color(1, 1, 1))
       this.group.add(t)
     }
-    const barMat = () => new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.94, depthTest: false, depthWrite: false, fog: false, toneMapped: false })
+    // Walls hide the bar (depth-tested); depthWrite off + renderOrder keeps the fill over its back.
+    const barMat = () => new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.94, depthTest: true, depthWrite: false, fog: false, toneMapped: false })
     this.bars = new InstancedMesh(new PlaneGeometry(1, 1), barMat(), BAR_CAP)
     this.fills = new InstancedMesh(new PlaneGeometry(1, 1).translate(0.5, 0, 0), barMat(), BAR_CAP)
     this.bars.name = 'horde-hp-bars'
