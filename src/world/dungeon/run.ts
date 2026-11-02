@@ -1,4 +1,6 @@
-import { themeFor, type DungeonTheme } from './theme'
+import { themeFor, themeOf, type DungeonTheme } from './theme'
+import { MongsilTown, townFigure, webbedSheep, type Blocker } from './town'
+import { distances } from './maze'
 import {
   AdditiveBlending,
   SphereGeometry,
@@ -107,6 +109,12 @@ export interface RunHost {
   gun?: (cue: GunCue, gain?: number, pitch?: number) => void
   /** Freeze the world for a beat on a meaty hit. */
   hitStop?: (seconds: number) => void
+  /** E on a spot (몽실 마을 NPCs, the 별문, maze quest props): its id. */
+  spot?: (id: string) => void
+  /** A quest foe placed with spawnQuestFoe went down: its quest id. */
+  questFoe?: (id: string) => void
+  /** Why the stairs won't take her yet (null = they will). */
+  stairsBlock?: () => string | null
   /** The game's one shoulder rig + gun (shared with the town); the run makes its own if absent. */
   shooter?: Shooter
 }
@@ -119,6 +127,18 @@ export { themeFor }
 export function themeFog(depth: number): { color: number; near: number; far: number } {
   return { ...SEWER_FOG, color: themeFor(depth).fog }
 }
+
+/** Fog for any plan: its theme's colour; the field and 몽실 마을 are open sky (fog far back). */
+export function planFog(plan: FloorPlan): { color: number; near: number; far: number } {
+  const color = themeOf(plan).fog
+  if (plan.objective === 'town') return { color, near: 22, far: 90 }
+  if (plan.objective === 'field') return { color, near: 14, far: 62 }
+  return { ...SEWER_FOG, color }
+}
+export { themeOf }
+
+/** 달빛 둥지's boss (챕터 2 finale). */
+export const MOTH_NAME = '꿈먹는 밤나방'
 
 /** Boss body is drawn at this multiple of its island size. */
 const BOSS_SCALE = 1.4
@@ -156,7 +176,24 @@ interface NestTarget {
 }
 
 /** Which portal she stands in (for the hint and E). */
-export type PortalKind = 'home' | 'stairs' | 'exit' | 'chest' | 'loot' | 'shrine' | 'door'
+export type PortalKind = 'home' | 'stairs' | 'exit' | 'chest' | 'loot' | 'shrine' | 'door' | 'spot'
+
+/** Something E talks to or picks up: a townsperson, the 별문, a quest prop. */
+export interface RunSpot {
+  id: string
+  x: number
+  z: number
+  r: number
+  hint: string
+  /** Name tag over it (townsfolk). */
+  name?: string
+  /** The objective arrow points here. */
+  arrow?: boolean
+  obj?: Object3D | null
+  tagEl?: HTMLElement | null
+  /** Height of the name tag (m). */
+  tagY?: number
+}
 
 /**
  * One sewer run: the maze, the shoulder camera and her shooting. Owns nothing of the hub; the
@@ -227,6 +264,18 @@ export class DungeonRun {
   hordeMs = 0
   /** 몽실 들판 (챕터 2): the open-field pack director, or null in the sewer. */
   field: FieldDirector | null = null
+  /** 몽실 마을 dressing (objective 'town'), or null. */
+  town: MongsilTown | null = null
+  /** The 별문 in 몽실 마을 (a spot; the portal is only its look). */
+  private gate: Portal | null = null
+  /** Round blockers (stalls, townsfolk, quest props). */
+  private readonly blockers: Blocker[] = []
+  /** E targets: townsfolk, the 별문, quest props. */
+  readonly spots: RunSpot[] = []
+  /** Foes a quest asked for (foe id → quest id and name). */
+  private readonly questFoes = new Map<number, { id: string; name: string }>()
+  /** Stairs hint ("다음 층으로", or "미로 밖으로" on the maze's last floor). */
+  stairsHint = '다음 층으로'
   /** This depth's look (palette, fog, props). */
   readonly theme: DungeonTheme
   /** What skills (bombs, Mochi's rush, sparkle bursts) can hurt down here. */
@@ -242,7 +291,7 @@ export class DungeonRun {
     // Lay out packs, nests, chests, shrine and the secret before the geometry (it carves).
     this.layout = exploring ? planLayout(this.maze, this.plan, rng(this.plan.seed ^ 0x5bd1e995)) : null
     if (this.layout && !this.layout.needsKey) this.plan = { ...this.plan, key: false }
-    this.theme = themeFor(this.plan.depth)
+    this.theme = themeOf(this.plan)
     this.sewer = new Sewer(this.maze, this.theme)
     host.scene.add(this.sewer.group)
     const s = tileCentre(this.maze, this.maze.start.x, this.maze.start.y)
@@ -303,6 +352,24 @@ export class DungeonRun {
       const roof = this.sewer.group.getObjectByName('sewer-ceiling')
       if (roof) roof.visible = false
     }
+    if (this.plan.objective === 'town') {
+      // 몽실 마을: open night sky, no foes; the townsfolk and the 별문 are spots.
+      const roof = this.sewer.group.getObjectByName('sewer-ceiling')
+      if (roof) roof.visible = false
+      this.town = new MongsilTown(maze)
+      this.sewer.group.add(this.town.group)
+      this.blockers.push(...this.town.blockers)
+      this.director.quiet = true
+      this.homePortal.group.visible = false
+      this.homePortal.active = false
+      for (const t of this.town.spots) {
+        if (t.id === 'gate') {
+          this.gate = new Portal(new Vector3(t.x, 0, t.z), 0xffc8f0)
+          this.sewer.group.add(this.gate.group)
+        }
+        this.addSpot({ id: t.id, x: t.x, z: t.z, r: t.id === 'gate' ? 1.6 : 2.2, hint: t.hint, name: t.name, tagY: t.id === 'board' ? 2.8 : t.id === 'gate' ? 3.4 : 2.1 })
+      }
+    }
     this.skillWorld = { solid: this.ray, bodies: () => this.bodies() }
     this.hordeView = new HordeView()
     this.sewer.group.add(this.hordeView.group)
@@ -313,6 +380,15 @@ export class DungeonRun {
     this.bossBody = body.rig
     this.bossMats = body.mats
     this.bossBody.scale.setScalar(BOSS_SCALE)
+    if (this.plan.area === 'moon') {
+      // The moth: the bloom re-tinted moon-lavender, a touch bigger.
+      for (const m of this.bossMats) {
+        const mat = m
+        mat.color?.lerp(new Color(0xb8a8ff), 0.6)
+        mat.emissive?.lerp(new Color(0x8a7aff), 0.7)
+      }
+      this.bossBody.scale.setScalar(BOSS_SCALE * 1.15)
+    }
     this.bossBody.visible = !!this.boss
     if (this.boss) {
       this.bossBody.position.set(this.boss.x, 0, this.boss.z)
@@ -339,7 +415,7 @@ export class DungeonRun {
       const bar = document.createElement('div')
       bar.id = 'bossbar'
       bar.className = 'hidden'
-      bar.innerHTML = `<span>${this.plan.depth > 1 ? `깊이 ${this.plan.depth}의 ` : ''}악몽 꽃</span><b><i></i></b>`
+      bar.innerHTML = `<span>${this.plan.area === 'moon' ? MOTH_NAME : `${this.plan.depth > 1 ? `깊이 ${this.plan.depth}의 ` : ''}악몽 꽃`}</span><b><i></i></b>`
       host.hud.appendChild(bar)
       this.bossBar = bar
       const delve = document.createElement('div')
@@ -398,6 +474,7 @@ export class DungeonRun {
       salt,
       seed: this.plan.seed,
       field: this.plan.objective === 'field' ? (this.plan.field ?? null) : null,
+      ...(this.plan.area ? { area: this.plan.area, areaFloor: this.plan.areaFloor ?? 1 } : {}),
       at: { x: Math.round(p.x * 100) / 100, z: Math.round(p.z * 100) / 100, yaw: Math.round(p.yaw * 100) / 100 },
       dead,
       initial: this.initialFoes,
@@ -497,6 +574,10 @@ export class DungeonRun {
     this.shrine?.dispose()
     for (const a of this.arrowEls) a.remove()
     this.tagEl?.remove()
+    for (const sp of this.spots) sp.tagEl?.remove()
+    this.spots.length = 0
+    this.gate?.dispose()
+    this.town?.dispose()
     this.host.hero.boost = 1
     this.stairsPortal.dispose()
     this.hordeView.dispose()
@@ -638,7 +719,7 @@ export class DungeonRun {
   }
 
   private hudEls(): HTMLElement[] {
-    return [this.minimap.el, this.waveEl, this.bossBar, this.delveEl, this.tagEl, ...this.arrowEls].filter((e): e is HTMLElement => !!e) as HTMLElement[]
+    return [this.minimap.el, this.waveEl, this.bossBar, this.delveEl, this.tagEl, ...this.arrowEls, ...this.spots.map((x) => x.tagEl ?? null)].filter((e): e is HTMLElement => !!e) as HTMLElement[]
   }
 
   update(dt: number): void {
@@ -657,6 +738,7 @@ export class DungeonRun {
     const out = collideCircle(this.maze, p.x, p.z, 0.34)
     p.x = out.x
     p.z = out.z
+    this.pushOut(p, 0.34)
     this.follow(dt)
     const t0 = performance.now()
     this.fight(dt)
@@ -688,10 +770,153 @@ export class DungeonRun {
     this.homePortal.update(this.time)
     this.exitPortal.update(this.time)
     this.stairsPortal.update(this.time)
+    this.gate?.update(this.time)
+    this.town?.update(this.time, dt)
+    this.paintSpots()
     this.mapFoes()
     this.minimap.update(dt, p.x, p.z, this.view.yaw)
     if (consumeMap()) this.minimap.toggle()
     if (consumeTalk()) this.use()
+  }
+
+  /** The spot she stands at (nearest within its radius), or null. */
+  get spotAt(): RunSpot | null {
+    if (!this.host.hero.alive) return null
+    const p = this.host.hero.object.position
+    let best: RunSpot | null = null
+    let bestD = Infinity
+    for (const sp of this.spots) {
+      const d = Math.hypot(sp.x - p.x, sp.z - p.z)
+      if (d < sp.r && d < bestD) {
+        best = sp
+        bestD = d
+      }
+    }
+    return best
+  }
+
+  /** Put a spot down (with an optional prop that also blocks her a little). */
+  addSpot(spot: RunSpot, block = 0): RunSpot {
+    this.removeSpot(spot.id)
+    if (spot.obj) {
+      spot.obj.position.set(spot.x, spot.obj.position.y, spot.z)
+      this.sewer.group.add(spot.obj)
+    }
+    if (block > 0) this.blockers.push({ x: spot.x, z: spot.z, r: block, id: spot.id } as Blocker & { id: string })
+    if (spot.name && this.host.hud && typeof document !== 'undefined') {
+      const tag = document.createElement('div')
+      tag.className = 'spot-tag hidden'
+      tag.textContent = spot.name
+      this.host.hud.appendChild(tag)
+      spot.tagEl = tag
+    }
+    this.spots.push(spot)
+    const t = worldToTile(this.maze, spot.x, spot.z)
+    if (spot.arrow) this.minimap.mark(t.x, t.y, '#ffe08a', 'waypoint', true, `spot-${spot.id}`)
+    return spot
+  }
+
+  removeSpot(id: string): void {
+    const i = this.spots.findIndex((x) => x.id === id)
+    if (i < 0) return
+    const sp = this.spots[i]
+    this.spots.splice(i, 1)
+    sp.obj?.removeFromParent()
+    sp.tagEl?.remove()
+    const b = this.blockers.findIndex((x) => (x as Blocker & { id?: string }).id === id)
+    if (b >= 0) this.blockers.splice(b, 1)
+    this.minimap.unmark(`spot-${id}`)
+  }
+
+  /** A quest prop for the maze: the dream fragment or 뭉게 in the web. */
+  questProp(kind: 'frag' | 'rescue'): Object3D {
+    return kind === 'frag' ? townFigure('frag') : webbedSheep()
+  }
+
+  /**
+   * A walkable tile far from her (share `far` of the farthest reachable distance), away from the
+   * start and exit rooms; null when the floor has none.
+   */
+  farSpot(far = 0.7, salt = 1): { x: number; z: number } | null {
+    const p = this.host.hero.object.position
+    const t = worldToTile(this.maze, p.x, p.z)
+    const d = distances(this.maze.tiles, this.maze.w, this.maze.h, t.x, t.y)
+    let max = 0
+    for (let i = 0; i < d.length; i += 1) if (d[i] > max) max = d[i]
+    const inRect = (x: number, y: number, r: { x: number; y: number; w: number; h: number }) => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h
+    const picks: number[] = []
+    for (let i = 0; i < d.length; i += 1) {
+      if (d[i] < max * far) continue
+      const x = i % this.maze.w
+      const y = (i - x) / this.maze.w
+      if (inRect(x, y, this.maze.startRoom) || inRect(x, y, this.maze.bossRoom)) continue
+      if (this.layout && inRect(x, y, this.layout.exit)) continue
+      picks.push(i)
+    }
+    if (!picks.length) return null
+    const i = picks[Math.floor(((Math.sin(salt * 91.7 + this.plan.seed) + 1) / 2) * picks.length) % picks.length]
+    const x = i % this.maze.w
+    return tileCentre(this.maze, x, (i - x) / this.maze.w)
+  }
+
+  /** Spawn a named quest foe far from her (the arrow points at it). False when nowhere fits. */
+  spawnQuestFoe(id: string, kind: HordeKind, name: string, hp: number): boolean {
+    for (const f of this.horde.foes) if (this.questFoes.get(f.id)?.id === id && f.dying <= 0) return true
+    const at = this.farSpot(0.6, 7)
+    if (!at) return false
+    const f = this.horde.spawn(kind, at.x, at.z, true)
+    if (!f) return false
+    f.maxHp = Math.round(f.maxHp * hp)
+    f.hp = f.maxHp
+    f.radius *= 1.3
+    f.mode = 'idle'
+    f.homeX = f.x
+    f.homeZ = f.z
+    f.age = 1
+    this.questFoes.set(f.id, { id, name })
+    this.host.banner(name, '미로 어딘가에서 깨어났어 · 화살표를 따라가')
+    return true
+  }
+
+  /** A few foes jump out around her (뭉게's web was a trap). Returns how many came. */
+  ambush(count: number, kind: HordeKind = 'bat'): number {
+    const p = this.host.hero.object.position
+    let n = 0
+    for (let i = 0; i < count * 3 && n < count; i += 1) {
+      const a = (i / count) * Math.PI * 2 + 0.4
+      const r = 4.5 + (i % 3)
+      const x = p.x + Math.cos(a) * r
+      const z = p.z + Math.sin(a) * r
+      const t = worldToTile(this.maze, x, z)
+      if (t.x < 0 || t.y < 0 || t.x >= this.maze.w || t.y >= this.maze.h || this.maze.tiles[t.y * this.maze.w + t.x] === 0) continue
+      const f = this.horde.spawn(kind, x, z, false)
+      if (!f) continue
+      f.mode = 'chase'
+      f.age = 1
+      n += 1
+    }
+    return n
+  }
+
+  /** Name tags over the townsfolk and the 별문 (only near and in front of the camera). */
+  private paintSpots(): void {
+    if (!this.spots.length) return
+    const cam = this.host.camera
+    const p = this.host.hero.object.position
+    for (const sp of this.spots) {
+      const tag = sp.tagEl
+      if (!tag) continue
+      const d = Math.hypot(sp.x - p.x, sp.z - p.z)
+      this.ndc.set(sp.x, sp.tagY ?? 2.2, sp.z).project(cam)
+      const show = !this.parked && d < 26 && this.ndc.z < 1 && Math.abs(this.ndc.x) < 0.98 && Math.abs(this.ndc.y) < 0.95
+      if (!show) {
+        if (!tag.classList.contains('hidden')) tag.classList.add('hidden')
+        continue
+      }
+      tag.classList.remove('hidden')
+      tag.style.left = `${(this.ndc.x + 1) * 50}%`
+      tag.style.top = `${(1 - this.ndc.y) * 50}%`
+    }
   }
 
   /** E: open the chest, take the stairs, or go home. */
@@ -701,7 +926,16 @@ export class DungeonRun {
     else if (at === 'loot') this.openLoot()
     else if (at === 'shrine') this.useShrine()
     else if (at === 'door') this.tryDoor()
-    else if (at === 'stairs') this.host.stairs?.()
+    else if (at === 'spot') {
+      const s = this.spotAt
+      if (s) this.host.spot?.(s.id)
+    } else if (at === 'stairs') {
+      const why = this.host.stairsBlock?.() ?? null
+      if (why) {
+        this.host.banner('아직 못 나가', why)
+        this.host.sfx('ui', 0.6)
+      } else this.host.stairs?.()
+    }
     else if (at === 'exit') this.host.leave('clear')
     else if (at === 'home') this.host.leave('recall')
   }
@@ -709,6 +943,10 @@ export class DungeonRun {
   /** Start (or cancel) reading the town scroll. */
   startRecall(): void {
     if (!this.host.hero.alive) return
+    if (this.town) {
+      this.host.banner('여긴 몽실 마을이야', '별문(E)에서 섬 마을이나 다른 곳으로 갈 수 있어')
+      return
+    }
     if (this.recallT > 0) {
       this.recallT = 0
       return
@@ -821,6 +1059,7 @@ export class DungeonRun {
   /** What E would do where she stands (null = nothing). */
   get portalAt(): PortalKind | null {
     const p = this.host.hero.object.position
+    if (this.spotAt) return 'spot'
     if (this.chest?.near(p.x, p.z) && this.boss && !this.boss.alive) return 'chest'
     if (this.chests.some((c) => c.chest.near(p.x, p.z))) return 'loot'
     if (this.shrine?.near(p.x, p.z)) return 'shrine'
@@ -851,8 +1090,10 @@ export class DungeonRun {
         return '달빛 제단 (30초 축복)'
       case 'door':
         return this.explore?.hasKey ? '별 열쇠로 문 열기' : '별 열쇠가 필요해'
+      case 'spot':
+        return this.spotAt?.hint ?? ''
       case 'stairs':
-        return '다음 층으로'
+        return this.host.stairsBlock?.() ? '아직 닫혀 있어' : this.stairsHint
       case 'exit':
         return '마을로 (탐험 완료)'
       case 'home':
@@ -873,6 +1114,24 @@ export class DungeonRun {
     const out = collideCircle(this.maze, m.x, m.z, 0.3)
     m.x = out.x
     m.z = out.z
+    this.pushOut(m, 0.3)
+  }
+
+  /** Round blockers (stalls, townsfolk, quest props) push her out. */
+  private pushOut(p: { x: number; z: number }, r: number): void {
+    for (const b of this.blockers) {
+      const dx = p.x - b.x
+      const dz = p.z - b.z
+      const d = Math.hypot(dx, dz)
+      const min = b.r + r
+      if (d >= min) continue
+      if (d < 1e-4) {
+        p.z = b.z + min
+        continue
+      }
+      p.x = b.x + (dx / d) * min
+      p.z = b.z + (dz / d) * min
+    }
   }
 
   /** Horde bodies and the boss as crosshair capsules (index past the horde = the boss). */
@@ -937,6 +1196,13 @@ export class DungeonRun {
     const tint = this.theme.lamps[f.id % this.theme.lamps.length]
     this.host.vfx.burst(new Vector3(f.x, 0.7, f.z), tint, { count: f.elite ? 14 : 6, speed: 1.1, up: 2.2, life: 0.9, size: f.elite ? 0.3 : 0.22, shape: 1, gravity: -1.6, drag: 2.2, spread: 0.5, additive: true })
     if (this.explore) for (const ev of this.explore.foeDown(f)) this.onExplore(ev, f.x, f.z)
+    const quest = this.questFoes.get(f.id)
+    if (quest) {
+      this.questFoes.delete(f.id)
+      this.host.banner(`${quest.name} 쓰러뜨림!`, '모찌가 기뻐하고 있어')
+      this.host.vfx.ring(new Vector3(f.x, 0.06, f.z), 0xffe08a, 0.5, 5, 0.7)
+      this.host.questFoe?.(quest.id)
+    }
     if (this.field)
       for (const ev of this.field.foeDown(f))
         if (ev.type === 'named-down') {
@@ -1068,10 +1334,10 @@ export class DungeonRun {
           this.host.named?.('spawn')
         }
     } else {
-      const orders = this.director.update(dt, { nestDistance, alive: this.horde.alive, inBoss })
+      const orders = this.town ? [] : this.director.update(dt, { nestDistance, alive: this.horde.alive, inBoss })
       for (const o of orders) this.pour(o.nest, o.kind, o.elite)
     }
-    if (!this.explore && !this.field && this.director.wave !== this.lastWave && this.director.active) {
+    if (!this.explore && !this.field && !this.town && this.director.wave !== this.lastWave && this.director.active) {
       this.lastWave = this.director.wave
       this.host.banner(`웨이브 ${this.lastWave}`, this.director.active.elites ? `정예 ${this.director.active.elites}마리가 섞여 있어` : '파이프에서 몰려온다')
       this.host.sfx('windup', 0.6)
@@ -1081,7 +1347,8 @@ export class DungeonRun {
     if (!boss) return
     for (const ev of boss.update(dt, p.x, p.z, hero.alive, strike)) {
       if (ev === 'wake') {
-        this.host.banner(this.plan.depth > 1 ? `깊이 ${this.plan.depth}의 악몽 꽃` : '악몽 꽃', '꿈 하수도의 주인이 깨어났다')
+        if (this.plan.area === 'moon') this.host.banner(MOTH_NAME, '잊힌 꿈을 먹는 나방이 날개를 펼쳤다')
+        else this.host.banner(this.plan.depth > 1 ? `깊이 ${this.plan.depth}의 악몽 꽃` : '악몽 꽃', '꿈 하수도의 주인이 깨어났다')
         this.host.sfx('windup', 1)
       } else if (ev === 'ring') this.host.sfx('windup', 0.45)
       else if (ev === 'summon') {
@@ -1336,6 +1603,10 @@ export class DungeonRun {
 
   /** Where the objective arrow points (explore floors), or null. */
   hintTarget(): { x: number; z: number } | null {
+    if (this.town) return null
+    for (const f of this.horde.foes) if (this.questFoes.has(f.id) && f.dying <= 0) return { x: f.x, z: f.z }
+    const s = this.spots.find((x) => x.arrow)
+    if (s) return { x: s.x, z: s.z }
     if (this.field && !this.done) {
       const n = this.field.named()
       if (n) return { x: n.x, z: n.z }
@@ -1452,7 +1723,7 @@ export class DungeonRun {
     this.host.vfx.poof(at, 0xff9fd2, 3)
     this.host.vfx.ring(at.clone().setY(0.1), 0xffe08a, 0.5, 6, 0.8)
     this.host.sfx('splash', 1)
-    this.host.banner('악몽 꽃을 쓰러뜨렸다', '달빛 방 가운데 보물 상자가 나타났어')
+    this.host.banner(this.plan.area === 'moon' ? `${MOTH_NAME}이 잠들었다` : '악몽 꽃을 쓰러뜨렸다', '달빛 방 가운데 보물 상자가 나타났어')
     this.horde.clear()
     this.done = true
     this.director.quiet = true
@@ -1496,7 +1767,9 @@ export class DungeonRun {
       const w = this.director.active
       const kills = this.host.runKills?.() ?? this.horde.kills
       const chasing = this.horde.chasing
-      const text = this.field
+      const text = this.town
+        ? '몽실 마을 · 구름양들의 야시장'
+        : this.field
         ? boss?.awake && boss.alive
           ? `들판 보스전 · 총 처치 ${kills}`
           : `몽실 들판 · 깨어난 몹 ${chasing} · 총 처치 ${kills}`
@@ -1532,11 +1805,12 @@ export class DungeonRun {
       if (this.blessing) extra.push(`축복 ${BLESSING[this.blessing.kind].hud} ${Math.ceil(this.blessing.t)}초`)
       if (gold) extra.push(gold)
       const recall = this.recallT > 0 ? `귀환 주문 읽는 중… ${Math.max(0, RECALL_TIME - this.recallT).toFixed(1)}초` : extra.join(' · ')
-      const text = `${floorLabel(this.plan.depth, this.plan.floor)}|${goal}|${recall}`
+      const label = this.plan.label ?? floorLabel(this.plan.depth, this.plan.floor)
+      const text = `${label}|${goal}|${recall}`
       if (text !== this.delveText) {
         this.delveText = text
         const [a, b, c] = this.delveEl.children
-        a.textContent = this.field ? '챕터 2 · 몽실 들판' : floorLabel(this.plan.depth, this.plan.floor)
+        a.textContent = this.field ? '챕터 2 · 몽실 들판' : label
         b.textContent = goal
         c.textContent = recall
         this.delveEl.classList.toggle('done', this.done)

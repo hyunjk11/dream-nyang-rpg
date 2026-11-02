@@ -173,8 +173,9 @@ export class ChapterUI {
     const next = CHAPTER_TITLE[n + 1]
     const lines =
       n === 1
-        ? ['별하: 해냈다… 꿈이 조금 밝아진 것 같아.', '모찌: 이제 게시판에서 챕터 2 퀘스트를 받아 봐냥! 별문 → 몽실 들판.']
-        : ['모찌: 몽실 들판이 다시 폭신해졌어!', '별하: 다음 꿈도 같이 가자, 모찌.']
-    return this.card('chapter-clear', `챕터 ${n} 클리어!`, `챕터 ${n} · ${CHAPTER_TITLE[n] ?? ''}`, [...lines, next && n < 2 ? `챕터 ${n + 1} "${next}" 열림` : '다음 챕터는 준비 중이야'], [{ text: '좋아!', primary: true, id: 'chapter-clear-ok' }]).then(() => undefined)
+        ? ['별하: 해냈다… 꿈이 조금 밝아진 것 같아.', '모찌: 별문에서 "꿈 미로"로 가자냥! 미로 끝에 새 마을이 있대.']
+        : ['몽이: 몽실 마을의 등불이 전부 다시 켜졌어요!', '별하: 꿈 바깥에서… 누가 내 이름을 불렀어.', '모찌: 그 목소리, 따라가 보자냥.']
+    const tail = n === 2 ? `챕터 3 "${next ?? ''}" 열림 · 다음 꿈에서 이어져요` : next ? `챕터 ${n + 1} "${next}" 열림` : '다음 챕터는 준비 중이야'
+    return this.card('chapter-clear', `챕터 ${n} 클리어!`, `챕터 ${n} · ${CHAPTER_TITLE[n] ?? ''}`, [...lines, tail], [{ text: '좋아!', primary: true, id: 'chapter-clear-ok' }]).then(() => undefined)
   }
 }

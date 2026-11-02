@@ -31,8 +31,14 @@ export function groupLoot(loot: DelveSummary['loot']): DelveSummary['loot'] {
 
 /** Plain-text lines (also what the QA reads). */
 export function summaryLines(s: DelveSummary): { sub: string; stats: [string, string, string?][] } {
-  const where = s.field ? '몽실 들판' : floorLabel(s.depth, s.floor)
-  const sub = s.field
+  const where = s.label ?? (s.field ? '몽실 들판' : floorLabel(s.depth, s.floor))
+  const sub = s.label
+    ? s.end === 'down'
+      ? `${where}에서 쓰러졌어. 골드를 조금 흘렸지만 퀘스트 진행은 그대로야.`
+      : s.end === 'clear'
+        ? `${where.split(' · ')[0]}을 끝까지 지나왔어! 몽실 마을의 몽이에게 이야기해 보자.`
+        : `${where}에서 돌아왔어. 별문에서 다시 갈 수 있어.`
+    : s.field
     ? s.end === 'down'
       ? '몽실 들판에서 쓰러졌어. 골드를 조금 흘렸지만 퀘스트 진행은 그대로야.'
       : s.end === 'clear'

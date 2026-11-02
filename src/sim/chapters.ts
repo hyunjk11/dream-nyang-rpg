@@ -114,7 +114,7 @@ export interface ChapterSave {
   offerSkip: boolean
 }
 
-export const CHAPTER_TITLE: Record<number, string> = { 1: '가이드 챕터', 2: '몽실 들판', 3: '다음 꿈' }
+export const CHAPTER_TITLE: Record<number, string> = { 1: '가이드 챕터', 2: '꿈의 비밀', 3: '꿈 바깥의 목소리' }
 
 /** Already played before chapters (the skip is offered). */
 export function isVeteran(save: SaveData): boolean {
@@ -349,12 +349,8 @@ export function claimQuest(save: SaveData, id: string, rng: () => number = Math.
   // Open the next locked quest in line.
   const next = CHAPTER2.find((x) => c.quests[x.id].status === 'locked')
   if (next) c.quests[next.id].status = 'offered'
-  let cleared = 0
-  if (d.kind === 'boss' && !c.cleared.includes(2)) {
-    clearChapter(c, 2)
-    cleared = 2
-  }
-  return { ok: true, result, cleared, gear }
+  // 챕터 2 itself now ends with 몽이's story (꿈의 비밀); the field board is side quests.
+  return { ok: true, result, cleared: 0, gear }
 }
 
 /** Tracker lines for the HUD: active quests and progress. */

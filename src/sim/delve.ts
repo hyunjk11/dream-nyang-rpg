@@ -20,9 +20,11 @@ import { itemName, maxRarityFor, rollDrops, sellValue, type Drop } from './loot'
 import { addMaterial } from './quests'
 import type { OpenRun, ItemInstance, Rarity, SaveData } from './types'
 import { sanitizeFloor, type FloorState } from './floorsnap'
+import { AREAS, type AreaId } from './areas'
+import { areaPlan, townPlan } from './dreamstory'
 
 /** 'field' = 몽실 들판 (챕터 2): one open hunting field, no stairs. */
-export type Objective = 'exit' | 'boss' | 'field'
+export type Objective = 'exit' | 'boss' | 'field' | 'town'
 
 export interface DelveCheckpoint {
   depth: number
@@ -107,6 +109,13 @@ export interface FloorPlan {
   scale: FloorScale
   /** 몽실 들판 only: what the active chapter quests need out there. */
   field?: FieldNeeds
+  /** 챕터 2 area floors (꿈 미로, 구름 다락…): which area and its own floor number. */
+  area?: import('./dreamstory').AreaId
+  areaFloor?: number
+  /** HUD/banner name instead of "깊이 N · M층". */
+  label?: string
+  /** Dungeon look override (world/dungeon/theme ThemeId). */
+  theme?: string
 }
 
 export interface FieldNeeds {
@@ -198,6 +207,7 @@ export function floorLabel(depth: number, floor: number): string {
  */
 export function objectiveText(plan: Pick<FloorPlan, 'objective' | 'goal'> & { key?: boolean }, progress = 0, done = false): string {
   if (plan.objective === 'field') return done ? '들판의 악몽 꽃을 쓰러뜨렸어!' : '퀘스트 사냥 · T 또는 파란 포털로 마을'
+  if (plan.objective === 'town') return '야시장 · NPC와 대화 · 별문에서 E로 이동'
   if (done) return plan.objective === 'boss' ? '보물 상자를 열고 출구 포털로!' : '출구 방에 도착 · 금빛 계단으로 다음 층'
   switch (plan.objective) {
     case 'exit':
@@ -210,8 +220,12 @@ export function objectiveText(plan: Pick<FloorPlan, 'objective' | 'goal'> & { ke
 /** Banner title/sub when a floor begins. */
 export function floorIntro(plan: FloorPlan): { title: string; sub: string } {
   if (plan.objective === 'field') return { title: '챕터 2 · 몽실 들판', sub: plan.field?.boss ? '들판 동쪽 끝에 악몽 꽃이 피어 있어' : '괴물 무리가 계속 몰려와 · 퀘스트를 채우자' }
-  const title = floorLabel(plan.depth, plan.floor)
+  if (plan.objective === 'town') return { title: '몽실 마을', sub: '구름양들의 야시장 · 별문으로 어디든 갈 수 있어' }
+  const title = plan.label ?? floorLabel(plan.depth, plan.floor)
+  if (plan.area === 'moon') return { title, sub: '둥지 한가운데 꿈먹는 밤나방이 날개를 접고 있어' }
   if (plan.objective === 'boss') return { title, sub: '달빛 방에 악몽 꽃이 잠들어 있어' }
+  if (plan.area === 'maze') return { title, sub: plan.areaFloor === 1 ? '모찌가 길을 알아 · 모찌 퀘스트를 따라 미로를 지나자' : '미로를 지나 출구 방의 금빛 계단으로' }
+  if (plan.area) return { title, sub: '끝에 있는 출구 방을 찾자 · M 지도' }
   return plan.key
     ? { title, sub: '정예가 가진 별 열쇠로 미궁 끝 출구 문을 열자' }
     : { title, sub: '미궁을 탐험해 끝에 있는 출구 방을 찾자 · M 지도' }
@@ -244,6 +258,8 @@ export interface DelveSummary {
   level?: number
   /** A 몽실 들판 trip (the card says so instead of a depth/floor). */
   field?: boolean
+  /** A 챕터 2 area trip: its label ("꿈 미로 · 2/4층"). */
+  label?: string
 }
 
 /** Dungeon drop table per foe (scaled by depth). Bosses roll it with boss=true. */
@@ -300,6 +316,10 @@ export class Delve {
   bossBeaten = false
   /** A 몽실 들판 trip (챕터 2): no floors, no checkpoint; its plan is fixed at the start. */
   fieldPlan: FloorPlan | null = null
+  /** A 챕터 2 area trip (꿈 미로, 구름 다락…): floors count inside the area; no sewer checkpoint. */
+  area: AreaId | null = null
+  /** 몽실 마을 itself (a foe-less stop between trips; never summarised). */
+  town = false
 
   constructor(depth: number, floor = 1, salt = 0) {
     this.depth = Math.max(1, Math.floor(depth))
@@ -349,6 +369,32 @@ export class Delve {
     return run
   }
 
+  /** A trip into a 챕터 2 area from its first floor (or `floor`, coming back to a kept one). */
+  static area(save: SaveData, area: AreaId, floor = 1, salt?: number): Delve {
+    const d = delveOf(save)
+    d.runs += 1
+    const run = new Delve(AREAS[area].depth, 1, salt ?? d.runs)
+    run.area = area
+    run.floor = Math.max(1, Math.min(AREAS[area].floors, Math.floor(floor)))
+    return run
+  }
+
+  /** Back onto a kept area floor (no new trip counted). */
+  static reopenArea(save: SaveData, area: AreaId, floor: number, salt: number): Delve {
+    delveOf(save)
+    const run = new Delve(AREAS[area].depth, 1, salt)
+    run.area = area
+    run.floor = Math.max(1, Math.min(AREAS[area].floors, Math.floor(floor)))
+    return run
+  }
+
+  /** Standing in 몽실 마을. */
+  static town(save: SaveData): Delve {
+    const run = new Delve(1, 1, delveOf(save).runs)
+    run.town = true
+    return run
+  }
+
   /** Resume from the saved checkpoint (null when there is none). */
   static resume(save: SaveData): Delve | null {
     const cp = delveOf(save).checkpoint
@@ -357,11 +403,25 @@ export class Delve {
 
   get plan(): FloorPlan {
     if (this.fieldPlan) return this.fieldPlan
+    if (this.town) return townPlan(this.salt)
+    if (this.area) return areaPlan(this.area, this.floor, this.salt)
     return floorPlan(this.depth, this.floor, this.salt)
   }
 
   get onBoss(): boolean {
+    if (this.town) return false
+    if (this.area) return this.plan.objective === 'boss'
     return !this.fieldPlan && this.floor >= BOSS_FLOOR
+  }
+
+  /** An area trip on its last explore floor (its stairs lead out of the area). */
+  get areaLast(): boolean {
+    return !!this.area && !this.onBoss && this.floor >= AREAS[this.area].floors
+  }
+
+  /** "꿈 미로 · 2/4층" / "몽실 들판" / "깊이 2 · 3층". */
+  get label(): string {
+    return this.plan.label ?? (this.fieldPlan ? '몽실 들판' : `깊이 ${this.depth} · ${this.floor}층`)
   }
 
   /** Floor objective met and she took the stairs: next floor (checkpoint saved). */
@@ -369,6 +429,7 @@ export class Delve {
     if (this.onBoss) throw new Error('boss floor has no stairs')
     this.floor += 1
     this.floorsCleared += 1
+    if (this.area) return this.plan
     delveOf(save).checkpoint = { depth: this.depth, floor: this.floor }
     this.sync(save)
     return this.plan
@@ -376,7 +437,7 @@ export class Delve {
 
   /** Snapshot the trip into the save (run gold survives a reload; see settleOpenRun). */
   sync(save: SaveData): void {
-    if (this.ended || this.fieldPlan) return
+    if (this.ended || this.fieldPlan || this.area || this.town) return
     delveOf(save).open = {
       depth: this.depth,
       floor: this.floor,
@@ -444,6 +505,7 @@ export class Delve {
     // The bloom itself is a kill (a quick boss clear used to read "처치 0마리").
     if (!this.bossBeaten) this.kills += 1
     this.bossBeaten = true
+    if (this.area || this.fieldPlan) return 0
     d.cleared = Math.max(d.cleared, this.depth)
     const opened = d.unlocked < this.depth + 1 ? this.depth + 1 : 0
     d.unlocked = Math.max(d.unlocked, this.depth + 1)
@@ -459,7 +521,7 @@ export class Delve {
     save.gold = Math.max(0, save.gold + gold)
     const d = delveOf(save)
     d.open = null
-    if (end !== 'clear' && !this.bossBeaten && !this.fieldPlan) d.checkpoint = { depth: this.depth, floor: this.floor }
+    if (end !== 'clear' && !this.bossBeaten && !this.fieldPlan && !this.area) d.checkpoint = { depth: this.depth, floor: this.floor }
     this.ended = {
       end,
       depth: this.depth,
@@ -475,6 +537,7 @@ export class Delve {
       xp: this.xp,
       level: save.level,
       field: !!this.fieldPlan,
+      ...(this.area ? { label: this.label } : {}),
     }
     return this.ended
   }

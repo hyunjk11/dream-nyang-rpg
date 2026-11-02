@@ -57,8 +57,9 @@ import { activeContracts, contractEvent, contractLine, type ContractEvent } from
 import { eatCandy, townOf, useScroll } from './sim/town'
 import { tryEquip } from './sim/mutate'
 import { isEquipped } from './sim/inventory'
-import { CHAPTER2, FLUFF, chapter2Open, chaptersOf, fieldNeeds, guideEvent, guideStep, keepGuide, questEvent, questHud, skipGuide, type ChapterOut, type FieldEvent, type GuideEvent } from './sim/chapters'
+import { CHAPTER2, CHAPTER_TITLE, FLUFF, chapter2Open, chaptersOf, fieldNeeds, guideEvent, guideStep, keepGuide, questEvent, questHud, skipGuide, type ChapterOut, type FieldEvent, type GuideEvent } from './sim/chapters'
 import { ChapterUI } from './ui/chapters'
+import { AREAS, MAZE_ELITE, RESCUE_NAME, dreamOf, mazeCleared, mazeEvent, mazeHud, mazeQuest, openAreas, passMaze, storyEvent, storyHud, storyTalk, wantsSparks, type AreaId, type DreamOut } from './sim/dreamstory'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -145,7 +146,7 @@ let delveUnlocked = -1
  * 편의성: the floor she recalled from, left standing behind a return portal in the village
  * (this session only). Walking back in puts her on the same spot with the cleared foes gone.
  */
-let parked: { run: DungeonRun; mod: typeof import('./world/dungeon/run'); depth: number; floor: number; salt: number; field: FloorPlan | null } | null = null
+let parked: { run: DungeonRun; mod: typeof import('./world/dungeon/run'); depth: number; floor: number; salt: number; field: FloorPlan | null; area?: AreaId | null; areaFloor?: number } | null = null
 /** Where the return portal stands in the village (beside the 별문). */
 const RETURN_SPOT = { x: -7.6, z: 6.4 }
 const returnPortal = new Portal(new Vector3(RETURN_SPOT.x, 0, RETURN_SPOT.z), 0xffc46b)
@@ -164,7 +165,7 @@ function keepFloor(s: FloorState | null): void {
 
 /** "깊이 2 · 3층" / "몽실 들판" for the kept floor (in memory or on disk), or '' when none. */
 function keptLabel(): string {
-  if (parked) return parked.field ? '몽실 들판' : `깊이 ${parked.depth} · ${parked.floor}층`
+  if (parked) return parked.area ? `${AREAS[parked.area].name} · ${parked.areaFloor ?? 1}/${AREAS[parked.area].floors}층` : parked.field ? '몽실 들판' : `깊이 ${parked.depth} · ${parked.floor}층`
   const s = savedFloor()
   return s ? floorStateLabel(s) : ''
 }
@@ -194,7 +195,7 @@ function returnThrough(): void {
     return
   }
   const p = parked
-  const trip = p.field ? Delve.reopenField(game.save, p.field, p.salt) : Delve.reopen(game.save, p.depth, p.floor, p.salt)
+  const trip = p.area ? Delve.reopenArea(game.save, p.area, p.areaFloor ?? 1, p.salt) : p.field ? Delve.reopenField(game.save, p.field, p.salt) : Delve.reopen(game.save, p.depth, p.floor, p.salt)
   if (!trip) {
     dropParked()
     return
@@ -206,8 +207,8 @@ function returnThrough(): void {
     combat.setRoster([])
     combat.places = []
     landmarks.group.visible = false
-    const theme = p.mod.themeFor(p.depth)
-    stage.setWorld('sewer', p.field ? { ...p.mod.themeFog(1), near: 14, far: 62 } : p.mod.themeFog(p.depth))
+    const theme = p.mod.themeOf(trip.plan)
+    stage.setWorld('sewer', p.mod.planFog(trip.plan))
     setMood({ fog: theme.fog, sky: theme.sky, clear: theme.fog })
     zonePlaces = []
     delve = trip
@@ -222,6 +223,7 @@ function returnThrough(): void {
     document.body.classList.add('sewer')
     if (p.field) document.body.classList.add('field')
     showHint()
+    if (trip.area === 'maze') placeMazeQuest(false)
     if (waypoint) refreshWaypoint(true)
   }).finally(() => {
     travelling = false
@@ -229,7 +231,7 @@ function returnThrough(): void {
 }
 /** After a reload: rebuild the kept floor from its seed, then put the saved state back onto it. */
 async function returnFromSave(kept: FloorState): Promise<void> {
-  const trip = kept.field ? Delve.reopenField(game.save, fieldPlan(kept.salt, kept.field), kept.salt) : Delve.reopen(game.save, kept.depth, kept.floor, kept.salt)
+  const trip = kept.area ? Delve.reopenArea(game.save, kept.area, kept.areaFloor ?? 1, kept.salt) : kept.field ? Delve.reopenField(game.save, fieldPlan(kept.salt, kept.field), kept.salt) : Delve.reopen(game.save, kept.depth, kept.floor, kept.salt)
   if (!trip) {
     dropParked()
     return
@@ -242,8 +244,8 @@ async function returnFromSave(kept: FloorState): Promise<void> {
     combat.setRoster([])
     combat.places = []
     landmarks.group.visible = false
-    const theme = mod.themeFor(trip.depth)
-    stage.setWorld('sewer', kept.field ? { ...mod.themeFog(1), near: 14, far: 62 } : mod.themeFog(trip.depth))
+    const theme = mod.themeOf(trip.plan)
+    stage.setWorld('sewer', mod.planFog(trip.plan))
     setMood({ fog: theme.fog, sky: theme.sky, clear: theme.fog })
     zonePlaces = []
     delve = trip
@@ -257,6 +259,7 @@ async function returnFromSave(kept: FloorState): Promise<void> {
     document.body.classList.add('sewer')
     if (kept.field) document.body.classList.add('field')
     showHint()
+    if (trip.area === 'maze') placeMazeQuest(false)
     if (waypoint) refreshWaypoint(true)
   }).finally(() => {
     travelling = false
@@ -534,7 +537,7 @@ function levelUpFx(): void {
 
 const inventory = new InventoryUI({
   save: () => game.save,
-  inTown: () => !run,
+  inTown: () => !run || inMongsil(),
   changed: () => {
     applyBuild()
     game.persist(store)
@@ -584,9 +587,12 @@ const townUI = new TownUI({
     pad.fire = false
     releaseLook()
     talk.close()
+    // 몽실 마을 is a run world: the panel holds its frame (the stalls wait for her).
+    if (inMongsil() && mode === 'play') mode = 'menu'
     document.body.classList.add('bag-open')
   },
   closed: () => {
+    if (inMongsil() && mode === 'menu') mode = 'play'
     clearQueued()
     document.body.classList.remove('bag-open')
     paintHotbar()
@@ -607,7 +613,7 @@ function menuUp(): boolean {
 }
 
 function openTown(panel: TownPanel): void {
-  if (run || inventory.isOpen) return
+  if ((run && !inMongsil()) || inventory.isOpen) return
   townUI.open(panel)
 }
 
@@ -756,17 +762,27 @@ function waypointFrame(dt: number): void {
 function paintContracts(): void {
   if (!contractHud) return
   const list = mode === 'title' ? [] : activeContracts(game.save)
+  const dream = mode === 'title' ? [] : [mazeHud(game.save), storyHud(game.save)].filter((r): r is { title: string; prog: string; done?: boolean } => !!r)
   const chapter = mode === 'title' ? [] : questHud(game.save)
-  contractHud.classList.toggle('hidden', list.length + chapter.length === 0)
+  contractHud.classList.toggle('hidden', list.length + chapter.length + dream.length === 0)
   contractHud.innerHTML = ''
   // Small screens fold the rows into one chip; a tap (or click) opens them.
   const chip = document.createElement('button')
   chip.type = 'button'
   chip.id = 'quest-chip'
   const doneCount = chapter.filter((q) => q.done).length + list.filter((c) => c.status === 'done').length
-  chip.textContent = `퀘스트 ${list.length + chapter.length}${doneCount ? ` · 완료 ${doneCount}` : ''} ${contractHud.classList.contains('open') ? '▴' : '▾'}`
+  chip.textContent = `퀘스트 ${list.length + chapter.length + dream.length}${doneCount ? ` · 완료 ${doneCount}` : ''} ${contractHud.classList.contains('open') ? '▴' : '▾'}`
   chip.setAttribute('aria-expanded', String(contractHud.classList.contains('open')))
   contractHud.append(chip)
+  for (const q of dream) {
+    const row = document.createElement('div')
+    row.className = q.done ? 'ch story done' : 'ch story'
+    row.dataset.tip = `챕터 2 · ${CHAPTER_TITLE[2]}\n${q.title}\n${q.prog}`
+    const b = document.createElement('b')
+    b.textContent = '이야기'
+    row.append(b, document.createTextNode(`${q.title.replace(/^이야기 · /, '')} · ${q.prog}`))
+    contractHud.append(row)
+  }
   for (const q of chapter) {
     const row = document.createElement('div')
     row.className = (q.done ? 'ch done' : 'ch') + (waypoint?.id === q.id ? ' wp' : '')
@@ -843,7 +859,7 @@ function queueClearCard(): void {
 function showClearCard(): void {
   const c = chaptersOf(game.save)
   if (!clearPending || !c.card) return
-  if (mode !== 'play' || run || travelling || talk.open || menuUp()) {
+  if (mode !== 'play' || (run && !inMongsil()) || travelling || talk.open || menuUp()) {
     window.setTimeout(showClearCard, 800)
     return
   }
@@ -932,16 +948,17 @@ let guideTally = 0
 
 /** Through the portal to the 몽실 들판 (챕터 2 quest hunting). */
 function enterField(): void {
-  if (run || travelling) return
+  if ((run && !inMongsil()) || travelling) return
   if (!chapter2Open(game.save)) {
     toast('가이드 챕터를 마치면 열리는 들판이야.', 'info')
     return
   }
-  dropParked()
+  if (!inMongsil()) dropParked()
   travelling = true
   audio.sfx('windup', 0.7)
   const trip = Delve.field(game.save, fieldNeeds(game.save))
   void loadDungeon().then((mod) => fadeThrough(() => {
+    dropTown()
     talk.close()
     combat.setRoster([])
     combat.places = []
@@ -1229,7 +1246,7 @@ document.getElementById('guide-skip')?.addEventListener('click', () => {
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, aimZone, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, get keptFloor() { return savedFloor() }, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() } } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, aimZone, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, get keptFloor() { return savedFloor() }, enterArea, enterMongsil, mongsilToIsland, get dream() { return dreamOf(game.save) }, dreamHit, placeMazeQuest, spotUsed, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() } } })
 
 void bootGame()
 
@@ -1313,6 +1330,8 @@ function beginPlay(): void {
   crosshair?.classList.remove('hidden')
   showHint()
   enterZone(game.zone, game.zone === 'meadow' || game.zone === 'village' ? PLAZA : PORTAL_ARRIVAL)
+  // 챕터 2: she went to sleep in 몽실 마을, so she wakes there.
+  if (dreamOf(game.save).home === 'mongsil' && dreamOf(game.save).maze.passed) window.setTimeout(() => enterMongsil(true), 200)
   if (!game.save.flags.metMochi) window.setTimeout(() => talk.start('mochi_meet'), 700)
   const ch = chaptersOf(game.save)
   guideLast = null
@@ -1405,6 +1424,7 @@ function enterSewer(depth = 1, floor = 1, seed?: number): void {
 /** One floor of the trip: a fresh DungeonRun wired to the delve. */
 function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan): void {
   const field = plan.objective === 'field'
+  const area = plan.area as AreaId | undefined
   run = new mod.DungeonRun(
     {
       scene: stage.scene,
@@ -1420,10 +1440,16 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
         delve?.kill(elite)
         giveXp(killXp(plan.depth, elite))
         if (field) questHit({ type: 'kill', kind, elite })
-        else contractHit({ type: 'kill', depth: plan.depth, elite })
+        else if (area === 'maze') dreamHit(mazeEvent(game.save, 'kill'))
+        else if (!area) contractHit({ type: 'kill', depth: plan.depth, elite })
         guideHit({ type: 'kill' })
       },
-      extraDrops: () => (field && fieldNeeds(game.save).fluff && Math.random() < 0.4 ? [{ kind: 'material', matId: FLUFF, amount: 1 }] : []),
+      extraDrops: () => (field && (fieldNeeds(game.save).fluff || wantsSparks(game.save)) && Math.random() < 0.4 ? [{ kind: 'material', matId: FLUFF, amount: 1 }] : []),
+      spot: (id) => spotUsed(id),
+      questFoe: (id) => {
+        if (id === 'm_elite') dreamHit(mazeEvent(game.save, 'elite'))
+      },
+      stairsBlock: () => (area === 'maze' && delve?.areaLast && !mazeCleared(game.save) ? '모찌: 아직 미로가 우릴 놓아주지 않아. 모찌 퀘스트를 마저 하자!' : null),
       named: (ev) => {
         if (ev === 'down') questHit({ type: 'named' })
       },
@@ -1435,7 +1461,7 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
       chestOpened: () => contractHit({ type: 'chest', depth: plan.depth }),
       objectiveDone: () => {
         giveXp(objectiveXp(plan.depth))
-        if (plan.objective !== 'boss') contractHit({ type: 'floor', depth: plan.depth })
+        if (plan.objective !== 'boss' && !area) contractHit({ type: 'floor', depth: plan.depth })
       },
       scroll: () => {
         if (!useScroll(game.save)) return false
@@ -1449,11 +1475,24 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
         const sold = delve?.autoSold ?? 0
         const r = delve ? delve.pickup(game.save, drop, Math.random, (item) => autoSellPick(game.save, item, qol)) : { heal: 0, text: '' }
         if (drop.kind === 'item' && drop.item && (delve?.autoSold ?? 0) === sold) lootPing(drop.item)
-        if (drop.kind === 'material' && drop.matId === FLUFF) questHit({ type: 'collect', amount: drop.amount })
+        if (drop.kind === 'material' && drop.matId === FLUFF) {
+          questHit({ type: 'collect', amount: drop.amount })
+          if (field) dreamHit(storyEvent(game.save, { type: 'spark', amount: drop.amount }))
+        }
         return r
       },
       bossDown: () => {
         if (!delve) return
+        if (area) {
+          // 달빛 둥지: the moth sleeps — the story's finale (no sewer depth opens).
+          keepFloor(null)
+          delve.bossCleared(game.save)
+          delveUnlocked = 0 // the summary reads 'clear' (no new depth opens)
+          giveXp(bossXp(2))
+          dreamHit(storyEvent(game.save, { type: 'boss', area }))
+          game.persist(store)
+          return
+        }
         if (field) {
           keepFloor(null)
           delve.kill(false) // the bloom counts (delve.bossCleared counts it below)
@@ -1484,6 +1523,8 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
     plan,
   )
   skills.reset()
+  if (area && delve?.areaLast) run.stairsHint = area === 'maze' ? '미로 밖으로 (몽실 마을)' : '끝까지 왔어 · 몽실 마을로'
+  if (area === 'maze') placeMazeQuest(plan.areaFloor === 1)
 }
 
 /** A gear pickup: a jingle by rarity and a coloured toast with its name. */
@@ -1537,6 +1578,10 @@ function lootToast(item: ItemInstance): void {
 /** Stairs portal: on to the next floor (checkpoint saved there). */
 function nextFloor(): void {
   if (!run || !delve || travelling || delve.onBoss) return
+  if (delve.areaLast) {
+    areaOut()
+    return
+  }
   travelling = true
   audio.sfx('windup', 0.8)
   const trip = delve
@@ -1576,8 +1621,10 @@ function leaveSewer(why: DelveEnd = 'recall'): void {
   audio.sfx('windup', 0.7)
   // 편의성: a recall mid-floor leaves a return portal (not after the boss, not when she fell).
   // 던전 유지: a fall keeps the floor too (she wakes in town, the portal takes her back).
-  const keep = (why === 'recall' || why === 'down') && delveUnlocked < 0 && !!delve && !delve.bossBeaten && !!dungeonMod
-  const parkAs = keep && delve && run && dungeonMod ? { run, mod: dungeonMod, depth: delve.depth, floor: delve.floor, salt: delve.salt, field: delve.fieldPlan } : null
+  if (delve?.town) return
+  const home = tripHome(delve)
+  const keep = home === 'island' && (why === 'recall' || why === 'down') && delveUnlocked < 0 && !!delve && !delve.bossBeaten && !!dungeonMod
+  const parkAs = keep && delve && run && dungeonMod ? { run, mod: dungeonMod, depth: delve.depth, floor: delve.floor, salt: delve.salt, field: delve.fieldPlan, area: delve.area, areaFloor: delve.area ? delve.floor : undefined } : null
   const snap = parkAs && delve ? parkAs.run.snapshot(delve.salt) : null
   const sum = endDelve(why)
   keepFloor(snap)
@@ -1589,7 +1636,12 @@ function leaveSewer(why: DelveEnd = 'recall'): void {
       parked = parkAs
     } else run?.dispose()
     run = null
-    document.body.classList.remove('sewer', 'field')
+    document.body.classList.remove('sewer', 'field', 'mongsil')
+    if (home === 'mongsil' && dungeonMod) {
+      stageMongsil(dungeonMod)
+      return
+    }
+    dreamOf(game.save).home = 'island'
     landmarks.group.visible = true
     stage.setWorld('island')
     armTown()
@@ -1613,6 +1665,230 @@ function leaveSewer(why: DelveEnd = 'recall'): void {
 }
 /** Last summary shown (dev QA hook). */
 let lastSummary: DelveSummary | null = null
+
+// ---- 챕터 2: 꿈 미로 → 몽실 마을 → 꿈의 비밀 ----
+/** Standing in 몽실 마을 (a run world with no foes). */
+function inMongsil(): boolean {
+  return !!delve?.town && !!run
+}
+
+/** Where a trip comes home to: 몽실 for its areas (and the field once the maze is behind her). */
+function tripHome(trip: Delve | null): 'island' | 'mongsil' {
+  if (!trip) return 'island'
+  if (trip.area) return AREAS[trip.area].home === 'mongsil' ? 'mongsil' : 'island'
+  if (trip.fieldPlan && dreamOf(game.save).maze.passed) return 'mongsil'
+  return 'island'
+}
+
+/** Into a run world (an area floor or 몽실 itself): island bits off, fog and mood from its plan. */
+function stageTrip(mod: typeof import('./world/dungeon/run'), trip: Delve): void {
+  talk.close()
+  combat.setRoster([])
+  combat.places = []
+  landmarks.group.visible = false
+  const plan = trip.plan
+  const theme = mod.themeOf(plan)
+  stage.setWorld('sewer', mod.planFog(plan))
+  setMood({ fog: theme.fog, sky: theme.sky, clear: theme.fog })
+  zonePlaces = []
+  delve = trip
+  delveUnlocked = -1
+  hero.revive()
+  hero.hp = hero.maxHp
+  buildFloor(mod, plan)
+  document.body.classList.add('sewer')
+  document.body.classList.toggle('mongsil', !!trip.town)
+  paintReturnPortal()
+  paintContracts()
+  showHint()
+}
+
+/** Build 몽실 마을 right here (inside a fade). */
+function stageMongsil(mod: typeof import('./world/dungeon/run')): void {
+  const d = dreamOf(game.save)
+  d.home = 'mongsil'
+  stageTrip(mod, Delve.town(game.save))
+  game.persist(store)
+  if (!game.save.flags.mongsilMet) {
+    game.save.flags.mongsilMet = true
+    window.setTimeout(() => chapterUI.say('모찌', '여기가 몽실 마을이야냥! 이장 몽이에게 먼저 인사하자.'), 900)
+  }
+}
+
+/** Leave 몽실 quietly (no summary): its run is just thrown away. */
+function dropTown(): void {
+  if (!delve?.town) return
+  run?.dispose()
+  run = null
+  delve = null
+  document.body.classList.remove('sewer', 'mongsil')
+}
+
+/** Through a 별문 into a 챕터 2 area (꿈 미로 from the island; the rest from 몽실). */
+function enterArea(id: AreaId): void {
+  if ((run && !inMongsil()) || travelling) return
+  if (!chapter2Open(game.save)) {
+    toast('가이드 챕터를 마치면 열리는 길이야.', 'info')
+    return
+  }
+  if (id !== 'maze' && !openAreas(game.save).includes(id)) {
+    toast('아직 이야기가 거기까지 닿지 않았어.', 'info')
+    return
+  }
+  if (AREAS[id].home === 'island') dropParked()
+  travelling = true
+  audio.sfx('windup', 0.7)
+  const trip = Delve.area(game.save, id)
+  void loadDungeon()
+    .then((mod) =>
+      fadeThrough(() => {
+        dropTown()
+        stageTrip(mod, trip)
+        game.persist(store)
+        if (id !== 'maze') zoneBanner(AREAS[id].name, AREAS[id].blurb)
+      }),
+    )
+    .catch(() => toast('길을 불러오지 못했어. 잠시 뒤 다시 해 줘.', 'info'))
+    .finally(() => {
+      travelling = false
+    })
+}
+
+/** To 몽실 마을 (from the island 별문, or straight in on a resume). */
+function enterMongsil(quiet = false): void {
+  if ((run && !inMongsil()) || travelling) return
+  if (!dreamOf(game.save).maze.passed) {
+    toast('꿈 미로를 지나야 닿는 마을이야.', 'info')
+    return
+  }
+  travelling = true
+  if (!quiet) audio.sfx('windup', 0.7)
+  void loadDungeon()
+    .then((mod) =>
+      fadeThrough(() => {
+        dropTown()
+        stageMongsil(mod)
+      }),
+    )
+    .catch(() => toast('몽실 마을로 가는 길을 불러오지 못했어.', 'info'))
+    .finally(() => {
+      travelling = false
+    })
+}
+
+/** 몽실's 별문 → 섬 마을 (the first village). */
+function mongsilToIsland(): void {
+  if (!inMongsil() || travelling) return
+  travelling = true
+  audio.sfx('windup', 0.7)
+  void fadeThrough(() => {
+    dropTown()
+    dreamOf(game.save).home = 'island'
+    landmarks.group.visible = true
+    stage.setWorld('island')
+    armTown()
+    enterZone('village', PLAZA)
+    showHint()
+    paintReturnPortal()
+    paintContracts()
+  }).finally(() => {
+    travelling = false
+  })
+}
+
+/** An area's last stairs: the maze lets her out into 몽실; loft / tower count for the story. */
+function areaOut(): void {
+  if (!delve?.area || travelling) return
+  const area = delve.area
+  if (area === 'maze') {
+    passMaze(game.save)
+    giveXp(objectiveXp(2))
+  } else dreamHit(storyEvent(game.save, { type: 'area', area }))
+  keepFloor(null)
+  delveUnlocked = 0 // walked to its end: the summary reads 'clear'
+  leaveSewer('clear')
+  if (area === 'maze') window.setTimeout(() => chapterUI.say('모찌', '미로를 빠져나왔어! 저기 불빛… 새 마을이야냥!'), 1600)
+}
+
+/** A 챕터 2 happening: 모찌's line, toasts, rewards; the next maze quest gets placed. */
+function dreamHit(o: DreamOut): void {
+  if (o.result) showResult(o.result)
+  for (const t of o.toasts) toast(t, /완료|달성/.test(t) ? 'quest' : 'info')
+  if (o.toasts.some((t) => /완료|달성/.test(t))) chime('contract')
+  if (o.say) chapterUI.say(o.say.who, o.say.text)
+  if (o.next && delve?.area === 'maze') placeMazeQuest(false)
+  if (o.cleared) queueClearCard()
+  paintContracts()
+  game.persist(store)
+}
+
+/** Put 모찌's current maze quest on this floor (fragment, 뭉게 in the web, or the 미로지기). */
+function placeMazeQuest(say: boolean): void {
+  if (!run || delve?.area !== 'maze') return
+  const q = mazeQuest(game.save)
+  if (!q) return
+  if (say) window.setTimeout(() => chapterUI.say('모찌', q.give), 1200)
+  if (q.kind === 'frag' && !run.spots.some((x) => x.id === 'm_frag')) {
+    const at = run.farSpot(0.7, (delve?.floor ?? 1) + 3)
+    if (at) run.addSpot({ id: 'm_frag', x: at.x, z: at.z, r: 1.7, hint: '꿈 조각 줍기', arrow: true, obj: run.questProp('frag') })
+  } else if (q.kind === 'rescue' && !run.spots.some((x) => x.id === 'm_rescue')) {
+    const at = run.farSpot(0.75, (delve?.floor ?? 1) + 5)
+    if (at) run.addSpot({ id: 'm_rescue', x: at.x, z: at.z, r: 1.9, hint: `${RESCUE_NAME} 풀어 주기`, name: RESCUE_NAME, arrow: true, obj: run.questProp('rescue'), tagY: 1.8 }, 0.8)
+  } else if (q.kind === 'elite') run.spawnQuestFoe('m_elite', MAZE_ELITE.kind, MAZE_ELITE.name, MAZE_ELITE.hp)
+}
+
+/** E at a spot: townsfolk, the 별문, or a maze quest thing. */
+function spotUsed(id: string): void {
+  if (!run) return
+  if (id === 'm_frag') {
+    run.removeSpot('m_frag')
+    vfx.burst(hero.object.position.clone().setY(1.2), 0xbfe6ff, { count: 18, speed: 2, up: 2, life: 0.8, size: 0.16, gravity: -0.4, drag: 1.4 })
+    audio.sfx('quest')
+    dreamHit(mazeEvent(game.save, 'frag'))
+    return
+  }
+  if (id === 'm_rescue') {
+    run.removeSpot('m_rescue')
+    audio.sfx('quest')
+    run.ambush(4, 'bat')
+    zoneBanner('매복!', `${RESCUE_NAME}를 노리던 악몽들이 덤벼들어`)
+    dreamHit(mazeEvent(game.save, 'rescue'))
+    return
+  }
+  if (!inMongsil()) return
+  if (id === 'mongi') mongiTalk()
+  else if (id === 'somsom') openTown('shop')
+  else if (id === 'toto') openTown('stash')
+  else if (id === 'bolt') openTown('workshop')
+  else if (id === 'board') openTown('board')
+  else if (id === 'gate') {
+    talk.start(mongsilGate())
+    audio.sfx('talk_open')
+  }
+}
+
+const PORTRAIT: Record<string, string> = { 모찌: 'mochi', 별하: 'byeolha', 몽이: 'npc_mongi', '???': 'prop_portal' }
+/** 이장 몽이: the 꿈의 비밀 story (offer, nudge, hand-in with its reveal). */
+function mongiTalk(): void {
+  const t = storyTalk(game.save)
+  talk.start({ lines: t.lines.map((l) => ({ speaker: l.who, portrait: PORTRAIT[l.who] ?? 'npc_mongi', text: l.text })) })
+  audio.sfx('talk_open')
+  dreamHit(t.out)
+}
+
+/** 몽실's 별문: back to the island, the field, and the areas the story opened. */
+function mongsilGate(): TalkDef {
+  const areas = openAreas(game.save)
+  return {
+    lines: [{ speaker: '별문', portrait: 'prop_portal', text: '몽실 마을의 별문이 반짝인다. 어디로 갈까?' }],
+    choices: [
+      ...areas.map((a) => ({ text: `${AREAS[a].name} · ${AREAS[a].blurb}`, go: `area:${a}` })),
+      { text: '몽실 들판 (게시판 퀘스트 · 등불 불씨)', go: 'field' },
+      { text: '섬 마을 (첫 마을로)', go: 'island' },
+      { text: '그만두기' },
+    ],
+  }
+}
 
 function travel(to: ZoneId): void {
   if (travelling) return
@@ -1666,6 +1942,9 @@ function talkDone(actions: Action[], choice: TalkChoice | null, id: string | Tal
   else if (choice?.go === 'sewer') enterSewer()
   else if (choice?.go === 'field') enterField()
   else if (choice?.go === 'return') returnThrough()
+  else if (choice?.go === 'mongsil') enterMongsil()
+  else if (choice?.go === 'island') mongsilToIsland()
+  else if (choice?.go?.startsWith('area:')) enterArea(choice.go.slice(5) as AreaId)
   else if (choice?.go) travel(choice.go as ZoneId)
   if (id === 'luna_bloom_done' && game.finished && !game.save.flags.ending) {
     game.save.flags.ending = true
@@ -1688,7 +1967,7 @@ function gateTalk(): TalkDef {
       ...rememberFirst(
         [
           ...(game.zone === 'village' ? portalChoices(game.save).map((c) => ({ text: c.label, go: `sewer:${c.depth}:${c.floor}` })) : []),
-          ...(game.zone === 'village' && chapter2Open(game.save) ? [{ text: '챕터 2 · 몽실 들판 (퀘스트 사냥)', go: 'field' }] : []),
+          ...(game.zone === 'village' && chapter2Open(game.save) ? [dreamOf(game.save).maze.passed ? { text: '챕터 2 · 몽실 마을 (꿈의 비밀)', go: 'mongsil' } : { text: '챕터 2 · 꿈 미로 (모찌와 함께)', go: 'area:maze' }] : []),
         ],
         safeStore()?.getItem(LAST_GATE_KEY),
       ),
@@ -1821,6 +2100,19 @@ function sewerFrame(dt: number, raw: number): void {
     stage.render()
     return
   }
+  // A dialogue (몽이, the 별문 menu) holds the run world; E / tap moves it on.
+  if (talk.open) {
+    releaseLook()
+    if (consumeTalk()) {
+      talk.advance()
+      audio.sfx('talk_next')
+    }
+    vfx.update(dt)
+    stage.camera.updateMatrixWorld()
+    tickFloats(dt)
+    stage.render()
+    return
+  }
   // A slow frame (up to MAX_FRAME) runs as two half steps, so collisions and shots stay exact
   // without slowing game time.
   const steps = dt > SIM_STEP ? 2 : 1
@@ -1834,12 +2126,12 @@ function sewerFrame(dt: number, raw: number): void {
   paintHotbar()
   if (delve && hero.alive) delve.seconds += raw
   saveClock += raw
-  if (saveClock > 10 && delve) {
+  if (saveClock > 10 && delve && !delve.town) {
     // Keep the open trip (run gold, kills) on disk so a reload mid-run banks it.
     saveClock = 0
     delve.sync(game.save)
     // 던전 유지: the floor as it stands now, so a reload mid-floor comes back to it.
-    keepFloor(!delve.bossBeaten && delveUnlocked < 0 && hero.alive ? run.snapshot(delve.salt) : null)
+    keepFloor(tripHome(delve) === 'island' && !delve.bossBeaten && delveUnlocked < 0 && hero.alive ? run.snapshot(delve.salt) : null)
     game.persist(store)
   }
   vfx.update(dt)
