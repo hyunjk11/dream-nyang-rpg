@@ -16,26 +16,30 @@ import { fieldMaze } from './field'
 export const EXPLORE = {
   /** Packs on a depth-1 floor, and the growth per extra depth. */
   /** Was 11-15 packs of 4-6: foes are ~10× tankier now (2026-11), so fewer and smaller packs keep a floor ~6-8 min. */
-  packs: [6, 9] as const,
+  packs: [5, 8] as const,
   packGrowth: 0.2,
   /** Foes in an ordinary pack: small near the start, bigger further in. */
   packSize: [2, 4] as const,
   /** Elite packs: one leader + minions. */
   elitePacks: [1, 3] as const,
   minions: 2,
-  /** Wake when she is in sight this close (m); the whole pack wakes together. */
-  aggro: 13,
+  /**
+   * Wake when she is in sight this close (m); the whole pack wakes together. Rooms (2026-11) have
+   * long sight lines, so 13 → 10 m, chase cap 4 → 3, packs 6-9 → 5-8 and nests wake at 8 m (alcoves sit
+   * right off the rooms): the sim's new-player deaths went back to the tile-maze level on depth 1.
+   */
+  aggro: 10,
   /** Give up after this long (s) out of sight or farther than `leash` (m), then walk home. */
   leash: 18,
   leashTime: 6,
   /** At most this many foes chase her at once (more wake as others fall). */
-  chaseCap: 4,
+  chaseCap: 3,
   /** Optional nest pipes: count, burst size, seconds between bursts, live cap per pipe, wake range (m). */
   nests: [2, 3] as const,
   nestBurst: [1, 2] as const,
   nestEvery: 5,
   nestCap: 3,
-  nestRange: 14,
+  nestRange: 8,
   /** A pipe runs dry after this many foes (plugging it still pays the chest). */
   nestTotal: 6,
   /** Dead-end chests, the shrine buff (s) and the chance of a secret pocket. */
