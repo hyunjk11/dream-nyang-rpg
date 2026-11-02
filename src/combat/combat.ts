@@ -239,7 +239,7 @@ export class Combat {
 
   private spawn(kind: FoeKind, x: number, z: number, tags: string[] = [], elite?: string, once = false): void {
     const spec = FOE_SPECS[kind]
-    const hp = Math.round(spec.hp * TOWN.hp * (elite ? 2.2 : 1))
+    const hp = Math.round(spec.hp * TOWN.hp * (kind === 'bloom' ? TOWN.bossHp : 1) * (elite ? 3.5 : 1))
     const object = new Group()
     const body = makeFoeBody(kind)
     object.add(body.rig)
