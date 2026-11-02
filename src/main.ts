@@ -1,4 +1,5 @@
 import { gunLookWithMods, makeMod } from './sim/mods'
+import { codexRows, isLegend, legendOf, legendsOf, makeLegend, recordLegend, rollLegend, syncCodex, type LegendEvent } from './sim/legends'
 import { GunSound, type GunCue } from './audio/gunsound'
 import '@fontsource/jua/400.css'
 import '@fontsource/noto-sans-kr/400.css'
@@ -35,7 +36,7 @@ import type { DungeonRun } from './world/dungeon/run'
 import { Portal } from './world/dungeon/portal'
 import { WaypointView } from './world/waypoint-view'
 import { WAYPOINT_REACH, distanceText, goalForContract, goalForQuest, trailDots, type Waypoint, type WaypointGoal } from './sim/waypoint'
-import { Delve, delveOf, fieldPlan, portalChoices, type DelveEnd, type DelveSummary, type FloorPlan } from './sim/delve'
+import { Delve, delveOf, fieldPlan, itemLevelFor, portalChoices, type DelveEnd, type DelveSummary, type FloorPlan } from './sim/delve'
 import { floorStateLabel, type FloorState } from './sim/floorsnap'
 import { showSummary } from './ui/summary'
 import { playChime, type Chime } from './audio/chime'
@@ -48,7 +49,7 @@ import { computeStats, gainXp, type ComputedStats } from './sim/stats'
 import { bossXp, killXp, nestXp, objectiveXp, townKillXp } from './sim/xp'
 import { xpToNext } from './sim/formulas'
 import { findItem } from './sim/inventory'
-import { ilvText, itemName, makeItem } from './sim/loot'
+import { ilvText, itemName, makeItem, type Drop } from './sim/loot'
 import { skillSvg } from './ui/skillicons'
 import { Help, keepHintItems } from './ui/help'
 import { RARITY_COLOR, type ItemInstance } from './sim/types'
@@ -410,6 +411,7 @@ const skills = new SkillRunner({
   gun: (cue, gain, pitch) => gunSfx(cue, gain, pitch),
   rank: (id) => rank(game.save, id),
   damageMul: () => stats.damageMul,
+  mochiMul: () => stats.mochiMul,
   armor: () => stats.armor,
   say: (text) => toast(text, 'info'),
 })
@@ -468,7 +470,7 @@ function applyBuild(): void {
   hero.regenDelay = stats.regenDelay
   hero.guard = stats.armor
   const gunItem: ItemInstance | undefined = findItem(game.save, game.save.equipment.weapon)
-  const look = gunLookWithMods(GUN_PROFILES[stats.weaponKind].look, gunItem)
+  const look = gunLookWithMods(legendOf(gunItem)?.look ?? GUN_PROFILES[stats.weaponKind].look, gunItem)
   const gem = gunItem && gunItem.rarity !== 'common' ? hexOf(RARITY_COLOR[gunItem.rarity]) : null
   shooter.setLoadout({
     profile: stats.gun,
@@ -1251,7 +1253,7 @@ document.getElementById('guide-skip')?.addEventListener('click', () => {
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, makeMod, get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, aimZone, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, get keptFloor() { return savedFloor() }, enterArea, enterMongsil, mongsilToIsland, get travelling() { return travelling }, get dream() { return dreamOf(game.save) }, dreamHit, placeMazeQuest, spotUsed, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() } } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, makeMod, makeLegend, legendDrop, get legends() { return legendsOf(game.save) }, get lastLegend() { return lastLegend }, codexRows: () => codexRows(game.save), get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, aimZone, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, get keptFloor() { return savedFloor() }, enterArea, enterMongsil, mongsilToIsland, get travelling() { return travelling }, get dream() { return dreamOf(game.save) }, dreamHit, placeMazeQuest, spotUsed, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() } } })
 
 void bootGame()
 
@@ -1335,6 +1337,7 @@ function beginPlay(): void {
   crosshair?.classList.remove('hidden')
   showHint()
   enterZone(game.zone, game.zone === 'meadow' || game.zone === 'village' ? PLAZA : PORTAL_ARRIVAL)
+  syncCodex(game.save)
   // 챕터 2: she went to sleep in 몽실 마을, so she wakes there.
   if (dreamOf(game.save).home === 'mongsil' && dreamOf(game.save).maze.passed) window.setTimeout(() => enterMongsil(true), 200)
   if (!game.save.flags.metMochi) window.setTimeout(() => talk.start('mochi_meet'), 700)
@@ -1449,6 +1452,7 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
         else if (!area) contractHit({ type: 'kill', depth: plan.depth, elite })
         guideHit({ type: 'kill' })
       },
+      legendDrop: (ev) => legendDrop(ev, plan.depth, plan.floor),
       extraDrops: () => (field && (fieldNeeds(game.save).fluff || wantsSparks(game.save)) && Math.random() < 0.4 ? [{ kind: 'material', matId: FLUFF, amount: 1 }] : []),
       spot: (id) => spotUsed(id),
       questFoe: (id) => {
@@ -1480,6 +1484,7 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
         const sold = delve?.autoSold ?? 0
         const r = delve ? delve.pickup(game.save, drop, Math.random, (item) => autoSellPick(game.save, item, qol)) : { heal: 0, text: '' }
         if (drop.kind === 'item' && drop.item && (delve?.autoSold ?? 0) === sold) lootPing(drop.item)
+        if (drop.kind === 'item' && drop.item && isLegend(drop.item)) legendPicked(drop.item)
         if (drop.kind === 'material' && drop.matId === FLUFF) {
           questHit({ type: 'collect', amount: drop.amount })
           if (field) dreamHit(storyEvent(game.save, { type: 'spark', amount: drop.amount }))
@@ -1533,6 +1538,30 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
 }
 
 /** A gear pickup: a jingle by rarity and a coloured toast with its name. */
+/** 고정 전설: roll a boss / area chest / quest elite; on a hit, the room hears it. */
+function legendDrop(ev: LegendEvent, depth: number, floor: number): Drop[] {
+  const item = rollLegend(game.save, ev, itemLevelFor(depth, floor, ev.kind === 'boss'))
+  if (!item) return []
+  const def = legendOf(item)
+  chime('legend_drop')
+  zoneBanner('★ 고정 전설이 떨어졌어!', `${def?.name ?? ''} · 하얀 금빛 기둥을 찾아 주워`)
+  lastLegend = { id: item.defId, at: performance.now(), picked: false }
+  return [{ kind: 'item', amount: 1, item }]
+}
+
+let lastLegend: { id: string; at: number; picked: boolean; first?: boolean } | null = null
+
+/** Picked up a fixed legendary: into the 도감 (first time: a big toast). */
+function legendPicked(item: ItemInstance): void {
+  const first = recordLegend(game.save, item)
+  const rows = codexRows(game.save)
+  lastLegend = { id: item.defId, at: performance.now(), picked: true, first }
+  if (first) {
+    chime('contract')
+    toast(`전설 도감 등록! ${legendOf(item)?.name} · ${rows.filter((r) => r.found).length}/${rows.length}`, 'reward')
+  }
+}
+
 function lootPing(item: ItemInstance): void {
   if (item.rarity === 'legendary') chime('loot_legendary')
   else if (item.rarity === 'epic') chime('loot_epic')

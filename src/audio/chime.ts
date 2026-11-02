@@ -1,5 +1,5 @@
 /** Little synth jingles that have no sample: the level-up arpeggio and the rare-loot twinkle. */
-export type Chime = 'levelup' | 'loot_rare' | 'loot_epic' | 'loot_legendary' | 'skill' | 'forge' | 'reroll' | 'contract'
+export type Chime = 'levelup' | 'loot_rare' | 'loot_epic' | 'loot_legendary' | 'skill' | 'forge' | 'reroll' | 'contract' | 'legend_drop'
 
 const NOTES: Record<Chime, { f: number[]; step: number; len: number; type: OscillatorType; gain: number }> = {
   levelup: { f: [784, 988, 1175, 1568, 1976], step: 0.075, len: 0.42, type: 'triangle', gain: 0.22 },
@@ -12,6 +12,8 @@ const NOTES: Record<Chime, { f: number[]; step: number; len: number; type: Oscil
   reroll: { f: [988, 1319, 1175, 1568], step: 0.045, len: 0.26, type: 'sine', gain: 0.15 },
   /** A contract reward claimed at the board. */
   contract: { f: [659, 880, 1109, 1319], step: 0.07, len: 0.36, type: 'triangle', gain: 0.18 },
+  /** 고정 전설 hit the floor: a long falling-star run up two octaves. */
+  legend_drop: { f: [523, 659, 784, 1047, 1319, 1568, 2093, 2637], step: 0.07, len: 0.8, type: 'triangle', gain: 0.22 },
 }
 
 export function playChime(ctx: AudioContext, bus: AudioNode, chime: Chime): void {

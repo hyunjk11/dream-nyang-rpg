@@ -12,7 +12,7 @@ import { wearMesh } from '../src/actors/wear'
 import type { ItemInstance } from '../src/sim/types'
 
 /** 장비 기본 17종 (총 개조 부품은 따로). */
-const bases = Object.values(ITEMS).filter((d) => !d.mod)
+const bases = Object.values(ITEMS).filter((d) => !d.mod && !d.legend)
 
 describe('장비 구분: 아이콘과 이름', () => {
   it('17개 기본 장비마다 서로 다른 그림 아이콘이 있다', () => {

@@ -41,6 +41,8 @@ export interface SkillHost {
   rank: (id: string) => number
   /** Current damage multiplier and base guard (armour). */
   damageMul: () => number
+  /** 모찌 돌진 bonus from gear (1 = none). */
+  mochiMul?: () => number
   armor: () => number
   /** Little text when a skill can't fire. */
   say?: (text: string) => void
@@ -237,7 +239,7 @@ export class SkillRunner {
     }
     const wall = world.solid(from.x, 0.4, from.z, dir.x, 0, dir.z, SKILL_RANGE.rush)
     const len = Math.max(Math.min(1.2, wall), Math.min(reach, wall - 0.45))
-    this.rush = { from, dir, len, t: 0, dur: 0.34, amount: rushDamage(r) * this.host.damageMul(), hit: new Set() }
+    this.rush = { from, dir, len, t: 0, dur: 0.34, amount: rushDamage(r) * this.host.damageMul() * (this.host.mochiMul?.() ?? 1), hit: new Set() }
     this.host.sfx('dash', 1)
     vfx.ring(from.clone().setY(0.05), 0xffd36b, 0.2, 1.6, 0.35)
   }

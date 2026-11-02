@@ -42,6 +42,7 @@ import { hitNormal } from '../../combat/gunfeel'
 import type { GunCue } from '../../audio/gunsound'
 import { rayCapsule } from '../../core/tps'
 import { DIFFICULTY } from '../../combat/difficulty'
+import type { LegendEvent } from '../../sim/legends'
 import { chestDrops, delveDrops, floorIntro, floorLabel, floorPlan, objectiveText, type ChestTier, type FloorPlan } from '../../sim/delve'
 import { packSeen, unpackSeen, type FloorState } from '../../sim/floorsnap'
 import type { Drop } from '../../sim/loot'
@@ -72,6 +73,8 @@ export interface RunHost {
   kill?: (elite: boolean, kind: HordeKind) => void
   /** Extra drops a foe spills (몽실 들판: quest fluff). */
   extraDrops?: (elite: boolean) => Drop[]
+  /** 고정 전설: a boss chest, an area chest or the maze quest elite may add a fixed legendary. */
+  legendDrop?: (ev: LegendEvent) => Drop[]
   /** 몽실 들판: the named elite is out / went down. */
   named?: (event: 'spawn' | 'down') => void
   /** The T recall spell (or a scroll) took her home (the guide waits for it). */
@@ -1025,7 +1028,8 @@ export class DungeonRun {
     const at = c.group.position
     this.host.vfx.poof(at.clone().setY(1), 0xffd36b, 2.2)
     this.host.sfx('splash', 1)
-    this.loot.spill(this.drops(false, true), at.x, at.z + 0.6, 1.4)
+    const legend = this.host.legendDrop?.({ kind: 'boss', depth: this.plan.depth, ...(this.plan.area ? { area: this.plan.area } : {}) }) ?? []
+    this.loot.spill([...this.drops(false, true), ...legend], at.x, at.z + 0.6, 1.4)
     this.exitPortal.active = true
     this.host.banner('보물 상자를 열었어!', '선물을 챙기고 분홍 포털로 마을에 돌아가자')
   }
@@ -1209,7 +1213,7 @@ export class DungeonRun {
           this.host.banner(`${NAMED.name} 쓰러뜨림!`, '퀘스트 완료 · 마을 게시판에서 보상')
           this.host.named?.('down')
         }
-    const extra = this.host.extraDrops?.(f.elite) ?? []
+    const extra = [...(this.host.extraDrops?.(f.elite) ?? []), ...(quest?.id === 'm_elite' ? (this.host.legendDrop?.({ kind: 'mazeElite' }) ?? []) : [])]
     this.loot.spill([...this.drops(f.elite, false), ...extra], f.x, f.z, f.elite ? 1.2 : 0.8)
     this.host.foeDied?.(f.x, f.z)
   }
@@ -1478,6 +1482,7 @@ export class DungeonRun {
     this.host.vfx.poof(at.clone().setY(1), c.tier === 'secret' ? 0xffa8d8 : 0xffd36b, 1.8)
     this.host.sfx('splash', 0.9)
     const drops = chestDrops(this.plan.depth, this.plan.floor, c.tier, Math.random, this.host.luck?.() ?? 2)
+    if (this.plan.area) drops.push(...(this.host.legendDrop?.({ kind: 'chest', area: this.plan.area }) ?? []))
     this.loot.spill(drops, at.x, at.z + 0.4, 1.2)
     this.minimap.restyle(c.mark, 'done', '#9b93ad')
     if (c.tier === 'secret') this.host.banner('비밀 보물 상자!', '금 간 벽 뒤에 숨어 있던 선물이야')
