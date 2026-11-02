@@ -138,18 +138,27 @@ export function zoneBanner(name: string, sub: string): void {
   const el = $('zone-banner')
   if (!el) return
   el.innerHTML = `<b>${name}</b><small>${sub}</small>`
-  el.classList.remove('show')
-  void el.offsetWidth
-  el.classList.add('show')
-  // The animation ends at opacity 0, but a shown banner still takes room in the top-centre column,
-  // which squeezed every later toast away (or pushed it toward the crosshair): drop it when done.
-  window.clearTimeout(bannerTimer)
-  bannerTimer = window.setTimeout(() => el.classList.remove('show'), BANNER_MS)
+  playOnce(el, BANNER_MS)
 }
 
 /** Matches the 2.8 s `banner` animation in style.css (plus a frame). */
 export const BANNER_MS = 2900
-let bannerTimer = 0
+/** Matches the 2.6 s `lvl-pop` animation in style.css (plus a frame). */
+export const LEVELUP_MS = 2700
+const onceTimers = new WeakMap<HTMLElement, number>()
+
+/**
+ * Restart a one-shot `.show` animation (zone banner, level-up card) and drop `.show` when it ends.
+ * The animations end at opacity 0, but a shown piece still takes room in the top-centre column and
+ * gets re-measured by every HUD refit, which squeezed later toasts and replayed the pop.
+ */
+export function playOnce(el: HTMLElement, ms: number): void {
+  el.classList.remove('show', 'squeezed')
+  void el.offsetWidth
+  el.classList.add('show')
+  window.clearTimeout(onceTimers.get(el))
+  onceTimers.set(el, window.setTimeout(() => el.classList.remove('show'), ms))
+}
 
 /** White dream-fade for portal hops: covers, runs the swap, then clears. */
 export function fadeThrough(swap: () => void): Promise<void> {

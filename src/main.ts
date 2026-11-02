@@ -21,7 +21,7 @@ import { Landmarks } from './world/town/landmarks'
 import { Mochi } from './actors/mochi'
 import { killLoot, GameState, type Storageish } from './core/loop'
 import { nearestTalk, placesFor, pushOutOfPlaces, type Place } from './world/town/places'
-import { fadeThrough, hideTitle, openQuestLog, paintStats, paintTracker, playIntro, showEnding, showTitle, titleReady, toast, zoneBanner } from './ui/screens'
+import { fadeThrough, hideTitle, LEVELUP_MS, openQuestLog, paintStats, paintTracker, playIntro, playOnce, showEnding, showTitle, titleReady, toast, zoneBanner } from './ui/screens'
 import { TalkBox, type TalkChoice, type TalkDef } from './ui/talk'
 import { PLAZA, PORTAL_ARRIVAL, destinations, gateLocked, zone3d, type ZoneId } from './world/town/zones3d'
 import { Color, Fog, HemisphereLight } from 'three'
@@ -468,9 +468,7 @@ function levelUpFx(): void {
   chime('levelup')
   if (levelEl) {
     levelEl.innerHTML = `<b>레벨 업!</b><span>Lv ${game.save.level} · 스킬 포인트 +1</span><small>K 키로 스킬 나무를 열어 봐</small>`
-    levelEl.classList.remove('show')
-    void levelEl.offsetWidth
-    levelEl.classList.add('show')
+    playOnce(levelEl, LEVELUP_MS)
   }
 }
 

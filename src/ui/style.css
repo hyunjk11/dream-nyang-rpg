@@ -596,7 +596,9 @@ body.guide-cramped #guide-chip.standby { display: block; }
 #loot-toasts { order: 1; } #hud-bl #hud-pocket { order: 2; } #stick { order: 3; }
 #hotbar { order: 1; } #actions { order: 2; }
 #guide { position: relative; }
-.squeezed { display: none !important; }
+/* Squeezed pieces leave the flow but keep running: display:none would restart their entrance
+   animation every time a refit un-hides them to measure (the level-up card kept popping again). */
+.squeezed { visibility: hidden !important; position: absolute !important; pointer-events: none !important; }
 #guide.tight .guide-line { display: none; }
 #hud-tl > *, #contract-hud { min-height: 0; flex: 0 1 auto; overflow: hidden; }
 #contract-hud { overflow-y: auto; scrollbar-width: none; }
