@@ -101,6 +101,7 @@ const VPS = (process.env.VPS || '1280x720,390x844').split(',').map((s) => s.spli
           out.gateAt = await go('gate'); out.gateTalk = s.talk.open
           return out
         })
+        dbg.m = m
         await p.screenshot({ path: `${OUT}/${vw}x${vh}-mongsil-gate.png` })
         await p.evaluate(() => { for (let i = 0; i < 4; i += 1) window.__slice.talk.close() })
         // Jump to the finale: the moth.
@@ -115,16 +116,22 @@ const VPS = (process.env.VPS || '1280x720,390x844').split(',').map((s) => s.spli
           out.bossHp = Math.round(r.boss.maxHp ?? r.boss.hp)
           if (r.boss.damage(1e12)) r.bossDown(); await wait(4000)
           out.bossDead = !r.boss.alive; out.story = s.dream.story.state
+          const ch = r.chest.group.position; tp(ch.x, ch.z + 0.6); await wait(400); out.atChest = r.portalAt
+          if (out.atChest === 'chest') r.use()
+          await wait(800)
           const e = r.exitPortal.group.position; tp(e.x, e.z); await wait(400); out.atExit = r.portalAt
           if (out.atExit === 'exit') r.use()
           return out
         })
+        dbg.moon = moon
         const back = await p.waitForFunction(() => window.__slice.run?.plan.objective === 'town' && !window.__slice.travelling, null, { timeout: 60000 }).then(() => 'ok', () => 'NO')
         await settle()
         await p.evaluate(() => document.getElementById('summary-close')?.click()); await p.waitForTimeout(800)
         const fin = await p.evaluate(async () => {
           const s = window.__slice, r = s.run, wait = (ms) => new Promise((ok) => setTimeout(ok, ms))
-          const sp = r.spots.find((x) => x.id === 'mongi'); s.hero.object.position.set(sp.x, 0, sp.z + 1.2); await wait(500); r.use(); await wait(500)
+          const sp = r.spots.find((x) => x.id === 'mongi')
+          if (!sp) return { noMongi: r.spots.map((x) => x.id).join(','), obj: r.plan.objective, story: s.dream.story }
+          s.hero.object.position.set(sp.x, 0, sp.z + 1.2); await wait(500); r.use(); await wait(500)
           const talk = s.talk.open
           for (let i = 0; i < 8 && s.talk.open; i += 1) { s.talk.close(); await wait(200) }
           await wait(3500)
