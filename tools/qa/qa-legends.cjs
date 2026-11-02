@@ -39,11 +39,11 @@ const VPS = (process.env.VPS || '1280x720,390x844').split(',').map((v) => v.spli
       const ch = r.chest.group.position; tp(ch.x, ch.z + 3.2); await wait(400)
       // Open from a step back so the pillar is in view before the magnet pulls it in.
       tp(ch.x, ch.z + 0.6); await wait(300); const portal = r.portalAt; if (portal === 'chest') r.use()
-      tp(ch.x, ch.z + 4.5); await wait(250)
+      tp(ch.x, ch.z + 4.5); await wait(900)
       return { portal, beams: r.loot.beams, labels: r.loot.labels, last: s.lastLegend, banner: document.getElementById('zone-banner')?.textContent ?? '' }
     })
     await p.screenshot({ path: `${OUT}/${vw}x${vh}-legend-drop.png` })
-    check('drop_pillar_and_tag', drop.portal === 'chest' && drop.beams.some((x) => x.fixed && x.height > 5) && drop.labels.some((l) => l.includes('별비 개틀링')) && drop.last?.id === 'leg_starrain', drop)
+    check('drop_pillar_and_tag', drop.portal === 'chest' && drop.banner.includes('고정 전설') && drop.beams.some((x) => x.fixed && x.height > 5) && drop.labels.some((l) => l.includes('별비 개틀링')) && drop.last?.id === 'leg_starrain', drop)
     // Walk onto the loot: the magnet brings it in.
     const picked = await p.evaluate(async () => {
       const s = window.__slice, r = s.run, wait = (ms) => new Promise((ok) => setTimeout(ok, ms))

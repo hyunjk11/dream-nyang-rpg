@@ -1544,7 +1544,8 @@ function legendDrop(ev: LegendEvent, depth: number, floor: number): Drop[] {
   if (!item) return []
   const def = legendOf(item)
   chime('legend_drop')
-  zoneBanner('★ 고정 전설이 떨어졌어!', `${def?.name ?? ''} · 하얀 금빛 기둥을 찾아 주워`)
+  // After the chest's own "보물 상자를 열었어!" banner, so this one stays on screen.
+  window.setTimeout(() => zoneBanner('★ 고정 전설이 떨어졌어!', `${def?.name ?? ''} · 하얀 금빛 기둥을 찾아 주워`), 700)
   lastLegend = { id: item.defId, at: performance.now(), picked: false }
   return [{ kind: 'item', amount: 1, item }]
 }
