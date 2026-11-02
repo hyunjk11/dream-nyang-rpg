@@ -7,14 +7,8 @@ import { EXPLORE } from '../src/world/dungeon/layout'
 import { floorPlan, fieldPlan, BOSS_FLOOR } from '../src/sim/delve'
 import { DIFFICULTY } from '../src/combat/difficulty'
 import { FOE_SPECS } from '../src/combat/foes'
+import { REF_DPS } from './sim-ttk-ref'
 
-/** Typical / geared sustained DPS a player has on each floor (interpolated between the measured kits). */
-export const REF_DPS: Record<string, [number, number]> = {
-  d1f1: [137, 250], d1f2: [300, 400], d1f3: [450, 510], d1f4: [494, 600],
-  d2f1: [550, 800], d2f2: [600, 1000], d2f3: [660, 1280], d2f4: [700, 1400],
-  d3f1: [900, 1500], d3f2: [1300, 1700], d3f3: [1737, 1860], d3f4: [1800, 2000],
-}
-/** Share of a boss fight she can actually spend shooting (dodging rings, adds). */
 export const BOSS_UPTIME = 0.75
 
 const kinds: HordeKind[] = ['slime', 'bat', 'skeleton', 'knight', 'golem']

@@ -12,9 +12,9 @@ export const DIFFICULTY = {
     /** Mercy seconds after a hit (was 0.45). She blinks the whole time. */
     iframes: 0.85,
     /** Health comes back after this long without a hit... */
-    regenDelay: 3.8,
+    regenDelay: 3,
     /** ...at this many HP per second. */
-    regenRate: 5.5,
+    regenRate: 7,
   },
   /** Sewer horde (multipliers on HORDE). */
   horde: {
@@ -23,13 +23,14 @@ export const DIFFICULTY = {
      * died in 0.1-0.4 s. Now a regular foe takes about 2-3 s of sustained fire from a typical player at
      * its depth (starter water gun on depth 1 floor 1: ~3 s), a knight ~5 s.
      */
-    hp: 10,
+    hp: 9,
     /** Was 0.62: tougher foes hit a little softer, so a fight lasts longer without being deadlier. */
-    damage: 0.24,
+    /** Was 0.36: fights last ~8× longer, so each swing lands softer and less often (cooldown 1.45 → 2.1 s). */
+    damage: 0.18,
     speed: 0.92,
     /** Longer, easier-to-read melee wind-up (was 0.32 s) and a longer rest between swings (was 1.1 s). */
     windup: 0.44,
-    cooldown: 1.45,
+    cooldown: 2.1,
   },
   /**
    * Elite multipliers (were hp 4.5, damage 2). hp is ×6.5 a slime-sized foe; bigger kinds get only
@@ -37,7 +38,7 @@ export const DIFFICULTY = {
    * they enrage (faster, harder hits), and every chargeEvery s they crouch for chargeWind s and
    * then charge at chargeSpeed× for chargeTime s when she is chargeMin..chargeMax m away.
    */
-  elite: { hp: 6.5, hpKindPow: 0.25, damage: 1.3, rageAt: 0.5, rageSpeed: 1.3, rageDamage: 1.25, chargeMin: 3.5, chargeMax: 9, chargeWind: 0.55, chargeTime: 0.45, chargeSpeed: 3.2, chargeEvery: 6 },
+  elite: { hp: 6.5, hpKindPow: 0.25, damage: 1, rageAt: 0.5, rageSpeed: 1.3, rageDamage: 1.1, chargeMin: 3.5, chargeMax: 9, chargeWind: 0.55, chargeTime: 0.45, chargeSpeed: 3.2, chargeEvery: 6 },
   /** Sewer waves: size = base + step·(n-1) + curve·(n-1)², times the early ease. */
   waves: {
     base: 8,
@@ -82,6 +83,8 @@ export const DIFFICULTY = {
      * hitting a wall there (0 → 8 deaths in 10 from floor 1 to floor 3 with depth-1 gear).
      */
     entryEase: [0.5, 0.7, 0.75] as readonly number[],
+    /** Foe hp share of the depth step on depth 2's normal floors (2.35^share). */
+    entryHpEase: [0.75, 0.9, 1] as readonly number[],
     /** ...and their explore packs draw from the roster this many tiers back (floor 3 met wave-6 kinds). */
     entryRoster: [0, 0, -1] as readonly number[],
     /** Survive floor: waves to outlast (floor 1 of depth 1 stays short and sweet). */

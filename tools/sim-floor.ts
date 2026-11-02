@@ -8,7 +8,7 @@ import { DIFFICULTY, setDiffMode, type DiffMode } from '../src/combat/difficulty
 import { rng } from '../src/world/dungeon/maze'
 
 type Behaviour = 'thorough' | 'rusher'
-interface Opts { depth: number; floor: number; acc: number; duty: number; behaviour: Behaviour; salt: number; gunDmg?: number; maxHp?: number; seconds?: number }
+interface Opts { depth: number; floor: number; acc: number; duty: number; behaviour: Behaviour; salt: number; gunDmg?: number; dps?: number; maxHp?: number; seconds?: number }
 
 export function simulate(o: Opts) {
   const base = floorPlan(o.depth, o.floor, o.salt)
@@ -89,10 +89,11 @@ export function simulate(o: Opts) {
     const busy = (Math.sin(Math.floor(t / 0.5) * 12.9898) * 43758.5453 % 1 + 1) % 1 < o.duty
     if (target && !locked && busy) {
       while (cd <= 0) {
-        cd += 0.066; heat += 0.011; coolT = 0
-        if (heat >= 1) { locked = true; break }
+        cd += 0.066
+        // dps: a real kit's sustained in-game DPS (heat, crits and procs already in it); else the old flat droplet.
+        if (o.dps === undefined) { heat += 0.011; coolT = 0; if (heat >= 1) { locked = true; break } }
         if (Math.random() > o.acc) continue
-        const dmg = (o.gunDmg ?? 9) * (Math.random() < 0.12 ? 1.8 : 1)
+        const dmg = o.dps !== undefined ? o.dps * 0.066 : (o.gunDmg ?? 9) * (Math.random() < 0.12 ? 1.8 : 1)
         if (target.f) { if (!firstHit.has(target.f.id)) firstHit.set(target.f.id, t); hitsOn.set(target.f.id, (hitsOn.get(target.f.id) ?? 0) + 1); if (horde.damage(target.f, dmg)) break }
         else if (target.nest !== undefined) { const n = ex.nests[target.nest]; n.hp -= dmg; if (n.hp <= 0) { n.hp = 0; chestsLeft.push({ x: maze.nests[n.i].x, y: maze.nests[n.i].y, open: false }); break } }
       }
@@ -152,14 +153,15 @@ export function simulate(o: Opts) {
   return { htk: htk.length ? htk[Math.floor(htk.length / 2)] : null, htkElite: htkElite.length ? htkElite[Math.floor(htkElite.length / 2)] : null, endHp: hero.hp / maxHp, minHp, deathAt, doneAt, kills, foes, maxNear, p95, maxChase, taken, opened, ttk: ttk.length ? ttk[Math.floor(ttk.length / 2)] : null }
 }
 
-import { HORDE, ELITE } from '../src/world/dungeon/horde'
+import { HORDE, hordeHp } from '../src/world/dungeon/horde'
+import { REF_DPS } from './sim-ttk-ref'
 import { BOSS } from '../src/world/dungeon/boss'
 import { DIFF_MODES } from '../src/combat/difficulty'
 {
   // Hits to kill with the starter water gun (9 per droplet, no crits), 보통, explore floors.
   const g = 9
   const hp = (kind: keyof typeof HORDE, d: number, f: number, elite: boolean, mode: keyof typeof DIFF_MODES = 'normal') =>
-    Math.round(HORDE[kind].hp * DIFFICULTY.horde.hp * DIFF_MODES[mode].foeHp * floorPlan(d, f).scale.hp * EXPLORE.hp * (elite ? ELITE.hp : 1))
+    hordeHp(kind, floorPlan(d, f).scale.hp * EXPLORE.hp, elite, DIFF_MODES[mode].foeHp)
   console.log('## 시작 물총(9) 처치 타수 — 보통, 탐험 층 (괄호: 쉬움/어려움)')
   for (const [d, f] of [[1, 1], [1, 3], [2, 1], [3, 1]]) {
     const row = (['slime', 'bat', 'bug', 'skeleton', 'knight', 'golem'] as const).map((k) => `${k} ${Math.ceil(hp(k, d, f, false) / g)} (${Math.ceil(hp(k, d, f, false, 'easy') / g)}/${Math.ceil(hp(k, d, f, false, 'hard') / g)})`)
@@ -171,25 +173,38 @@ import { DIFF_MODES } from '../src/combat/difficulty'
     console.log(`깊이 ${d} 보스: HP ${bhp}, 시작 물총 ${Math.ceil(bhp / g)}타, 새 플레이어 약 ${(bhp / g / 2.7).toFixed(0)}초`)
   }
 }
+// Real kits (tools/sim-ttk-ref.ts REF_DPS): typical gear for the floor, the previous depth's gear, or good gear.
+const hpAt = (d: number) => (d === 1 ? 150 : d === 2 ? 190 : 240)
 const people = [
   { name: '새 플레이어', acc: 0.3, duty: 0.6 },
   { name: '숙련', acc: 0.55, duty: 0.85 },
 ]
+const typ = (d: number, f: number) => REF_DPS[`d${d}f${f}`][0]
+const good = (d: number, f: number) => REF_DPS[`d${d}f${f}`][1]
 const seeds = Array.from({ length: Number(process.env.SEEDS || 10) }, (_, i) => i + 1)
 const rows: [number, number, string, Behaviour, Partial<Opts>][] = []
-for (const [d, f] of [[1, 1], [1, 2], [1, 3], [2, 1], [2, 2], [2, 3], [3, 1], [3, 3]]) for (const pp of people) for (const b of ['thorough'] as Behaviour[]) rows.push([d, f, pp.name, b, { acc: pp.acc, duty: pp.duty }])
-for (const [d, f] of [[2, 1], [2, 2], [2, 3], [3, 1], [3, 3]]) rows.push([d, f, '새+깊이1 장비', 'thorough', { acc: 0.3, duty: 0.6, gunDmg: 14, maxHp: 190 }])
-for (const [d, f] of [[2, 3], [3, 1], [3, 3]]) rows.push([d, f, '숙련+좋은 장비', 'thorough', { acc: 0.55, duty: 0.85, gunDmg: 20, maxHp: 240 }])
-for (const [d, f] of [[1, 3]]) rows.push([d, f, '새 플레이어', 'rusher', { acc: 0.3, duty: 0.6 }])
+for (const [d, f] of [[1, 1], [1, 2], [1, 3], [2, 1], [2, 2], [2, 3], [3, 1], [3, 3]]) for (const pp of people) for (const b of ['thorough'] as Behaviour[]) rows.push([d, f, pp.name, b, { acc: pp.acc, duty: pp.duty, dps: typ(d, f), maxHp: hpAt(d) }])
+for (const [d, f] of [[2, 1], [2, 2], [2, 3], [3, 1], [3, 3]]) rows.push([d, f, `새+깊이${d - 1} 장비`, 'thorough', { acc: 0.3, duty: 0.6, dps: typ(d - 1, 3), maxHp: hpAt(d - 1) }])
+for (const [d, f] of [[2, 3], [3, 1], [3, 3]]) rows.push([d, f, '숙련+좋은 장비', 'thorough', { acc: 0.55, duty: 0.85, dps: good(d, f), maxHp: 240 }])
+for (const [d, f] of [[1, 3]]) rows.push([d, f, '새 플레이어', 'rusher', { acc: 0.3, duty: 0.6, dps: typ(d, f) }])
 // ONLY=d2f1,d2f3 runs just those floors; EASE=0.4,0.7,0.85 tries another depth-2 entry ease.
 if (process.env.EASE) (DIFFICULTY.delve as { entryEase: readonly number[] }).entryEase = process.env.EASE.split(',').map(Number)
 if (process.env.TIER) (DIFFICULTY.delve as { entryRoster: readonly number[] }).entryRoster = process.env.TIER.split(',').map(Number)
+// KNOBS='{"EXPLORE":{"packs":[6,9]},"DIFFICULTY":{"horde":{"damage":0.2}}}' tries other tuning (deep-merged).
+if (process.env.KNOBS) {
+  const merge = (t: Record<string, unknown>, v: Record<string, unknown>) => { for (const [k, x] of Object.entries(v)) { if (x && typeof x === 'object' && !Array.isArray(x)) merge(t[k] as Record<string, unknown>, x as Record<string, unknown>); else t[k] = x } }
+  const roots: Record<string, Record<string, unknown>> = { EXPLORE: EXPLORE as never, DIFFICULTY: DIFFICULTY as never }
+  for (const [k, v] of Object.entries(JSON.parse(process.env.KNOBS) as Record<string, Record<string, unknown>>)) merge(roots[k], v)
+}
+// WHO=숙련 runs just that player.
+const who = process.env.WHO ?? null
 // MODE=hard / easy runs the floors in that difficulty (default 보통).
 if (process.env.MODE) setDiffMode(process.env.MODE as DiffMode)
 const only = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null
 const med = (v: number[]) => (v.length ? v[Math.floor(v.length / 2)] : NaN)
-for (const [d, f, who, b, extra] of rows) {
+for (const [d, f, whoName, b, extra] of rows) {
   if (only && !only.has(`d${d}f${f}`)) continue
+  if (who && who !== whoName) continue
   const res = seeds.map((salt) => simulate({ depth: d, floor: f, behaviour: b, salt, acc: 0.3, duty: 0.6, ...extra }))
   const deaths = res.filter((r) => r.deathAt !== null).length
   const done = res.filter((r) => r.doneAt !== null).map((r) => r.doneAt as number).sort((a, c) => a - c)
@@ -197,5 +212,5 @@ for (const [d, f, who, b, extra] of rows) {
   const alive = res.filter((r) => r.deathAt === null)
   const endHp = med(alive.map((r) => r.endHp).sort((a, c) => a - c))
   const minHp = med(alive.map((r) => r.minHp).sort((a, c) => a - c))
-  console.log(`d${d}f${f} ${who} ${b}: 사망 ${deaths}/${res.length}  끝HP ${Math.round(endHp * 100)}%  최저HP ${Math.round(minHp * 100)}%  완료시간 중앙 ${(med(done) / 60).toFixed(1)}분 (${done.length ? (done[0] / 60).toFixed(1) : '-'}–${done.length ? (done[done.length - 1] / 60).toFixed(1) : '-'})  처치 중앙 ${med(res.map((r) => r.kills).sort((a, c) => a - c))}/${med(res.map((r) => r.foes))}  8m내 최대 ${Math.max(...res.map((r) => r.maxNear))} (p95 ${Math.max(...res.map((r) => r.p95))})  추격 최대 ${Math.max(...res.map((r) => r.maxChase))}  슬라임 TTK ${med(ttks.sort((a, c) => a - c)).toFixed(2)}s  일반 처치 타수 ${med(res.map((r) => r.htk).filter((x): x is number => x !== null).sort((a, c) => a - c))}  정예 타수 ${med(res.map((r) => r.htkElite).filter((x): x is number => x !== null).sort((a, c) => a - c))}  상자 ${med(res.map((r) => r.opened).sort((a, c) => a - c))}`)
+  console.log(`d${d}f${f} ${whoName} ${b}: 사망 ${deaths}/${res.length}  끝HP ${Math.round(endHp * 100)}%  최저HP ${Math.round(minHp * 100)}%  완료시간 중앙 ${(med(done) / 60).toFixed(1)}분 (${done.length ? (done[0] / 60).toFixed(1) : '-'}–${done.length ? (done[done.length - 1] / 60).toFixed(1) : '-'})  처치 중앙 ${med(res.map((r) => r.kills).sort((a, c) => a - c))}/${med(res.map((r) => r.foes))}  8m내 최대 ${Math.max(...res.map((r) => r.maxNear))} (p95 ${Math.max(...res.map((r) => r.p95))})  추격 최대 ${Math.max(...res.map((r) => r.maxChase))}  슬라임 TTK ${med(ttks.sort((a, c) => a - c)).toFixed(2)}s  일반 처치 타수 ${med(res.map((r) => r.htk).filter((x): x is number => x !== null).sort((a, c) => a - c))}  정예 타수 ${med(res.map((r) => r.htkElite).filter((x): x is number => x !== null).sort((a, c) => a - c))}  상자 ${med(res.map((r) => r.opened).sort((a, c) => a - c))}`)
 }

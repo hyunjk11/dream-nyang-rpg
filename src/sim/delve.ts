@@ -133,6 +133,13 @@ export function depthStep(depth: number, floor: number): number {
   return DIFFICULTY.delve.entryEase[Math.max(0, floor - 1)] ?? 1
 }
 
+/** Depth steps for foe hp: like depthStep but with entryHpEase on the normal floors of depth 2. */
+export function hpStep(depth: number, floor: number): number {
+  const d = Math.max(0, depth - 1)
+  if (d !== 1 || floor >= BOSS_FLOOR) return d
+  return DIFFICULTY.delve.entryHpEase[Math.max(0, floor - 1)] ?? 1
+}
+
 /** Roster tier offset for an explore floor's packs (≤ 0; only the normal floors of depth 2 have one). */
 export function rosterShift(depth: number, floor: number): number {
   if (depth !== 2 || floor >= BOSS_FLOOR) return 0
@@ -144,8 +151,8 @@ export function floorScale(depth: number, floor: number): FloorScale {
   const d = depthStep(depth, floor)
   const f = Math.max(0, Math.min(floor, BOSS_FLOOR) - 1)
   return {
-    // hp grows with the full depth (the entry ease is for damage, packs and affixes only).
-    hp: k.hpDepthGrowth ** Math.max(0, depth - 1) * (1 + f * k.hpPerFloor),
+    // hp has its own, milder depth-2 entry ease (entryHpEase) so depth-1 gear still gets through.
+    hp: k.hpDepthGrowth ** hpStep(depth, floor) * (1 + f * k.hpPerFloor),
     damage: 1 + d * k.damagePerDepth + f * k.damagePerFloor,
     firstWave: 1 + Math.max(0, depth - 1) * k.wavesPerDepth + Math.min(f, k.floors - 1) * k.wavesPerFloor,
     boss: { hp: k.bossHpGrowth ** d, damage: 1 + d * k.bossDamagePerDepth },
