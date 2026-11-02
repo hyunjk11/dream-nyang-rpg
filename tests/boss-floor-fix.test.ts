@@ -44,7 +44,12 @@ function surrounded(hit: number, maxHp: number, kinds: HordeKind[] = ['slime', '
   h.scale = { hp: plan.scale.hp, damage: plan.scale.damage * hit }
   // 보스 아레나 한가운데.
   let sx = 0, sy = 0, n = 0
-  for (let i = 0; i < m.tiles.length; i += 1) if (m.tiles[i] === Tile.Boss) ((sx += i % m.w), (sy += Math.floor(i / m.w)), (n += 1))
+  for (let i = 0; i < m.tiles.length; i += 1) {
+    if (m.tiles[i] !== Tile.Boss) continue
+    sx += i % m.w
+    sy += Math.floor(i / m.w)
+    n += 1
+  }
   const c = tileCentre(m, Math.round(sx / n), Math.round(sy / n) + 1)
   kinds.forEach((k, i) => {
     const a = (i / kinds.length) * Math.PI * 2
