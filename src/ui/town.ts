@@ -20,8 +20,10 @@ import { iconSvg } from './icons'
 import { MOD_KO } from '../data/mods'
 import { attachMod, bagMods, detachMod, fitCost, gunMods, isMod, MAX_MOD_SLOTS, MOD_SLOT_ILV, modKind, modSlots, modUpgradeCost, upgradeMod } from '../sim/mods'
 import { RARITY_COLOR, RARITY_KO } from '../sim/types'
+import type { LegendSource } from '../data/legends'
+import { codexRows, legendAffixes, legendChance } from '../sim/legends'
 
-export type TownPanel = 'shop' | 'workshop' | 'board' | 'stash'
+export type TownPanel = 'shop' | 'workshop' | 'board' | 'stash' | 'codex'
 
 export type TownSuccess = 'buy' | 'sell' | 'upgrade' | 'reroll' | 'element' | 'take' | 'claim' | 'stash' | 'mod'
 
@@ -43,13 +45,16 @@ export interface TownHost {
   chapterClaimed?(result: MutationResult, cleared: number): void
 }
 
-const TITLE: Record<TownPanel, string> = { shop: '포포 상점', workshop: '키키의 총 공방', board: '퀘스트 게시판', stash: '별하의 보관함' }
+const TITLE: Record<TownPanel, string> = { shop: '포포 상점', workshop: '키키의 총 공방', board: '퀘스트 게시판', stash: '별하의 보관함', codex: '전설 도감' }
 const SUB: Record<TownPanel, string> = {
   shop: '하수도에 다녀올 때마다 진열대가 바뀌어.',
   workshop: '강화는 실패하지 않아. 대신 갈수록 비싸져!',
   board: '의뢰는 하수도에서 진행되고, 돌아오면 여기서 보상을 받아.',
   stash: '가방이 꽉 차면 여기에 넣어 둬.',
+  codex: '이름 붙은 총 일곱 자루. 정해진 곳에서만 떨어지고, 못 찾을수록 확률이 올라가.',
 }
+
+const SOURCE_KO: Record<LegendSource['kind'], string> = { boss: '보스 상자', areaBoss: '보스 상자', areaChest: '지역 보물 상자 하나당', mazeElite: '미로 정예' }
 
 const ELEMENT_KO: Record<Element, string> = { sparkle: '반짝', ice: '서늘', candy: '끈적' }
 
@@ -142,6 +147,14 @@ export class TownUI {
       tag.title = MATERIAL_HELP[m] ?? ''
       wallet.append(' · ', tag)
     }
+    if (this.panel !== 'codex') {
+      const codex = el('button', 'town-close town-codex-btn', '전설 도감')
+      codex.type = 'button'
+      codex.id = 'town-codex'
+      codex.title = '고정 전설 모음'
+      codex.addEventListener('click', () => this.open('codex'))
+      head.append(codex)
+    }
     const close = el('button', 'town-close', '닫기')
     close.type = 'button'
     close.id = 'town-close'
@@ -155,6 +168,7 @@ export class TownUI {
     if (this.panel === 'shop') this.renderShop(save, body)
     else if (this.panel === 'workshop') this.renderWorkshop(save, body)
     else if (this.panel === 'board') this.renderBoard(save, body)
+    else if (this.panel === 'codex') this.renderCodex(save, body)
     else this.renderStash(save, body)
     this.host.viewed?.(this.panel)
   }
@@ -597,6 +611,56 @@ export class TownUI {
   }
 
   // ---- 보관함 ----
+
+  private codexPick = ''
+
+  /** 전설 도감: seven cards (found ones in full, the rest as a silhouette + where to look). */
+  private renderCodex(save: SaveData, body: HTMLElement): void {
+    const left = el('section', 'town-col')
+    const right = el('section', 'town-col town-side')
+    body.append(left, right)
+    const rows = codexRows(save)
+    const found = rows.filter((r) => r.found).length
+    const hh = el('h3', '', '고정 전설 ')
+    hh.append(el('small', '', `${found}/${rows.length}`))
+    left.append(hh)
+    const grid = el('div', 'codex-grid')
+    grid.id = 'codex-grid'
+    if (!this.codexPick || !rows.some((r) => r.def.id === this.codexPick)) this.codexPick = rows[0].def.id
+    rows.forEach((r, i) => {
+      const b = el('button', `codex-card${r.found ? ' found' : ' unknown'}${this.codexPick === r.def.id ? ' picked' : ''}`)
+      b.type = 'button'
+      b.id = `codex-${i}`
+      b.dataset.id = r.def.id
+      const icon = el('span', 'codex-icon')
+      icon.innerHTML = iconSvg(ITEMS[r.def.id]?.icon, 34)
+      b.append(icon, el('b', '', r.found ? r.def.name : '???'), el('small', '', r.found ? `${r.count}번 획득` : r.def.where))
+      b.addEventListener('click', () => {
+        this.codexPick = r.def.id
+        this.host.sfx('ui')
+        this.render()
+      })
+      grid.append(b)
+    })
+    left.append(grid)
+    const row = rows.find((r) => r.def.id === this.codexPick) ?? rows[0]
+    const def = row.def
+    const card = el('div', `codex-detail${row.found ? ' found' : ''}`)
+    card.id = 'codex-detail'
+    card.append(el('h3', '', row.found ? `★ ${def.name}` : '??? (아직 못 찾음)'))
+    card.append(el('p', 'codex-sig', row.found ? def.signature : '어딘가에서 하얀 금빛 기둥이 솟는다고 해.'))
+    const owned = [...save.items, ...townOf(save).stash].filter((it) => it.defId === def.id)
+    const level = owned.reduce((m, it) => Math.max(m, it.itemLevel), 1)
+    const list = el('ul', 'codex-stats')
+    for (const a of legendAffixes(def, level)) list.append(el('li', '', row.found ? formatAffix(a) : formatAffix(a).replace(/[0-9.]+/g, '?')))
+    card.append(el('small', 'codex-ilv', row.found ? `${ilvText(level)} 기준 옵션 (고정)` : '옵션은 찾으면 보여'), list)
+    card.append(el('p', 'codex-where', `출처: ${def.where}`))
+    for (const src of def.sources) {
+      const pct = Math.round(legendChance(save, def, src) * 100)
+      card.append(el('small', 'codex-odds', `${SOURCE_KO[src.kind]} 이번 확률 ${pct}%${row.found ? ' (이미 찾음: 낮아져)' : ' · 못 찾을수록 올라가'}`))
+    }
+    right.append(card)
+  }
 
   private renderStash(save: SaveData, body: HTMLElement): void {
     const left = el('section', 'town-col')

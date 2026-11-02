@@ -2,6 +2,7 @@ import { gunMods, modLabel, modSlots, rollMod } from './mods'
 import { AFFIX_COUNT, AFFIXES, GEAR_AFFIX, PERCENT_STATS } from '../data/affixes'
 import { GUN_PROFILES, gunDps } from '../data/guns'
 import { GEAR_IDS, ITEMS, WEAPON_IDS } from '../data/items'
+import { LEGEND_BY_ID } from '../data/legends'
 import type { EnemyDef } from '../data/enemies'
 import {
   RARITIES,
@@ -140,6 +141,8 @@ export function itemNameParts(item: ItemInstance): { prefix: string; suffix: str
   const second = item.affixes[1]
   const suffix = second ? (AFFIXES.find((a) => a.id === second.id)?.suffix ?? '') : ''
   const plus = plusOf(item)
+  // 고정 전설 keep their own name: no affix prefix / suffix.
+  if (def?.legend) return { prefix: '', suffix: '', base: def.name, plus: plus ? `+${plus}` : '' }
   return { prefix: item.affixes[0]?.name ?? '', suffix, base: def?.name ?? item.defId, plus: plus ? `+${plus}` : '' }
 }
 
@@ -165,6 +168,7 @@ export const POWER_WEIGHT: Partial<Record<StatKey, number>> = {
   sparkle: 150,
   ice: 150,
   candy: 150,
+  mochi: 120,
 }
 
 /** Item power: implicit + affix stats by POWER_WEIGHT; guns add half their base DPS at this level. */
@@ -301,6 +305,8 @@ export function itemLines(item: ItemInstance): string[] {
   if (def?.slot) lines.push(SLOT_KO[def.slot])
   if (def?.mod) lines.push(`총 개조 부품 · ${modLabel(item)}`)
   lines.push(RARITY_KO[item.rarity])
+  const legend = def?.legend ? LEGEND_BY_ID[item.defId] : undefined
+  if (legend) lines.push(`★ 고정 전설 · ${legend.signature}`, `출처: ${legend.where}`)
   for (const [key, value] of Object.entries(implicitStats(item)) as [StatKey, number][]) lines.push(formatStat(key, value))
   for (const affix of item.affixes) lines.push(formatAffix(affix))
   if (def?.slot === 'weapon') {

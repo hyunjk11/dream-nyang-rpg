@@ -19,6 +19,8 @@ export interface ComputedStats {
   maxHp: number
   /** Multiplier on every droplet / skill hit. */
   damageMul: number
+  /** 모찌 돌진 damage multiplier (모찌 발바닥 물총). */
+  mochiMul: number
   /** Multiplier on fire cadence. */
   fireRate: number
   critChance: number
@@ -110,6 +112,7 @@ export function computeStats(save: SaveData, items: ItemInstance[] = equippedIte
     // The star rifle throws more stars, the bubble shotgun puffs more clouds.
     starShot: clamp((g.starShot ?? 0) + (kind === 'star' ? GUN_JUICE.starRifle : 0), 0, STAT_CAPS.starShot),
     cloud: clamp((g.cloud ?? 0) + (kind === 'bubble' ? GUN_JUICE.bubbleCloud : 0), 0, STAT_CAPS.cloud),
+    mochiMul: 1 + Math.max(0, g.mochi ?? 0),
     weaponKind: kind,
     gun: { ...base, damage: Math.round(base.damage * gunScale * 100) / 100 },
     shotDamage: 0,

@@ -47,6 +47,9 @@ interface Piece {
 }
 
 /** Beam height per rarity: common gets only a soft ring, legendary a tall pillar. */
+/** 고정 전설 pillar height and tint. */
+export const LEGEND_BEAM = 7.5
+export const LEGEND_TAG = '#fff0a0'
 export const BEAM_HEIGHT: Record<string, number> = { common: 0, uncommon: 1.4, rare: 2.4, epic: 3.4, legendary: 5 }
 
 /** Pickups beyond this are folded into the oldest coin pile (no runaway mesh count). */
@@ -123,7 +126,8 @@ export class LootView {
       const mesh = new Mesh(this.shape(drop), this.material(drop))
       mesh.scale.setScalar(drop.kind === 'gold' ? 1 + Math.min(1, drop.amount / 20) : drop.kind === 'item' ? 1.15 : 1)
       const beam = drop.kind === 'item' ? this.beamFor(drop) : null
-      const label = drop.kind === 'item' && drop.item ? nameLabel(itemName(drop.item), RARITY_COLOR[drop.item.rarity]) : null
+      const fixed = drop.kind === 'item' && !!drop.item && !!ITEMS[drop.item.defId]?.legend
+      const label = drop.kind === 'item' && drop.item ? nameLabel(fixed ? `★ ${itemName(drop.item)}` : itemName(drop.item), fixed ? LEGEND_TAG : RARITY_COLOR[drop.item.rarity]) : null
       const piece: Piece = { drop, mesh, x, y: 0.6, z, vx: Math.cos(a) * s, vy: 3.2 + i * 0.25, vz: Math.sin(a) * s, age: 0, pulled: false, beam, label }
       mesh.position.set(x, 0.6, z)
       this.group.add(mesh)
@@ -210,14 +214,16 @@ export class LootView {
   }
 
   /** Item light pillars on the floor (rarities show from across the room). */
-  get beams(): { rarity: string; height: number }[] {
-    return this.pieces.filter((p) => p.beam).map((p) => ({ rarity: p.drop.item?.rarity ?? 'common', height: BEAM_HEIGHT[p.drop.item?.rarity ?? 'common'] }))
+  get beams(): { rarity: string; height: number; fixed: boolean }[] {
+    return this.pieces.filter((p) => p.beam).map((p) => ({ rarity: p.drop.item?.rarity ?? 'common', height: p.beam?.name === 'beam-fixed-legend' ? LEGEND_BEAM : BEAM_HEIGHT[p.drop.item?.rarity ?? 'common'], fixed: p.beam?.name === 'beam-fixed-legend' }))
   }
 
   private beamFor(drop: Drop): Mesh {
     const rarity = drop.item?.rarity ?? 'common'
-    const h = BEAM_HEIGHT[rarity]
-    const color = new Color(RARITY_COLOR[rarity]).multiplyScalar(1.4)
+    // 고정 전설: a taller, white-gold pillar so it reads from across the room.
+    const fixed = !!drop.item && !!ITEMS[drop.item.defId]?.legend
+    const h = fixed ? LEGEND_BEAM : BEAM_HEIGHT[rarity]
+    const color = new Color(fixed ? LEGEND_TAG : RARITY_COLOR[rarity]).multiplyScalar(1.4)
     const mat = new MeshBasicMaterial({ color, transparent: true, opacity: h ? 0.5 : 0.6, blending: AdditiveBlending, depthWrite: false, side: DoubleSide })
     const group = new Mesh(h ? this.geo.beam : this.geo.ring, mat)
     group.userData.alpha = h ? 0.5 : 0.6
@@ -227,7 +233,7 @@ export class LootView {
       ring.scale.set(1, 1 / h, 1)
       group.add(ring)
     }
-    group.name = `beam-${rarity}`
+    group.name = fixed ? 'beam-fixed-legend' : `beam-${rarity}`
     return group
   }
 

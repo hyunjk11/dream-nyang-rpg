@@ -32,6 +32,8 @@ export type StatKey =
   | 'starShot'
   /** Chance per landed droplet to puff a cotton-candy cloud. */
   | 'cloud'
+  /** 모찌 돌진 damage bonus (fixed legendary 모찌 발바닥 물총). */
+  | 'mochi'
 
 /** Toy gun bases: full-auto water gun, bubble shotgun, star burst rifle, dream dart sniper. */
 export type WeaponKind = 'water' | 'bubble' | 'star' | 'dart'
@@ -115,6 +117,8 @@ export interface SaveData {
   chapters?: import('./chapters').ChapterSave
   /** 챕터 2 · 꿈 미로와 몽실 마을 이야기 (see sim/dreamstory.ts). */
   dream?: import('./dreamstory').DreamSave
+  /** 전설 도감: fixed legendaries found, and pity tries per source. */
+  legends?: import('./legends').LegendSave
 }
 
 export interface OpenRun {
@@ -202,6 +206,7 @@ export const STAT_KO: Record<StatKey, string> = {
   candy: '사탕 속성',
   starShot: '별도탄 확률',
   cloud: '솜사탕 구름',
+  mochi: '모찌 돌진 피해',
 }
 
 export const DEFAULT_SETTINGS: Settings = {

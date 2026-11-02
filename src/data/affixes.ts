@@ -51,4 +51,4 @@ export const AFFIX_COUNT: Record<string, number> = {
 }
 
 /** Stats shown as percentages. */
-export const PERCENT_STATS: StatKey[] = ['critChance', 'critDamage', 'attackSpeed', 'damage', 'fireRate', 'lifesteal', 'moveSpeed', 'armor', 'sparkle', 'ice', 'candy', 'starShot', 'cloud']
+export const PERCENT_STATS: StatKey[] = ['critChance', 'critDamage', 'attackSpeed', 'damage', 'fireRate', 'lifesteal', 'moveSpeed', 'armor', 'sparkle', 'ice', 'candy', 'starShot', 'cloud', 'mochi']

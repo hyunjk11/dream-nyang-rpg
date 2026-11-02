@@ -96,6 +96,7 @@ function rollValue(spec: AffixSpec, item: ItemInstance, rng: () => number): numb
 export function rerollAffix(save: SaveData, uid: string, index: number, rng: () => number = Math.random): WorkResult {
   const item = locate(save, uid)
   if (!item) return { ok: false, reason: '그 물건이 없어.' }
+  if (ITEMS[item.defId]?.legend) return { ok: false, reason: '고정 전설은 옵션이 바뀌지 않아.' }
   if (!item.affixes[index]) return { ok: false, reason: '다시 굴릴 옵션을 골라 줘.' }
   const choices = rerollChoices(item, index)
   if (!choices.length) return { ok: false, reason: '바꿀 수 있는 옵션이 없어.' }
@@ -116,6 +117,7 @@ export function elementOf(item: ItemInstance): Element | null {
 export function changeElement(save: SaveData, uid: string, to: Element): WorkResult {
   const item = locate(save, uid)
   if (!item) return { ok: false, reason: '그 물건이 없어.' }
+  if (ITEMS[item.defId]?.legend) return { ok: false, reason: '고정 전설은 속성이 바뀌지 않아.' }
   const index = item.affixes.findIndex((x) => specOf(x.id)?.element)
   if (index < 0) return { ok: false, reason: '속성 옵션이 붙은 총만 바꿀 수 있어.' }
   const from = specOf(item.affixes[index].id)

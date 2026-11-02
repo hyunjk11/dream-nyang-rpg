@@ -1,3 +1,4 @@
+import { LEGENDS } from './legends'
 import type { EquipSlot, StatKey, WeaponKind } from '../sim/types'
 
 export interface ItemDef {
@@ -14,6 +15,8 @@ export interface ItemDef {
   icon: string
   /** 총 개조 부품 (see data/mods.ts): no slot, it goes into a gun. */
   mod?: true
+  /** 고정 전설 (see data/legends.ts): fixed options, always 전설. */
+  legend?: true
 }
 
 const D = (d: ItemDef): ItemDef => d
@@ -43,6 +46,9 @@ export const ITEMS: Record<string, ItemDef> = {
   mod_chip_ice: D({ id: 'mod_chip_ice', name: '서리 칩', description: '총에 꽂는 서리 속성 칩. 총이 하늘색으로 빛난다.', price: 70, icon: 'mod_chip_ice', mod: true }),
   mod_chip_candy: D({ id: 'mod_chip_candy', name: '사탕 칩', description: '총에 꽂는 사탕 속성 칩. 총이 분홍색으로 빛난다.', price: 70, icon: 'mod_chip_candy', mod: true }),
 }
+
+const GUN_ICON = { water: 'gun', bubble: 'shotgun', star: 'rifle', dart: 'dart' } as const
+for (const l of LEGENDS) ITEMS[l.id] = { id: l.id, name: l.name, description: l.signature, price: 420, slot: 'weapon', gun: l.gun, icon: GUN_ICON[l.gun], legend: true }
 
 export const WEAPON_IDS = ['gun_water', 'gun_bubble', 'gun_star', 'gun_dart']
 /** Gear that drops (Mochi's collars only come from old saves / quests). */
