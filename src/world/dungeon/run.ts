@@ -41,6 +41,7 @@ import type { GunCue } from '../../audio/gunsound'
 import { rayCapsule } from '../../core/tps'
 import { DIFFICULTY } from '../../combat/difficulty'
 import { chestDrops, delveDrops, floorIntro, floorLabel, floorPlan, objectiveText, type ChestTier, type FloorPlan } from '../../sim/delve'
+import { packSeen, unpackSeen, type FloorState } from '../../sim/floorsnap'
 import type { Drop } from '../../sim/loot'
 import { LootView } from './loot-view'
 import { FIELD, FieldDirector } from './field'
@@ -137,6 +138,8 @@ interface LootChest {
   chest: Chest
   tier: ChestTier
   mark: string
+  /** Its tile, "x_y" (던전 유지 remembers opened chests by it). */
+  tile: string
 }
 
 /** Town scroll: seconds of standing still-ish (a hit cancels it). */
@@ -288,7 +291,7 @@ export class DungeonRun {
     if (this.layout) {
       this.horde.scale.hp *= EXPLORE.hp
       const nestHp = Math.round(DIFFICULTY.delve.nestHp * this.plan.scale.hp)
-      this.explore = new ExploreDirector(maze, this.layout, this.horde, Math.random, nestHp)
+      this.explore = new ExploreDirector(maze, this.layout, this.horde, rng(this.plan.seed ^ 0x2545f491), nestHp) // seeded: a rebuilt floor gets the same packs (던전 유지)
       if (this.horde.aggro) this.horde.aggro.sight = (ax, az, bx2, bz) => this.sees(ax, az, bx2, bz)
       this.nests = this.explore.nests
       this.buildProps(this.layout)
@@ -370,6 +373,108 @@ export class DungeonRun {
     consumeRecall()
     const intro = floorIntro(this.plan)
     host.banner(intro.title, intro.sub)
+    this.initialFoes = this.horde.foes.length
+  }
+
+  /** Foes spawned with the floor (ids 1..initialFoes); nest and wave foes come after. */
+  private initialFoes = 0
+
+  /** 던전 유지: what changed on this floor since it was built (see sim/floorsnap.ts). */
+  snapshot(salt: number): FloorState {
+    const p = this.parked ? this.parkedAt : { x: this.host.hero.object.position.x, z: this.host.hero.object.position.z, yaw: this.host.hero.yaw }
+    const alive = new Map<number, HordeFoe>()
+    for (const f of this.horde.foes) if (f.dying <= 0 && f.hp > 0 && f.id <= this.initialFoes) alive.set(f.id, f)
+    const dead: number[] = []
+    const hurt: [number, number][] = []
+    for (let id = 1; id <= this.initialFoes; id += 1) {
+      const f = alive.get(id)
+      if (!f) dead.push(id)
+      else if (f.hp < f.maxHp) hurt.push([id, Math.round(f.hp)])
+    }
+    const ex = this.explore
+    return {
+      depth: this.plan.depth,
+      floor: this.plan.floor,
+      salt,
+      seed: this.plan.seed,
+      field: this.plan.objective === 'field' ? (this.plan.field ?? null) : null,
+      at: { x: Math.round(p.x * 100) / 100, z: Math.round(p.z * 100) / 100, yaw: Math.round(p.yaw * 100) / 100 },
+      dead,
+      initial: this.initialFoes,
+      hurt,
+      nests: this.nests.map((n) => [Math.round(n.hp), (n as { spawned?: number }).spawned ?? 0] as [number, number]),
+      key: !!ex?.hasKey,
+      doors: !!ex?.doorsOpen,
+      secret: !!ex?.secretOpen,
+      chests: this.chests.filter((c) => c.chest.opened).map((c) => c.tile),
+      shrine: !!this.shrine?.used,
+      arrived: this.arrived,
+      boss: this.boss ? Math.round(this.boss.hp) : null,
+      seen: packSeen(this.minimap.seen),
+    }
+  }
+
+  /**
+   * 던전 유지: put a saved state back onto this freshly built floor (same plan). Quiet: no banners,
+   * no drops, no quest counts. Returns false when the floor does not match (then it stays fresh).
+   */
+  restore(s: FloorState): boolean {
+    if (s.depth !== this.plan.depth || s.floor !== this.plan.floor) return false
+    if (s.initial && s.initial !== this.initialFoes) return false
+    const gone = new Set(s.dead)
+    const hurt = new Map(s.hurt)
+    for (let i = this.horde.foes.length - 1; i >= 0; i -= 1) {
+      const f = this.horde.foes[i]
+      if (f.id > this.initialFoes) continue
+      if (gone.has(f.id)) this.horde.foes.splice(i, 1)
+      else if (hurt.has(f.id)) f.hp = Math.max(1, Math.min(f.maxHp, hurt.get(f.id) ?? f.hp))
+    }
+    this.horde.invalidate()
+    const ex = this.explore
+    s.nests.forEach(([hp, spawned], i) => {
+      const n = this.nests[i]
+      if (!n) return
+      ;(n as { spawned?: number }).spawned = spawned
+      if (hp <= 0) this.plugNest(n, true)
+      else n.hp = Math.min(n.maxHp, hp)
+    })
+    if (ex) {
+      ex.hasKey = s.key
+      if (s.key) this.minimap.unmark('key')
+      if (s.doors && ex.openDoors().length) {
+        for (const d of this.doorMeshes) d.dispose()
+        this.doorMeshes.length = 0
+        for (const d of this.layout?.doors ?? []) this.minimap.unmark(`door${d.x}_${d.y}`)
+      }
+      if (s.secret && !ex.secretOpen) {
+        ex.hitSecret(1e9)
+        this.crack?.dispose()
+        this.crack = null
+      }
+    }
+    const opened = new Set(s.chests)
+    for (const c of this.chests) {
+      if (!opened.has(c.tile) || c.chest.opened) continue
+      c.chest.open()
+      this.minimap.restyle(c.mark, 'done', '#9b93ad')
+    }
+    if (s.shrine && this.shrine && !this.shrine.used) {
+      this.shrine.use()
+      this.minimap.restyle('shrine', 'done', '#9b93ad')
+    }
+    if (s.arrived && this.layout) {
+      this.done = true
+      this.arrived = true
+    }
+    if (this.boss && s.boss !== null && s.boss > 0) this.boss.hp = Math.min(this.boss.hp, s.boss)
+    if (s.seen) unpackSeen(s.seen, this.minimap.seen)
+    // She comes back where she stood (snapped out of walls), foes nearby step back a little.
+    const at = collideCircle(this.maze, s.at.x, s.at.z, 0.34)
+    this.parkedAt = { x: at.x, z: at.z, yaw: s.at.yaw, camYaw: s.at.yaw, pitch: 0.1 }
+    this.parked = true
+    this.sewer.group.removeFromParent()
+    this.unpark()
+    return true
   }
 
   /** Tear down; the host restores the island. */
@@ -510,6 +615,8 @@ export class DungeonRun {
         f.x = out.x
         f.z = out.z
       }
+      // The ones that were chasing her lost her while she was away: they wander home first.
+      if (f.mode === 'chase' && f.pack >= 0 && d < 10) f.mode = 'home'
     }
     const hero = this.host.hero
     hero.limit = Infinity
@@ -801,18 +908,19 @@ export class DungeonRun {
     return best
   }
 
-  private plugNest(n: NestTarget): void {
+  private plugNest(n: NestTarget, quiet = false): void {
     n.hp = 0
     this.decor.sealNest(n.i)
     const nest = this.maze.nests[n.i]
     this.minimap.restyle(`nest${n.i}`, 'done', '#8d8798')
+    // A plugged nest always leaves a chest behind.
+    const c = tileCentre(this.maze, nest.x, nest.y)
+    this.addChest(c.x + nest.dx * 0.5, c.z + nest.dy * 0.5, 'nest', nest.x, nest.y)
+    if (quiet) return
     const at = new Vector3(n.x, 1.25, n.z)
     this.host.vfx.poof(at, 0xd9a6ff, 1.4)
     this.host.sfx('splash', 0.9)
     this.host.nestDown?.()
-    // A plugged nest always leaves a chest behind.
-    const c = tileCentre(this.maze, nest.x, nest.y)
-    this.addChest(c.x + nest.dx * 0.5, c.z + nest.dy * 0.5, 'nest', nest.x, nest.y)
     const left = this.nests.filter((x) => x.hp > 0).length
     const plugged = this.nests.length - left
     this.host.banner('둥지 파이프를 막았어!', `${plugged}/${this.nests.length} · 보물 상자가 나타났어`)
@@ -1090,7 +1198,7 @@ export class DungeonRun {
     const chest = new Chest(x, z, tint)
     this.sewer.group.add(chest.group)
     const mark = this.minimap.mark(tx, ty, tier === 'secret' ? '#ffa8d8' : '#ffd166', 'chest', tier === 'nest', `chest${this.chests.length}`)
-    this.chests.push({ chest, tier, mark })
+    this.chests.push({ chest, tier, mark, tile: `${tx}_${ty}` })
   }
 
   /** E at an explore chest: spill its loot. */

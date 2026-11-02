@@ -19,6 +19,7 @@ import { addItem } from './inventory'
 import { itemName, maxRarityFor, rollDrops, sellValue, type Drop } from './loot'
 import { addMaterial } from './quests'
 import type { OpenRun, ItemInstance, Rarity, SaveData } from './types'
+import { sanitizeFloor, type FloorState } from './floorsnap'
 
 /** 'field' = 몽실 들판 (챕터 2): one open hunting field, no stairs. */
 export type Objective = 'exit' | 'boss' | 'field'
@@ -39,6 +40,8 @@ export interface DelveSave {
   runs: number
   /** A trip still underway: snapshotted so a reload doesn't eat its gold. */
   open: OpenRun | null
+  /** 던전 유지: the floor she left (recall, scroll, fall or reload), behind the return portal. */
+  floorState?: FloorState | null
 }
 
 export type { OpenRun }
@@ -72,7 +75,9 @@ export function delveOf(save: SaveData): DelveSave {
           floorsCleared: int(o.floorsCleared, 0, 0),
         }
       : null
-  const d: DelveSave = { unlocked, cleared: Math.min(unlocked, int(raw.cleared, 0, 0)), checkpoint, runs: int(raw.runs, 0, 0), open }
+  const fs = sanitizeFloor(raw.floorState)
+  const floorState = fs && (fs.field || fs.depth <= unlocked) ? fs : null
+  const d: DelveSave = { unlocked, cleared: Math.min(unlocked, int(raw.cleared, 0, 0)), checkpoint, runs: int(raw.runs, 0, 0), open, ...(floorState ? { floorState } : {}) }
   save.delve = d
   return d
 }
@@ -255,7 +260,7 @@ export function delveDrops(depth: number, elite: boolean, boss: boolean, rng: ()
   const table = boss
     ? { gold: [40, 60] as [number, number], gear: 0.98, weapon: 0.6, dust: 1, part: 1, potion: 1 }
     : { ...DELVE_TABLE, potion: DELVE_TABLE.potion * diff().potion, gold: [DELVE_TABLE.gold[0], Math.round(DELVE_TABLE.gold[1] * s.gold)] as [number, number] }
-  const drops = rollDrops({ table, luck, elite, boss, rng, itemLevel: itemLevelFor(depth, floor, boss), bias: (depth - 1) * 5, cap: maxRarityFor(depth, boss) })
+  const drops = rollDrops({ table, luck, elite, boss, rng, itemLevel: itemLevelFor(depth, floor, boss) + (elite && !boss ? 1 : 0), bias: (depth - 1) * 5, cap: maxRarityFor(depth, boss) })
   if (boss) for (const d of drops) if (d.kind === 'gold') d.amount = Math.round(d.amount * s.gold)
   return drops
 }
@@ -337,9 +342,9 @@ export class Delve {
   }
 
   /** Back out to the same 몽실 들판 field through a return portal. */
-  static reopenField(save: SaveData, plan: FloorPlan): Delve {
+  static reopenField(save: SaveData, plan: FloorPlan, salt = 0): Delve {
     delveOf(save).runs += 1
-    const run = new Delve(1, 1, 0)
+    const run = new Delve(1, 1, salt)
     run.fieldPlan = plan
     return run
   }

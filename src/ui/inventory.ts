@@ -9,8 +9,8 @@ import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { BRANCH_KO, TIER_LEVEL, TREE, type Branch, type TreeSkill } from '../data/tree'
 import { xpToNext } from '../sim/formulas'
 import { bagItems, findItem, isEquipped, slotFor, equipItem, slotFits } from '../sim/inventory'
-import { itemLines, itemName, itemPower, sellValue, dismantleYield } from '../sim/loot'
-import { fillCell, nameTitle } from './itemcell'
+import { ilvText, itemLines, itemName, itemPower, sellValue, dismantleYield } from '../sim/loot'
+import { fillCell, ilvRow, nameTitle } from './itemcell'
 import { dismantleOwned, sellOwned, tryEquip, tryUnequip } from '../sim/mutate'
 import { buildOf, learn, learnBlock, rank, respec, respecCost } from '../sim/skilltree'
 import { computeStats, type ComputedStats } from '../sim/stats'
@@ -395,7 +395,7 @@ export class InventoryUI {
     const def = ITEMS[item.defId]
     const worn = isEquipped(save, item.uid)
     box.append(nameTitle('h3', item))
-    box.append(el('p', 'inv-sub', `${RARITY_KO[item.rarity]} · 아이템 레벨 ${item.itemLevel} · 파워 ${itemPower(item)}${def?.gun ? ` · ${GUN_KO[def.gun]}` : ''}`))
+    box.append(el('p', 'inv-sub', `${RARITY_KO[item.rarity]} · ${ilvText(item.itemLevel)} · 파워 ${itemPower(item)}${def?.gun ? ` · ${GUN_KO[def.gun]}` : ''}`))
     if (def?.description) box.append(el('p', 'inv-desc', def.description))
     const ul = el('ul', 'inv-lines')
     for (const line of itemLines(item).slice(2, -1)) ul.append(el('li', '', line))
@@ -406,6 +406,8 @@ export class InventoryUI {
       box.append(el('h4', '', current ? `지금 ${SLOT_KO[target!]}: ${itemName(current)} (파워 ${itemPower(current)} → ${itemPower(item)})` : `${SLOT_KO[target ?? def.slot]} 비어 있음`))
       const diff = compareEquip(save, item.uid, target)
       const table = el('ul', 'inv-compare')
+      const lv = ilvRow(current, item)
+      if (lv) table.append(lv)
       if (!diff.length) table.append(el('li', 'same', '능력치 변화 없음'))
       for (const d of diff) {
         const li = el('li', d.delta > 0 ? 'up' : 'down')

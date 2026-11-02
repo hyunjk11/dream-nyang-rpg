@@ -4,7 +4,7 @@
  */
 import { ITEMS } from '../data/items'
 import { powerVsWorn } from '../sim/inventory'
-import { itemLines, itemName, itemNameParts, itemPower } from '../sim/loot'
+import { ilvText, itemLines, itemName, itemNameParts, itemPower } from '../sim/loot'
 import { RARITY_COLOR, RARITY_KO, type ItemInstance, type SaveData } from '../sim/types'
 import { iconSvg } from './icons'
 
@@ -38,14 +38,14 @@ export function fillCell(b: HTMLElement, item: ItemInstance, save: SaveData | nu
       b.append(arrow)
     }
   }
-  b.append(span('ilvl', `Lv${item.itemLevel}`))
+  b.append(span('ilvl', ilvText(item.itemLevel)))
   b.dataset.tip = itemTip(item)
 }
 
 /** Hover card text: name, rarity line, then the item's stat lines (first line is the title). */
 export function itemTip(item: ItemInstance): string {
   const lines = itemLines(item).slice(2)
-  return [itemName(item), `${RARITY_KO[item.rarity]} · 파워 ${itemPower(item)} · 아이템 레벨 ${item.itemLevel}`, ...lines].join('\n')
+  return [itemName(item), `${RARITY_KO[item.rarity]} · 파워 ${itemPower(item)} · ${ilvText(item.itemLevel)}`, ...lines].join('\n')
 }
 
 /** Item title with the prefix and suffix words coloured (detail cards, tooltips). */
@@ -60,4 +60,19 @@ export function nameTitle(tag: 'h3' | 'h4', item: ItemInstance): HTMLElement {
   h.append(base)
   if (p.plus) h.append(' ', span('plus', p.plus))
   return h
+}
+
+/** Compare row "아이템 레벨 iLv 3 → iLv 5" (worn → this one), or null when nothing is worn there. */
+export function ilvRow(worn: ItemInstance | undefined, item: ItemInstance): HTMLLIElement | null {
+  if (!worn) return null
+  const d = item.itemLevel - worn.itemLevel
+  const li = document.createElement('li')
+  li.className = d > 0 ? 'up' : d < 0 ? 'down' : 'same'
+  li.dataset.stat = 'ilvl'
+  const a = document.createElement('span')
+  a.textContent = '아이템 레벨'
+  const b = document.createElement('b')
+  b.textContent = `${ilvText(worn.itemLevel)} → ${ilvText(item.itemLevel)}${d > 0 ? ' ▲' : d < 0 ? ' ▼' : ''}`
+  li.append(a, b)
+  return li
 }

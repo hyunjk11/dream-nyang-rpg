@@ -102,6 +102,8 @@ export interface SaveData {
     runs: number
     /** The trip in progress (run gold etc.), so a reload mid-run banks it instead of losing it. */
     open?: OpenRun | null
+    /** 던전 유지: the floor she left mid-way (recall or a fall), so the return portal survives a reload. */
+    floorState?: import('./floorsnap').FloorState | null
   }
   /** Skill tree (3D): unspent points and ranks per skill. Old saves get it on load. */
   build?: { points: number; ranks: Record<string, number> }

@@ -92,6 +92,11 @@ export function roundStat(stat: StatKey, value: number): number {
   return PERCENT_STATS.includes(stat) ? Math.round(value * 1000) / 1000 : Math.max(1, Math.round(value))
 }
 
+/** "iLv 7": the item-level tag on cards, tooltips, shelves and compare rows. */
+export function ilvText(level: number): string {
+  return `iLv ${Math.max(1, Math.floor(level || 1))}`
+}
+
 export function makeItem(defId: string, rarity: Rarity, rng: () => number, itemLevel: number): ItemInstance {
   const def = ITEMS[defId]
   const level = Math.max(1, Math.floor(itemLevel))

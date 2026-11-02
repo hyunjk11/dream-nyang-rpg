@@ -7,7 +7,7 @@ import { buildOf } from './skilltree'
 import { delveOf, settleOpenRun, type OpenRun } from './delve'
 import { computeStats } from './stats'
 import { EQUIP_SLOTS, type EquipSlot, type SaveData } from './types'
-import { migrateItem } from './migrate-item'
+import { fallbackItemLevel, migrateItem } from './migrate-item'
 import { townOf } from './town'
 import { LEVEL_CAP } from '../data/tree'
 
@@ -21,7 +21,8 @@ export interface Migration {
 export function migrateSave(save: SaveData): Migration {
   save.level = Math.max(1, Math.min(LEVEL_CAP, Math.floor(save.level || 1)))
   save.xp = Math.max(0, Math.floor(save.xp || 0))
-  save.items = (save.items ?? []).filter((i) => i && ITEMS[i.defId]).map(migrateItem)
+  const lv = fallbackItemLevel(save)
+  save.items = (save.items ?? []).filter((i) => i && ITEMS[i.defId]).map((i) => migrateItem(i, lv))
   save.materials = { dream_dust: 0, toy_part: 0, star_shard: 0, ...save.materials }
   const eq: Partial<Record<EquipSlot, string>> = {}
   for (const slot of EQUIP_SLOTS) {

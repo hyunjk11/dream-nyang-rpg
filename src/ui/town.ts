@@ -8,9 +8,9 @@
  */
 import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { boardOf, claimContract, contractTitle, dropContract, rewardText, takeContract, type Contract } from '../sim/contracts'
-import { addItem, bagItems, findItem, isEquipped } from '../sim/inventory'
-import { itemLines, itemName, itemPower, plusOf, sellValue, upgradeMul } from '../sim/loot'
-import { fillCell, nameTitle } from './itemcell'
+import { addItem, bagItems, findItem, isEquipped, slotFor } from '../sim/inventory'
+import { ilvText, itemLines, itemName, itemPower, plusOf, sellValue, upgradeMul } from '../sim/loot'
+import { fillCell, ilvRow, nameTitle } from './itemcell'
 import { buyBack, buyConsumable, buyStock, consumableCount, CONSUMABLES, RESTOCK_COST, restock, sellItem, shopStock, STASH_CAP, stashPut, stashTake, townOf } from '../sim/town'
 import { canPay, changeElement, ELEMENT_COST, elementOf, MAX_PLUS, rerollAffix, rerollAffixCost, rerollChoices, upgradeCost, upgradeGun, type Cost } from '../sim/workshop'
 import { CHAPTER2, CHAPTER_TITLE, chapter2Open, chapterProgress, chaptersOf, claimQuest, questRewardText, takeQuest } from '../sim/chapters'
@@ -229,7 +229,7 @@ export class TownUI {
   private itemCard(item: ItemInstance, save: SaveData): HTMLElement {
     const box = el('div', 'town-detail')
     const h = nameTitle('h3', item)
-    box.append(h, el('p', 'inv-sub', `아이템 레벨 ${item.itemLevel} · 파워 ${itemPower(item)}${plusOf(item) ? ` · 강화 +${plusOf(item)} (총 피해 ×${upgradeMul(plusOf(item)).toFixed(2)})` : ''}`))
+    box.append(h, el('p', 'inv-sub', `${ilvText(item.itemLevel)} · 파워 ${itemPower(item)}${plusOf(item) ? ` · 강화 +${plusOf(item)} (총 피해 ×${upgradeMul(plusOf(item)).toFixed(2)})` : ''}`))
     const ul = el('ul', 'inv-lines')
     for (const line of itemLines(item)) ul.append(el('li', '', line))
     box.append(ul)
@@ -238,9 +238,12 @@ export class TownUI {
     if (!findItem(trial, item.uid)) addItem(trial, structuredClone(item), true)
     if (!isEquipped(trial, item.uid)) {
       const rows = compareEquip(trial, item.uid)
-      if (rows.length) {
+      const target = slotFor(trial, item)
+      const lv = ilvRow(target ? findItem(trial, trial.equipment[target]) : undefined, item)
+      if (rows.length || lv) {
         box.append(el('h4', '', '지금 장비와 비교'))
         const cmp = el('ul', 'inv-compare')
+        if (lv) cmp.append(lv)
         for (const r of rows.slice(0, 6)) {
           const li = el('li', r.delta > 0 ? 'up' : 'down')
           li.append(el('span', '', r.label), el('b', '', `${r.from} → ${r.to}`))
