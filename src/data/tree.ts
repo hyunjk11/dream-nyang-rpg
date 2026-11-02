@@ -14,12 +14,17 @@ export interface TreeSkill {
   name: string
   /** Little glyph on the button (plain text, no emoji fonts needed). */
   glyph: string
+  /** Hotbar label when the full name does not fit a 50–58 px button (≤ 5 chars incl. space). */
+  short?: string
   /** What rank r does (r ≥ 1). */
   text: (r: number) => string
   /** Active skills: hotkey and cooldown (s) at rank r. */
   key?: '1' | '2' | '3' | '4'
   cooldown?: (r: number) => number
 }
+
+/** Name for the hotbar button. */
+export const hotbarName = (s: TreeSkill): string => s.short ?? s.name
 
 export const BRANCH_KO: Record<Branch, { name: string; blurb: string; color: string }> = {
   gun: { name: '물총 장인', blurb: '쏘고 또 쏘는 손맛', color: '#7fb8ff' },
@@ -62,7 +67,7 @@ export const TREE: TreeSkill[] = [
   },
   { id: 'purr', branch: 'mochi', tier: 2, kind: 'passive', max: 3, name: '골골 회복', glyph: '골', text: (r) => `자연 회복 +${pct(0.3 * r)}, 더 빨리 시작` },
   {
-    id: 'candy_aura', branch: 'mochi', tier: 3, kind: 'active', max: 3, name: '하트 사탕 오라', glyph: '사', key: '4',
+    id: 'candy_aura', branch: 'mochi', tier: 3, kind: 'active', max: 3, name: '하트 사탕 오라', short: '사탕 오라', glyph: '사', key: '4',
     text: (r) => `6초 동안 매초 최대 체력 ${pct(auraHeal(r))} 회복, 받는 피해 -20%`,
     cooldown: () => 28,
   },
