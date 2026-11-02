@@ -633,6 +633,10 @@ function townSuccess(kind: TownSuccess, item?: ItemInstance): void {
     vfx.ring(hero.object.position.clone().setY(0.06), 0xffd66b, 0.3, 2.4, 0.5)
     vfx.burst(at, 0xffe9a0, { count: 26, speed: 3.4, up: 2.4, life: 0.7, size: 0.14, gravity: 2, drag: 1.6, additive: true })
     if (item) float(`+${item.plus ?? 0} 강화 성공!`, at.clone().setY(1.9), '#ffe08a')
+  } else if (kind === 'mod') {
+    chime('forge')
+    vfx.burst(at, 0xc9f0ff, { count: 20, speed: 2.8, up: 2, life: 0.6, size: 0.12, gravity: 1.6, drag: 1.7, additive: true })
+    applyBuild()
   } else if (kind === 'reroll' || kind === 'element') {
     chime('reroll')
     vfx.burst(at, kind === 'element' ? 0x9fdcff : 0xd7b8ff, { count: 18, speed: 2.6, up: 1.8, life: 0.6, size: 0.12, gravity: 1.5, drag: 1.8, additive: true })

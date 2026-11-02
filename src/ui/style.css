@@ -718,3 +718,19 @@ body.touch #waypoint button { min-width: 44px; min-height: 44px; }
 body.compact .spot-tag { font-size: 12px; padding: 1px 8px; }
 #contract-hud .ch.story b { color: #7b55d6; }
 #contract-hud .ch.story { border-left-color: #b48cff; }
+
+/* 총 개조 (gunsmith) */
+.town-mods .mod-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.town-mods .mod-slot { border: 2px dashed #d9c6e6; border-radius: 10px; padding: 6px; min-height: 52px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; background: #fbf7fd; }
+.town-mods .mod-slot.on { border-style: solid; border-color: var(--rar, #c9b8ff); background: #fff; }
+.town-mods .mod-slot.locked { opacity: 0.45; background: #f1eaf4; }
+.town-mods .mod-slot.over { background: #f3e6ff; border-color: #8a4fb0; }
+.town-mods .mod-slot b { font-size: 12px; color: #5b3a72; }
+.town-mods .mod-slot small { font-size: 11px; overflow-wrap: anywhere; }
+.town-mods .mod-slot .item-svg { align-self: flex-start; }
+.town-mods .mod-acts { display: flex; flex-wrap: wrap; gap: 4px; }
+.town-mods .mod-acts button { font-size: 11px; padding: 4px 7px; }
+.town-mods .mod-parts { display: flex; flex-wrap: wrap; gap: 5px; }
+.town-mods .mod-part { display: flex; align-items: center; gap: 5px; border: 2px solid var(--rar, #c9b8ff); background: #fff; border-radius: 9px; padding: 4px 7px; font-size: 12px; cursor: grab; max-width: 100%; }
+.town-mods .mod-part small { color: #7a5a88; font-size: 11px; }
+.town-mods .mod-part:disabled { cursor: not-allowed; }
