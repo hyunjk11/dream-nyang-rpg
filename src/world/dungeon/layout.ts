@@ -7,8 +7,8 @@
  */
 import { waveFor } from './waves'
 import type { HordeKind } from './horde'
-import { Tile, distances, generateMaze, walkable, type Maze, type Nest, type Rect } from './maze'
-import { SLOT, roomMaze, type RoomMaze } from './rooms'
+import { Tile, distances, walkable, type Maze, type Nest, type Rect } from './maze'
+import { SLOT, bossMaze, roomMaze, type RoomMaze } from './rooms'
 import { depthStep, rosterShift, type FloorPlan } from '../../sim/delve'
 import { townMaze } from './town'
 import { fieldMaze } from './field'
@@ -159,7 +159,8 @@ export function roomDistance(m: Maze, r: Rect): number {
 
 /** The floor's maze; explore floors keep more dead ends and re-roll (seeded) until the exit room is far. */
 export function floorMaze(plan: Pick<FloorPlan, 'seed' | 'cells' | 'bossRoom' | 'objective'>): Maze {
-  if (plan.objective === 'boss') return generateMaze(plan.seed, plan.cells, plan.cells, plan.bossRoom)
+  // Boss floors: a hall into one open arena (was a tile maze with wave pipes; see rooms.ts bossMaze).
+  if (plan.objective === 'boss') return bossMaze(plan.seed)
   if (plan.objective === 'field') return fieldMaze(plan.seed)
   if (plan.objective === 'town') return townMaze(plan.seed)
   let best: Maze | null = null
