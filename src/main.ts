@@ -39,7 +39,7 @@ import { showSummary } from './ui/summary'
 import { playChime, type Chime } from './audio/chime'
 import { blast, SkillRunner, type SkillBody, type SkillWorld } from './combat/skills'
 import { applyProcs, chill, ELEMENTS, procBursts } from './combat/elements'
-import { ACTIVES, TREE_BY_ID } from './data/tree'
+import { ACTIVES, TREE_BY_ID, hotbarName } from './data/tree'
 import { GUN_PROFILES } from './data/guns'
 import { rank } from './sim/skilltree'
 import { computeStats, gainXp, type ComputedStats } from './sim/stats'
@@ -971,7 +971,8 @@ function paintHotbar(): void {
       glyph.innerHTML = skillSvg(id)
     }
     const name = el.querySelector('b')
-    if (name && name.textContent !== def.name) name.textContent = def.name
+    const label = hotbarName(def)
+    if (name && name.textContent !== label) name.textContent = label
     const veil = el.querySelector('s') as HTMLElement | null
     if (veil) veil.style.height = `${Math.round(ready * 100)}%`
     const tip = r > 0 ? `${def.name} [${i + 1}]\n${def.text(r)}${def.cooldown ? `\n대기 ${def.cooldown(r)}초` : ''}${ready > 0 ? '\n충전 중…' : ''}` : `${def.name}\n아직 안 배웠어. K 스킬 나무에서 배울 수 있어.`
@@ -1394,6 +1395,7 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
       bossDown: () => {
         if (!delve) return
         if (field) {
+          delve.kill(false) // the bloom counts (delve.bossCleared counts it below)
           giveXp(bossXp(2))
           questHit({ type: 'boss' })
           game.persist(store)

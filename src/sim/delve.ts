@@ -436,6 +436,8 @@ export class Delve {
   bossCleared(save: SaveData): number {
     const d = delveOf(save)
     this.floorsCleared += this.onBoss ? 1 : 0
+    // The bloom itself is a kill (a quick boss clear used to read "처치 0마리").
+    if (!this.bossBeaten) this.kills += 1
     this.bossBeaten = true
     d.cleared = Math.max(d.cleared, this.depth)
     const opened = d.unlocked < this.depth + 1 ? this.depth + 1 : 0
