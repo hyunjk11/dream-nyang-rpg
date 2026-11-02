@@ -83,8 +83,8 @@ export const DIFFICULTY = {
      * hitting a wall there (0 → 8 deaths in 10 from floor 1 to floor 3 with depth-1 gear).
      */
     entryEase: [0.5, 0.7, 0.75] as readonly number[],
-    /** Foe hp share of the depth step on depth 2's normal floors (2.35^share). */
-    entryHpEase: [0.85, 0.92, 1] as readonly number[],
+    /** Foe hp share of the depth step on depth 2's normal floors (2.35^share), falling as the floor bonus grows so depth-1 gear still gets through (sim, new player + depth-1 gear: d2f3 16→6/20). */
+    entryHpEase: [0.82, 0.7, 0.6] as readonly number[],
     /** ...and their explore packs draw from the roster this many tiers back (floor 3 met wave-6 kinds). */
     entryRoster: [0, 0, -1] as readonly number[],
     /** Survive floor: waves to outlast (floor 1 of depth 1 stays short and sweet). */
