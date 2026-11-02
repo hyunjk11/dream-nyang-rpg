@@ -69,7 +69,6 @@ function surrounded(hit: number, maxHp: number, kinds: HordeKind[] = ['slime', '
     hero.x = c.x
     hero.z = c.z
   }
-  if (process.env.HPLOG) console.log(`hit×${hit.toFixed(2)} maxHp ${maxHp} → 남은 HP ${Math.round(hp)} (${Math.round((1 - hp / maxHp) * 100)}% 잃음)`)
   return { hp, lost: 1 - hp / maxHp }
 }
 
