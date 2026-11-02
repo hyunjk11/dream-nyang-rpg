@@ -30,7 +30,7 @@ import { Portal } from './portal'
 import { Sewer } from './sewer'
 import { TPS, type AimTarget, type RayFn, type TpsView } from '../../core/tps'
 import { Shooter, type ShotProcs, type ShotWorld } from '../../combat/shooter'
-import { blast, type SkillBody, type SkillWorld } from '../../combat/skills'
+import { blast, SKILL_POWER, type SkillBody, type SkillWorld } from '../../combat/skills'
 import { applyProcs, chill, ELEMENTS, procBursts } from '../../combat/elements'
 import { RARITY_COLOR } from '../../sim/types'
 import { collideCircle, rayHit } from './walls'
@@ -58,6 +58,17 @@ export const BOSS_ADDS = 4
  */
 export const BOSS_GUARD = 4
 export const BOSS_LIVE = 8
+/**
+ * Boss-room hits (fix/boss-floor, "내 피도 안빠져"): out in the maze a slime's 5 × 0.15 rounds to
+ * 1 HP, which is fine with dozens of foes, but a boss room holds at most BOSS_LIVE adds, so each
+ * one hits harder, and the boss herself bites. Both also grow with her max HP (levels and gear
+ * raise it; foe damage did not follow, so a Lv 9 hero never dropped).
+ */
+export const BOSS_ROOM_HIT = { adds: 4, boss: 2 }
+/** Damage factor for the boss room, given her max HP (150 at Lv 1). */
+export function bossRoomHit(maxHp: number, who: 'adds' | 'boss'): number {
+  return BOSS_ROOM_HIT[who] * Math.max(1, maxHp / DIFFICULTY.hero.maxHp)
+}
 import { NAMED } from '../../sim/chapters'
 import type { HordeKind } from './horde'
 import { Chest } from './chest'
@@ -346,6 +357,7 @@ export class DungeonRun {
     }
     this.horde = new Horde(this.maze)
     this.horde.scale = { hp: this.plan.scale.hp, damage: this.plan.scale.damage }
+    if (isBoss) this.horde.scale.damage *= bossRoomHit(host.hero.maxHp, 'adds')
     this.horde.onKill = (f) => this.foeDown(f)
     this.horde.onRage = (f) => {
       const at = new Vector3(f.x, 1, f.z)
@@ -387,12 +399,12 @@ export class DungeonRun {
         this.addSpot({ id: t.id, x: t.x, z: t.z, r: t.id === 'gate' ? 1.6 : 2.2, hint: t.hint, name: t.name, tagY: t.id === 'board' ? 2.8 : t.id === 'gate' ? 3.4 : 2.1 })
       }
     }
-    this.skillWorld = { solid: this.ray, bodies: () => this.bodies() }
+    this.skillWorld = { solid: this.ray, bodies: () => this.bodies(), power: SKILL_POWER * this.horde.scale.hp }
     this.hordeView = new HordeView()
     this.sewer.group.add(this.hordeView.group)
     this.loot = new LootView((x, z) => collideCircle(maze, x, z, 0.2))
     this.sewer.group.add(this.loot.group)
-    this.boss = isBoss ? new Boss(this.maze, this.plan.scale.boss) : null
+    this.boss = isBoss ? new Boss(this.maze, { ...this.plan.scale.boss, damage: this.plan.scale.boss.damage * bossRoomHit(host.hero.maxHp, 'boss') }) : null
     const body = makeFoeBody('bloom')
     this.bossBody = body.rig
     this.bossMats = body.mats

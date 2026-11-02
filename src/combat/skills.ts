@@ -27,6 +27,27 @@ export interface SkillBody {
 export interface SkillWorld {
   bodies: () => SkillBody[]
   solid: RayFn
+  /**
+   * How tough this world's foes are against the skills' base numbers (fix/boss-floor). #39 raised
+   * foe HP about 10× but skills stayed flat, so a bomb tickled. The run passes
+   * SKILL_POWER × its floor HP scale (depth, explore floors); the town its own foe HP ratio.
+   */
+  power?: number
+}
+
+/** Skill base numbers × this × the world's HP scale ≈ a rank-1 bomb taking ~60% off a normal foe. */
+export const SKILL_POWER = 2.9
+/** Elites and the boss have 6.5× / 20×+ HP; skills hit them harder so they visibly dent. */
+export const SKILL_TONE: Record<SkillBody['tone'], number> = { n: 1, elite: 2, boss: 4 }
+/** 과열 폭주's opening shockwave (base, per rank) and radius. */
+export const OVERDRIVE_WAVE = { base: 30, rank: 12, radius: 3.2 }
+/** 사탕 오라 pulses (every AURA_PULSE s): base, per rank, radius. */
+export const AURA_BURN = { base: 6, rank: 3, radius: 2.4 }
+export const AURA_PULSE = 0.5
+
+/** What one skill hit lands on a body: base × the gun/level multiplier × world power × tone. */
+export function skillAmount(base: number, damageMul: number, power: number, tone: SkillBody['tone']): number {
+  return Math.round(base * damageMul * power * SKILL_TONE[tone])
 }
 
 export interface SkillHost {
@@ -46,6 +67,8 @@ export interface SkillHost {
   armor: () => number
   /** Little text when a skill can't fire. */
   say?: (text: string) => void
+  /** Hit feel: freeze `stop` seconds and shake the camera by `shake` (fix/boss-floor). */
+  feel?: (stop: number, shake: number) => void
 }
 
 /** Blast every body within r of (x, z); returns how many it hit. */
@@ -59,6 +82,23 @@ export function blast(bodies: SkillBody[], x: number, z: number, r: number, amou
     const l = d || 1
     b.hit(Math.round(amount), dx / l, dz / l, knock, slow)
     numbers?.(Math.round(amount), new Vector3(b.x, 1.1, b.z), b.tone)
+    n += 1
+  }
+  return n
+}
+
+/** A skill's area hit: like blast(), but tone-scaled and reported as skill numbers. Returns hits. */
+export function skillBlast(bodies: SkillBody[], x: number, z: number, r: number, base: number, power: number, knock = 0, slow = 0, numbers?: (amount: number, at: Vector3, tone: SkillBody['tone']) => void): number {
+  let n = 0
+  for (const b of bodies) {
+    const dx = b.x - x
+    const dz = b.z - z
+    const d = Math.hypot(dx, dz)
+    if (d > r + b.r) continue
+    const l = d || 1
+    const amount = Math.round(base * power * SKILL_TONE[b.tone])
+    b.hit(amount, dx / l, dz / l, knock, slow)
+    numbers?.(amount, new Vector3(b.x, 1.1, b.z), b.tone)
     n += 1
   }
   return n
@@ -121,6 +161,7 @@ export class SkillRunner {
   private readonly bombs: Bomb[] = []
   private rush: Rush | null = null
   private auraRing = 0
+  private auraBurn = 0
   private readonly geo = new SphereGeometry(0.32, 16, 12)
   private readonly mat = new MeshBasicMaterial({ color: 0xbfe9ff, transparent: true, opacity: 0.55, blending: AdditiveBlending, depthWrite: false })
 
@@ -158,7 +199,7 @@ export class SkillRunner {
     this.cooldown[id] = this.cooldownOf(id)
     this.used[id] += 1
     if (id === 'bubble_bomb') this.throwBomb(r, world)
-    else if (id === 'overdrive') this.overdrive(r)
+    else if (id === 'overdrive') this.overdrive(r, world)
     else if (id === 'mochi_rush') this.startRush(r, world)
     else this.startAura()
     return true
@@ -207,15 +248,19 @@ export class SkillRunner {
     vfx.burst(from, 0xbfe9ff, { count: 6, speed: 1.4, up: 1, life: 0.3, size: 0.12, gravity: 2, drag: 2 })
   }
 
-  private overdrive(r: number): void {
+  private overdrive(r: number, world: SkillWorld): void {
     const { shooter, hero, vfx } = this.host
     shooter.gun.overdrive = 5 + r
     shooter.gun.heat = 0
     shooter.gun.overheated = false
     shooter.overdriveCrit = 0.1
     const at = hero.object.position.clone().setY(1)
-    vfx.ring(at.clone().setY(0.06), 0xff8f5c, 0.3, 2.2, 0.45)
-    vfx.burst(at, 0xffb36b, { count: 16, speed: 3, up: 2, life: 0.5, size: 0.14, gravity: 3, drag: 2 })
+    vfx.ring(at.clone().setY(0.06), 0xff8f5c, 0.3, OVERDRIVE_WAVE.radius, 0.45)
+    vfx.ring(at.clone().setY(0.1), 0xffd08a, 0.2, OVERDRIVE_WAVE.radius * 0.7, 0.3)
+    vfx.burst(at, 0xffb36b, { count: 26, speed: 4.5, up: 2.4, life: 0.55, size: 0.18, gravity: 3, drag: 2, additive: true })
+    // The heat bursts out: a shockwave knocks the ring of foes back as the barrel lights.
+    const hits = skillBlast(world.bodies(), at.x, at.z, OVERDRIVE_WAVE.radius, (OVERDRIVE_WAVE.base + OVERDRIVE_WAVE.rank * r) * this.host.damageMul(), world.power ?? 1, 1.6, 0, this.numbers)
+    this.host.feel?.(hits > 0 ? 0.08 : 0.04, 0.09)
     this.host.sfx('windup', 0.8)
     this.host.gun?.('thunk', 1, 0.3)
   }
@@ -248,6 +293,7 @@ export class SkillRunner {
     const { hero, vfx } = this.host
     this.aura = AURA_TIME
     this.auraRing = 0
+    this.auraBurn = 0
     vfx.poof(hero.object.position.clone().setY(1.2), 0xff9fd2, 1.6)
     this.host.sfx('heal', 1)
   }
@@ -261,10 +307,11 @@ export class SkillRunner {
     this.host.vfx.ring(at.clone().setY(0.06), 0xbfe9ff, 0.2, 1.8, 0.3)
     this.host.gun?.('pop', 0.8, 0.4)
     // Deferred a tick so a chain can't recurse inside the killing blow.
-    queueMicrotask(() => blast(world.bodies(), x, z, 1.8, bombDamage(1) * 0.45 * this.host.damageMul(), 0, 0, this.numbers))
+    queueMicrotask(() => skillBlast(world.bodies(), x, z, 1.8, bombDamage(1) * 0.45 * this.host.damageMul(), world.power ?? 1, 0, 0, this.numbers))
   }
 
-  private readonly numbers = (amount: number, at: Vector3, tone: SkillBody['tone']) => this.host.shooter.hudFx.number(amount, at, tone)
+  /** Skill hits read big: normals as crit-sized numbers, elites/boss in their own colour. */
+  private readonly numbers = (amount: number, at: Vector3, tone: SkillBody['tone']) => this.host.shooter.hudFx.number(amount, at, tone === 'n' ? 'crit' : tone)
 
   /** Advance cooldowns, bombs in flight, Mochi's rush and the aura. Call after the world update. */
   update(dt: number, world: SkillWorld | null): void {
@@ -282,12 +329,15 @@ export class SkillRunner {
       b.mesh.removeFromParent()
       this.bombs.splice(i, 1)
       const at = b.to.clone().setY(0.6)
-      vfx.poof(at, 0xbfe9ff, 1.4 + b.r * 0.3)
+      vfx.poof(at, 0xbfe9ff, 1.8 + b.r * 0.4)
       vfx.ring(b.to.clone().setY(0.06), 0x9fdcff, 0.3, b.r, 0.45)
-      vfx.burst(at, 0xffffff, { count: 14, speed: 4, up: 2.4, life: 0.45, size: 0.16, gravity: 5, drag: 2, additive: true })
+      vfx.ring(b.to.clone().setY(0.1), 0xffffff, 0.15, b.r * 0.75, 0.3)
+      vfx.burst(at, 0xffffff, { count: 24, speed: 5, up: 3, life: 0.5, size: 0.2, gravity: 5, drag: 2, additive: true })
+      vfx.burst(at, 0x9fdcff, { count: 12, speed: 2.5, up: 1.5, life: 0.7, size: 0.26, gravity: 2, drag: 2 })
       this.host.sfx('splash', 1)
       this.host.gun?.('pop', 1, -0.3)
-      if (world) blast(world.bodies(), b.to.x, b.to.z, b.r, b.amount, 1.2, b.slow, this.numbers)
+      const hits = world ? skillBlast(world.bodies(), b.to.x, b.to.z, b.r, b.amount, world.power ?? 1, 1.2, b.slow, this.numbers) : 0
+      this.host.feel?.(hits > 0 ? 0.09 : 0.03, hits > 0 ? 0.12 : 0.05)
     }
     const rush = this.rush
     if (rush) {
@@ -302,8 +352,11 @@ export class SkillRunner {
           if (rush.hit.has(key)) continue
           if (Math.hypot(b.x - at.x, b.z - at.z) > b.r + 1.1) continue
           rush.hit.add(key)
-          b.hit(Math.round(rush.amount), rush.dir.x, rush.dir.z, 2.6, 0)
-          this.numbers(Math.round(rush.amount), new Vector3(b.x, 1.1, b.z), b.tone)
+          const amount = Math.round(rush.amount * (world.power ?? 1) * SKILL_TONE[b.tone])
+          b.hit(amount, rush.dir.x, rush.dir.z, 2.6, 0)
+          this.numbers(amount, new Vector3(b.x, 1.1, b.z), b.tone)
+          vfx.burst(new Vector3(b.x, 0.8, b.z), 0xffe3a0, { count: 10, speed: 3.5, up: 2, life: 0.35, size: 0.16, gravity: 4, drag: 2, additive: true })
+          this.host.feel?.(rush.hit.size === 1 ? 0.08 : 0.03, 0.08)
         }
       }
       if (k >= 1) {
@@ -323,6 +376,14 @@ export class SkillRunner {
         const p = hero.object.position
         vfx.ring(p.clone().setY(0.06), 0xff9fd2, 0.4, 2.2, 0.5, 0.6)
         vfx.burst(p.clone().setY(1.4), 0xffb7d8, { count: 4, speed: 0.8, up: 1.6, life: 0.7, size: 0.18, gravity: -1, drag: 1.5 })
+      }
+      // The candy stings: foes inside the ring take a pulse every AURA_PULSE s.
+      this.auraBurn -= dt
+      if (this.auraBurn <= 0 && world && hero.alive) {
+        this.auraBurn = AURA_PULSE
+        const p = hero.object.position
+        const r = this.host.rank('candy_aura')
+        skillBlast(world.bodies(), p.x, p.z, AURA_BURN.radius, (AURA_BURN.base + AURA_BURN.rank * r) * this.host.damageMul(), world.power ?? 1, 0.3, 0, this.numbers)
       }
     } else hero.guard = guard
   }

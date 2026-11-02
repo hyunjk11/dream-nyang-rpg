@@ -40,7 +40,8 @@ import { Delve, delveOf, fieldPlan, itemLevelFor, portalChoices, type DelveEnd, 
 import { floorStateLabel, type FloorState } from './sim/floorsnap'
 import { showSummary } from './ui/summary'
 import { playChime, type Chime } from './audio/chime'
-import { blast, SkillRunner, type SkillBody, type SkillWorld } from './combat/skills'
+import { DIFFICULTY } from './combat/difficulty'
+import { blast, SKILL_POWER, SkillRunner, type SkillBody, type SkillWorld } from './combat/skills'
 import { applyProcs, chill, ELEMENTS, procBursts } from './combat/elements'
 import { ACTIVES, TREE_BY_ID, hotbarName } from './data/tree'
 import { GUN_PROFILES } from './data/guns'
@@ -414,6 +415,10 @@ const skills = new SkillRunner({
   mochiMul: () => stats.mochiMul,
   armor: () => stats.armor,
   say: (text) => toast(text, 'info'),
+  feel: (stop, shake) => {
+    hitStop.request(stop)
+    rig.shake = Math.max(rig.shake, shake)
+  },
 })
 const townBodies: SkillBody[] = []
 /** Skill targets on the island: the awake foes of this zone. */
@@ -430,6 +435,8 @@ function rimDistance(ox: number, oz: number, dx: number, dz: number, r: number, 
   return Math.max(0, Math.min(max, t / l))
 }
 const townSkillWorld: SkillWorld = {
+  // Town foes have TOWN.hp (11) against the sewer's 9 (fix/boss-floor skill rescale).
+  power: SKILL_POWER * (DIFFICULTY.town.hp / DIFFICULTY.horde.hp),
   // Landmarks and the island's rim both stop skills: Mochi's rush no longer runs off into the sea.
   solid: (ox, oy, oz, dx, dy, dz, max) => Math.min(townRay(ox, oy, oz, dx, dy, dz, max), rimDistance(ox, oz, dx, dz, WALK_RADIUS - 0.4, max)),
   bodies: () => {
