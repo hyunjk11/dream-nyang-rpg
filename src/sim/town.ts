@@ -5,6 +5,7 @@
  *  - 보관함: a chest in front of Byeolha's house with extra room beside the bag.
  * The stock and the quest board refresh whenever she comes home from a trip (delve.runs moved).
  */
+import { stripMods } from './mods'
 import { GEAR_IDS, WEAPON_IDS } from '../data/items'
 import { addItem, bagItems, findItem, isEquipped, removeItem } from './inventory'
 import { delveOf, itemLevelFor } from './delve'
@@ -172,6 +173,7 @@ export function sellItem(save: SaveData, id: string): ShopResult {
   const item = findItem(save, id)
   if (!item) return { ok: false, reason: '없는 물건이야.' }
   if (save.equipment.weapon === id) return { ok: false, reason: '쓰고 있는 총은 팔 수 없어.' }
+  stripMods(save, item)
   const before = computeStats(save).maxHp
   const gold = sellValue(item)
   removeItem(save, id)

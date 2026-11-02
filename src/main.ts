@@ -1,3 +1,4 @@
+import { gunLookWithMods } from './sim/mods'
 import { GunSound, type GunCue } from './audio/gunsound'
 import '@fontsource/jua/400.css'
 import '@fontsource/noto-sans-kr/400.css'
@@ -466,8 +467,8 @@ function applyBuild(): void {
   hero.regenMul = stats.regenMul
   hero.regenDelay = stats.regenDelay
   hero.guard = stats.armor
-  const look = GUN_PROFILES[stats.weaponKind].look
   const gunItem: ItemInstance | undefined = findItem(game.save, game.save.equipment.weapon)
+  const look = gunLookWithMods(GUN_PROFILES[stats.weaponKind].look, gunItem)
   const gem = gunItem && gunItem.rarity !== 'common' ? hexOf(RARITY_COLOR[gunItem.rarity]) : null
   shooter.setLoadout({
     profile: stats.gun,
