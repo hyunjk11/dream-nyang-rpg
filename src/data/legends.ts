@@ -28,7 +28,7 @@ export interface LegendDef {
 export const LEGENDS: LegendDef[] = [
   {
     id: 'leg_starrain', name: '별비 개틀링', gun: 'water',
-    stats: { fireRate: 0.22, starShot: 0.12, damage: 0.05 },
+    stats: { fireRate: 0.18, starShot: 0.12, damage: 0.05 },
     signature: '쏟아지는 물줄기 사이로 별비가 튄다 · 연사 대폭 상승',
     sources: [{ kind: 'boss', depth: 1 }], where: '깊이 1 보스 · 악몽 꽃',
     look: { body: 0xfff0a8, tank: 0xffd35a, barrel: 0xffe9a0, tracer: 0xfff3b0, barrelLen: 1.35, size: 1.08 },
