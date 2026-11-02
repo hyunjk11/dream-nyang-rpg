@@ -51,7 +51,8 @@ export interface ComputedStats {
 /** Per-level growth (level 30 ≈ 2× hp, +58% damage). */
 export const LEVEL_GROWTH = { hp: 0.035, damage: 0.02 }
 /** Caps so gear can't break the game. */
-export const STAT_CAPS = { critChance: 0.6, lifesteal: 0.08, armor: 0.5, moveMul: 1.35, fireRate: 2, starShot: 0.4, cloud: 0.4 }
+/** critChance 0.6 → 0.45 and a critMul cap: d2 gear stacked crits to 68% of all damage (2026-11 TTK pass). */
+export const STAT_CAPS = { critChance: 0.45, critMul: 2.6, lifesteal: 0.08, armor: 0.5, moveMul: 1.35, fireRate: 2, starShot: 0.4, cloud: 0.4 }
 /** Gun-type flavour for the juice: built-in star / cloud chance. */
 export const GUN_JUICE = { starRifle: 0.1, bubbleCloud: 0.06 }
 
@@ -93,7 +94,7 @@ export function computeStats(save: SaveData, items: ItemInstance[] = equippedIte
     damageMul: Math.round(damageMul * 1000) / 1000,
     fireRate: clamp(1 + (g.fireRate ?? 0) + (g.attackSpeed ?? 0) + rank(save, 'rhythm') * 0.05, 0.5, STAT_CAPS.fireRate),
     critChance: clamp(base.critChance + (g.critChance ?? 0) + st * 0.03, 0, STAT_CAPS.critChance),
-    critMul: base.critMul + (g.critDamage ?? 0) + st * 0.1,
+    critMul: clamp(base.critMul + (g.critDamage ?? 0) + st * 0.1, 1, STAT_CAPS.critMul),
     lifesteal: clamp(g.lifesteal ?? 0, 0, STAT_CAPS.lifesteal),
     pierce: base.pierce + Math.round(g.pierce ?? 0) + rank(save, 'dream_pierce'),
     moveMul: clamp(1 + (g.moveSpeed ?? 0), 0.7, STAT_CAPS.moveMul),

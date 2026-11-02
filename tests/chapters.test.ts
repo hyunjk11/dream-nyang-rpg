@@ -164,7 +164,7 @@ describe('챕터 저장', () => {
     expect(c.guide.count).toBe(0)
     expect(c.cleared).toEqual([])
     expect(c.quests.c2_slime.status).toBe('offered')
-    expect(c.quests.c2_bat.progress).toBe(10)
+    expect(c.quests.c2_bat.progress).toBe(8)
   })
 })
 
@@ -202,7 +202,7 @@ describe('챕터 2 몽실 들판 퀘스트', () => {
     expect(chaptersOf(save).quests.c2_slime.progress).toBe(0)
     questEvent(save, { type: 'kill', kind: 'slime', elite: false })
     expect(chaptersOf(save).quests.c2_slime.progress).toBe(1)
-    expect(questHud(save)[0].prog).toBe('1/12')
+    expect(questHud(save)[0].prog).toBe('1/10')
   })
 
   it('다 채우면 완료 알림, 게시판에서 보상(골드·경험치·장비)을 받고 다음 퀘스트가 열린다', () => {

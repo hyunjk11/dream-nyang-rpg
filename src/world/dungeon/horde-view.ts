@@ -232,6 +232,14 @@ const ELITE_TINT = new Color(1.25, 1.02, 0.55)
 const RAGE_TINT = new Color(1.6, 0.55, 0.6)
 /** Wind-up rings and charge lanes drawn at once (one instanced draw call each). */
 export const TELL_CAP = 32
+/** Floating hp bars over hurt foes (nearest first), and how far out they show (m). */
+export const BAR_CAP = 40
+export const BAR_RANGE = 24
+const BAR_BACK = new Color(0x2a1830)
+const BAR_FILL = new Color(0xff6fae)
+const BAR_ELITE = new Color(0xffc65a)
+const BAR_RAGE = new Color(0xff4d6d)
+const WHITE = new Color(0xffffff)
 const TELL_MELEE = new Color(0.95, 0.18, 0.5)
 const TELL_CHARGE = new Color(1.0, 0.28, 0.08)
 const FLASH = new Color(3.2, 3.0, 3.4)
@@ -262,6 +270,13 @@ export class HordeView {
   readonly lanes: InstancedMesh
   /** Tells drawn last frame (QA). */
   tells = 0
+  /** Hp bars over hurt foes: a dark back and a fill scaled from its left edge. */
+  readonly bars: InstancedMesh
+  readonly fills: InstancedMesh
+  /** Bars drawn last frame (QA, tests). */
+  barsDrawn = 0
+  private readonly cq = new Quaternion()
+  private readonly right = new Vector3()
 
   constructor() {
     this.group.name = 'sewer-horde'
@@ -275,6 +290,20 @@ export class HordeView {
       t.renderOrder = 3
       t.setColorAt(0, new Color(1, 1, 1))
       this.group.add(t)
+    }
+    // Walls hide the bar (depth-tested); depthWrite off + renderOrder keeps the fill over its back.
+    const barMat = () => new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.94, depthTest: true, depthWrite: false, fog: false, toneMapped: false })
+    this.bars = new InstancedMesh(new PlaneGeometry(1, 1), barMat(), BAR_CAP)
+    this.fills = new InstancedMesh(new PlaneGeometry(1, 1).translate(0.5, 0, 0), barMat(), BAR_CAP)
+    this.bars.name = 'horde-hp-bars'
+    this.fills.name = 'horde-hp-fills'
+    for (const [i, b] of [this.bars, this.fills].entries()) {
+      b.count = 0
+      b.visible = false
+      b.frustumCulled = false
+      b.renderOrder = 20 + i
+      b.setColorAt(0, i ? BAR_FILL : BAR_BACK)
+      this.group.add(b)
     }
     for (const kind of HORDE_KINDS) {
       const a = art.get(kind) ?? ballArt(kind)
@@ -320,6 +349,9 @@ export class HordeView {
     this.nearDrawn = 0
     let rings = 0
     let lanes = 0
+    let bars = 0
+    camera.getWorldQuaternion(this.cq)
+    this.right.set(1, 0, 0).applyQuaternion(this.cq)
     // Nearest first so the near-LOD budget goes to the ones in her face.
     const order = horde.foes
       .map((f) => ({ f, d: (f.x - cam.x) ** 2 + (f.z - cam.z) ** 2 }))
@@ -390,12 +422,38 @@ export class HordeView {
       // Crouching to charge: a hot shimmer.
       if (f.chargeWind > 0) this.c.lerp(RAGE_TINT, 0.5 + 0.5 * Math.sin(time * 40))
       if (f.dying > 0) this.c.copy(DEATH).multiplyScalar(1 + Math.max(0, 0.5 - Math.abs(f.dying / DIE_TIME - 0.4) * 2.5))
-      else if (f.hurt > 0) this.c.lerp(FLASH, f.hurt * 0.8)
+      else if (f.hurt > 0) this.c.lerp(FLASH, Math.min(1, f.hurt * 1.1))
       mesh.setColorAt(i, this.c)
+      // Hp bar once she has hurt it (tanky foes since 2026-11: show the progress).
+      if (f.dying <= 0 && f.hp < f.maxHp && d < BAR_RANGE * BAR_RANGE && bars < BAR_CAP) {
+        const w = (f.elite ? 1.15 : 0.72) * Math.min(1.5, Math.max(1, look.height / 1.1))
+        const y = h + (look.hover ?? 0) + 0.3
+        this.p.set(f.x, y, f.z)
+        this.s.set(w + 0.07, 0.12, 1)
+        this.m.compose(this.p, this.cq, this.s)
+        this.bars.setMatrixAt(bars, this.m)
+        this.bars.setColorAt(bars, BAR_BACK)
+        const frac = Math.max(0.02, Math.min(1, f.hp / f.maxHp))
+        this.p.addScaledVector(this.right, -w / 2)
+        this.s.set(w * frac, 0.08, 1)
+        this.m.compose(this.p, this.cq, this.s)
+        this.fills.setMatrixAt(bars, this.m)
+        this.c.copy(f.elite ? (f.rage ? BAR_RAGE : BAR_ELITE) : BAR_FILL)
+        if (f.hurt > 0) this.c.lerp(WHITE, f.hurt * 0.6)
+        this.fills.setColorAt(bars, this.c)
+        bars += 1
+      }
       this.drawn += 1
       if (useNear) this.nearDrawn += 1
     }
     this.tells = rings + lanes
+    this.barsDrawn = bars
+    for (const b of [this.bars, this.fills]) {
+      b.count = bars
+      b.visible = bars > 0
+      b.instanceMatrix.needsUpdate = true
+      if (b.instanceColor) b.instanceColor.needsUpdate = true
+    }
     for (const [t, n] of [[this.rings, rings], [this.lanes, lanes]] as const) {
       t.count = n
       t.visible = n > 0
@@ -416,7 +474,7 @@ export class HordeView {
   }
 
   dispose(): void {
-    for (const mesh of [...this.all, ...this.ink.values(), this.rings, this.lanes]) mesh.dispose()
+    for (const mesh of [...this.all, ...this.ink.values(), this.rings, this.lanes, this.bars, this.fills]) mesh.dispose()
     this.group.removeFromParent()
   }
 }

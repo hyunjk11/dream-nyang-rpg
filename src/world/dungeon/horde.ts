@@ -219,9 +219,14 @@ export interface HordeTarget {
 /** Hard cap: the view's instance buffers are sized from it. */
 export const HORDE_CAP = 220
 
+/** Elite hp multiplier: ×ELITE.hp for a slime-sized foe, compressed for big kinds (a knight elite is not 2.3× a slime elite). */
+export function eliteHpMul(kind: HordeKind): number {
+  return ELITE.hp * (HORDE.slime.hp / HORDE[kind].hp) ** (1 - DIFFICULTY.elite.hpKindPow)
+}
+
 /** A sewer foe's hp: kind × horde tuning × 쉬움/보통/어려움 × floor scale (× elite). */
 export function hordeHp(kind: HordeKind, scaleHp: number, elite = false, foeHp = diff().foeHp): number {
-  return Math.round(HORDE[kind].hp * DIFFICULTY.horde.hp * foeHp * scaleHp * (elite ? ELITE.hp : 1))
+  return Math.round(HORDE[kind].hp * DIFFICULTY.horde.hp * foeHp * scaleHp * (elite ? eliteHpMul(kind) : 1))
 }
 
 const CELL = 1.2

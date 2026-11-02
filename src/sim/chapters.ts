@@ -82,12 +82,12 @@ export const FLUFF = 'fluff'
 export const NAMED = { kind: 'slime' as HordeKind, name: '솜사탕 대장 몽글이', hp: 2.2 }
 
 export const CHAPTER2: ChapterQuestDef[] = [
-  { id: 'c2_slime', title: '솜사탕 슬라임 퇴치', text: '들판을 덮은 솜사탕 슬라임을 줄여 줘.', kind: 'kill', target: 'slime', goal: 12, reward: { gold: 60, xp: 120, mats: { dream_dust: 3 } } },
-  { id: 'c2_bat', title: '꿈박쥐 쫓기', text: '밤하늘에서 내려온 꿈박쥐가 잠을 깨운대.', kind: 'kill', target: 'bat', goal: 10, reward: { gold: 70, xp: 140, gear: 'uncommon' } },
+  { id: 'c2_slime', title: '솜사탕 슬라임 퇴치', text: '들판을 덮은 솜사탕 슬라임을 줄여 줘.', kind: 'kill', target: 'slime', goal: 10, reward: { gold: 60, xp: 120, mats: { dream_dust: 3 } } },
+  { id: 'c2_bat', title: '꿈박쥐 쫓기', text: '밤하늘에서 내려온 꿈박쥐가 잠을 깨운대.', kind: 'kill', target: 'bat', goal: 8, reward: { gold: 70, xp: 140, gear: 'uncommon' } },
   { id: 'c2_fluff', title: '몽실 솜사탕 모으기', text: '들판 괴물이 떨어뜨리는 몽실 솜사탕을 모아 와.', kind: 'collect', target: 'fluff', goal: 8, reward: { gold: 80, xp: 160, mats: { toy_part: 2 } } },
-  { id: 'c2_sweep', title: '들판 대청소', text: '종류는 상관없어. 많이, 아주 많이!', kind: 'kill', target: 'any', goal: 35, reward: { gold: 100, xp: 220, gear: 'rare' } },
+  { id: 'c2_sweep', title: '들판 대청소', text: '종류는 상관없어. 많이, 아주 많이!', kind: 'kill', target: 'any', goal: 25, reward: { gold: 100, xp: 220, gear: 'rare' } },
   { id: 'c2_named', title: '솜사탕 대장 몽글이', text: '들판 어딘가에 거대한 대장 슬라임이 있대. 찾아서 쓰러뜨려.', kind: 'named', target: 'named', goal: 1, reward: { gold: 130, xp: 260, gear: 'rare', mats: { star_shard: 1 } } },
-  { id: 'c2_knight', title: '구름 기사단', text: '구름 기사들이 들판 길목을 막고 있어.', kind: 'kill', target: 'knight', goal: 6, reward: { gold: 120, xp: 260, mats: { toy_part: 2, dream_dust: 4 } } },
+  { id: 'c2_knight', title: '구름 기사단', text: '구름 기사들이 들판 길목을 막고 있어.', kind: 'kill', target: 'knight', goal: 4, reward: { gold: 120, xp: 260, mats: { toy_part: 2, dream_dust: 4 } } },
   { id: 'c2_boss', title: '들판의 악몽 꽃', text: '들판 한가운데에서 악몽 꽃이 피어났어. 챕터 2의 마지막!', kind: 'boss', target: 'boss', goal: 1, reward: { gold: 220, xp: 420, gear: 'epic', mats: { star_shard: 2 } } },
 ]
 

@@ -111,9 +111,16 @@ export interface FieldNeeds {
   boss: boolean
 }
 
+/** Field foes use depth 1 floor 2; its bloom is a smaller boss than the delve's (chapter-2 gear). */
+export const FIELD_BOSS_HP = 0.6
+function fieldScale(): FloorScale {
+  const s = floorScale(1, 2)
+  return { ...s, boss: { ...s.boss, hp: FIELD_BOSS_HP } }
+}
+
 /** The 몽실 들판 trip plan: depth-1 roster and numbers, floor-2 scale, an open field. */
 export function fieldPlan(salt: number, needs: FieldNeeds): FloorPlan {
-  return { depth: 1, floor: 2, objective: 'field', goal: 1, key: false, seed: floorSeed(9, 1, salt), cells: 17, bossRoom: 7, scale: floorScale(1, 2), field: needs }
+  return { depth: 1, floor: 2, objective: 'field', goal: 1, key: false, seed: floorSeed(9, 1, salt), cells: 17, bossRoom: 7, scale: fieldScale(), field: needs }
 }
 
 /**
@@ -124,6 +131,13 @@ export function depthStep(depth: number, floor: number): number {
   const d = Math.max(0, depth - 1)
   if (d !== 1 || floor >= BOSS_FLOOR) return d
   return DIFFICULTY.delve.entryEase[Math.max(0, floor - 1)] ?? 1
+}
+
+/** Depth steps for foe hp: like depthStep but with entryHpEase on the normal floors of depth 2. */
+export function hpStep(depth: number, floor: number): number {
+  const d = Math.max(0, depth - 1)
+  if (d !== 1 || floor >= BOSS_FLOOR) return d
+  return DIFFICULTY.delve.entryHpEase[Math.max(0, floor - 1)] ?? 1
 }
 
 /** Roster tier offset for an explore floor's packs (≤ 0; only the normal floors of depth 2 have one). */
@@ -137,10 +151,11 @@ export function floorScale(depth: number, floor: number): FloorScale {
   const d = depthStep(depth, floor)
   const f = Math.max(0, Math.min(floor, BOSS_FLOOR) - 1)
   return {
-    hp: 1 + d * k.hpPerDepth + f * k.hpPerFloor,
+    // hp has its own, milder depth-2 entry ease (entryHpEase) so depth-1 gear still gets through.
+    hp: k.hpDepthGrowth ** hpStep(depth, floor) * (1 + f * k.hpPerFloor),
     damage: 1 + d * k.damagePerDepth + f * k.damagePerFloor,
     firstWave: 1 + Math.max(0, depth - 1) * k.wavesPerDepth + Math.min(f, k.floors - 1) * k.wavesPerFloor,
-    boss: { hp: 1 + d * k.bossHpPerDepth, damage: 1 + d * k.bossDamagePerDepth },
+    boss: { hp: k.bossHpGrowth ** d, damage: 1 + d * k.bossDamagePerDepth },
     gold: 1 + Math.max(0, depth - 1) * k.goldPerDepth,
   }
 }

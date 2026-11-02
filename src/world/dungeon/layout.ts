@@ -14,28 +14,29 @@ import { fieldMaze } from './field'
 /** Every explore-floor knob in one place (numbers from the approved audit plan). */
 export const EXPLORE = {
   /** Packs on a depth-1 floor, and the growth per extra depth. */
-  packs: [11, 15] as const,
+  /** Was 11-15 packs of 4-6: foes are ~10× tankier now (2026-11), so fewer and smaller packs keep a floor ~6-8 min. */
+  packs: [6, 9] as const,
   packGrowth: 0.2,
   /** Foes in an ordinary pack: small near the start, bigger further in. */
-  packSize: [4, 6] as const,
+  packSize: [2, 4] as const,
   /** Elite packs: one leader + minions. */
   elitePacks: [1, 3] as const,
-  minions: 5,
+  minions: 2,
   /** Wake when she is in sight this close (m); the whole pack wakes together. */
   aggro: 13,
   /** Give up after this long (s) out of sight or farther than `leash` (m), then walk home. */
   leash: 18,
   leashTime: 6,
   /** At most this many foes chase her at once (more wake as others fall). */
-  chaseCap: 9,
+  chaseCap: 4,
   /** Optional nest pipes: count, burst size, seconds between bursts, live cap per pipe, wake range (m). */
   nests: [2, 3] as const,
-  nestBurst: [2, 3] as const,
+  nestBurst: [1, 2] as const,
   nestEvery: 5,
-  nestCap: 6,
+  nestCap: 3,
   nestRange: 14,
   /** A pipe runs dry after this many foes (plugging it still pays the chest). */
-  nestTotal: 18,
+  nestTotal: 6,
   /** Dead-end chests, the shrine buff (s) and the chance of a secret pocket. */
   chests: [3, 5] as const,
   shrineTime: 30,
@@ -306,6 +307,16 @@ export function planLayout(maze: Maze, plan: Pick<FloorPlan, 'depth' | 'floor'>,
       if (homes.some((h) => near[h.y * m.w + h.x] >= 0 && near[h.y * m.w + h.x] < gap)) continue
       homes.push(c)
     }
+  }
+  // Fewer packs since 2026-11: make sure a few sit on her side of the doors (elites and the key need them).
+  const openSide = (c: Spot) => before[c.y * m.w + c.x] >= 0 && !inRect(exit, c.x, c.y)
+  for (const c of cands) {
+    if (homes.filter(openSide).length >= EXPLORE.elitePacks[1]) break
+    const i = c.y * m.w + c.x
+    if (!openSide(c) || dist[i] < EXPLORE.safe || taken.has(i) || homes.some((h) => h.x === c.x && h.y === c.y)) continue
+    const near = distances(m.tiles, m.w, m.h, c.x, c.y)
+    if (homes.some((h) => near[h.y * m.w + h.x] >= 0 && near[h.y * m.w + h.x] < 3)) continue
+    homes.push(c)
   }
   homes.sort((a, b) => dist[a.y * m.w + a.x] - dist[b.y * m.w + b.x])
   const far = Math.max(1, dist[homes[homes.length - 1] ? homes[homes.length - 1].y * m.w + homes[homes.length - 1].x : 0])

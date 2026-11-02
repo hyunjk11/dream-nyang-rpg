@@ -34,7 +34,8 @@ describe('탐험 층 구성', () => {
   it('층과 깊이가 내려갈수록 조금씩만 세진다', () => {
     const a = floorScale(1, 3)
     expect(a.hp).toBeGreaterThan(1)
-    expect(a.hp).toBeLessThan(1.15)
+    // 층마다 +50% (장비와 레벨이 빨리 오르는 만큼), 깊이 1 3층은 두 배.
+    expect(a.hp).toBeLessThanOrEqual(2)
     const b = floorScale(2, 1)
     expect(b.hp).toBeGreaterThan(a.hp)
     expect(b.firstWave).toBeGreaterThanOrEqual(a.firstWave)

@@ -26,15 +26,15 @@ afterEach(() => {
 })
 
 describe('난이도 상향 (보통 기본)', () => {
-  it('보통은 이전보다 몬스터가 단단하고 아프고 빠르며, 회복은 느리다', () => {
+  it('보통은 몬스터가 단단하고 빠르며, 싸움이 길어진 만큼 한 대는 약하고 드물다', () => {
     expect(DIFFICULTY.horde.hp).toBeGreaterThan(0.72)
-    // 몬스터가 단단해진 대신(한 방 처치 방지) 한 대 피해는 낮췄다: 위협은 남기되 0.3 이상.
-    expect(DIFFICULTY.horde.damage).toBeGreaterThan(0.3)
+    // 몬스터가 약 8배 단단해진 대신(2026-11) 한 대 피해와 공격 빈도를 낮췄다: 위협은 남긴다.
+    expect(DIFFICULTY.horde.damage).toBeGreaterThanOrEqual(0.15)
     expect(DIFFICULTY.horde.speed).toBeGreaterThan(0.86)
     expect(DIFFICULTY.horde.windup).toBeLessThan(0.48)
-    expect(DIFFICULTY.horde.cooldown).toBeLessThan(1.6)
-    expect(DIFFICULTY.hero.regenRate).toBeLessThan(7)
-    expect(DIFFICULTY.hero.regenDelay).toBeGreaterThan(3.2)
+    expect(DIFFICULTY.horde.cooldown).toBeLessThan(2.5)
+    expect(DIFFICULTY.hero.regenRate).toBeLessThanOrEqual(7)
+    expect(DIFFICULTY.hero.regenDelay).toBeGreaterThanOrEqual(3)
     expect(DIFFICULTY.elite.hp).toBeGreaterThan(3.2)
     expect(DIFFICULTY.boss.hp).toBeGreaterThan(0.7)
   })
@@ -46,10 +46,11 @@ describe('난이도 상향 (보통 기본)', () => {
     expect(d3.damage).toBeGreaterThan(d1.damage)
   })
 
-  it('무리는 더 많고 크다 (팩 11–15, 4–6마리, 추격 최대 9)', () => {
-    expect(EXPLORE.packs[0]).toBeGreaterThan(10)
-    expect(EXPLORE.packSize[0]).toBeGreaterThan(3)
-    expect(EXPLORE.chaseCap).toBeGreaterThan(8)
+  it('몹이 단단해진 만큼 무리는 적고 작다 (팩 6–9, 2–4마리, 추격 최대 4)', () => {
+    expect(EXPLORE.packs[0]).toBeGreaterThanOrEqual(6)
+    expect(EXPLORE.packs[1]).toBeLessThanOrEqual(10)
+    expect(EXPLORE.packSize[1]).toBeLessThanOrEqual(4)
+    expect(EXPLORE.chaseCap).toBeGreaterThanOrEqual(4)
   })
 
   it('쉬움/보통/어려움: 기본은 보통, 바꾸면 저장되고 새로 나오는 몬스터 체력에 반영된다', () => {
