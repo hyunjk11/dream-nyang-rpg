@@ -8,6 +8,7 @@
 import { waveFor } from './waves'
 import type { HordeKind } from './horde'
 import { Tile, distances, generateMaze, walkable, type Maze, type Nest, type Rect } from './maze'
+import { SLOT, roomMaze, type RoomMaze } from './rooms'
 import { depthStep, rosterShift, type FloorPlan } from '../../sim/delve'
 import { fieldMaze } from './field'
 
@@ -159,7 +160,8 @@ export function floorMaze(plan: Pick<FloorPlan, 'seed' | 'cells' | 'bossRoom' | 
   let bestD = -1
   for (let k = 0; k < 16 && bestD < EXPLORE.exitMin; k += 1) {
     const seed = k ? (plan.seed + Math.imul(k, 0x9e3779b1)) >>> 0 || k : plan.seed
-    const maze = generateMaze(seed, plan.cells, plan.cells, plan.bossRoom, EXPLORE.braid)
+    // Rooms on a grid since 2026-11 (the tile maze read as pointless twisting; see rooms.ts).
+    const maze = roomMaze(seed, Math.max(3, Math.round((plan.cells * 2 + 1) / SLOT)), plan.bossRoom)
     const d = roomDistance(maze, maze.bossRoom)
     if (d > bestD) {
       best = maze
@@ -237,7 +239,19 @@ export function planLayout(maze: Maze, plan: Pick<FloorPlan, 'depth' | 'floor'>,
     }
   }
   const wantChests = between(EXPLORE.chests, rand)
-  const chests: Spot[] = rest.slice(0, wantChests).map((d) => ({ x: d.x, y: d.y }))
+  // Side rooms (rooms layout) are the optional detours: up to two of them hold a chest in a corner.
+  const sideRooms = (m as Partial<RoomMaze>).side ?? []
+  const chests: Spot[] = []
+  for (const r of sideRooms.slice(0, 2)) {
+    const cs = [
+      { x: r.x, y: r.y },
+      { x: r.x + r.w - 1, y: r.y },
+      { x: r.x, y: r.y + r.h - 1 },
+      { x: r.x + r.w - 1, y: r.y + r.h - 1 },
+    ].filter((k) => openCount(m, k.x, k.y) === 2 && dist[k.y * m.w + k.x] >= EXPLORE.safe)
+    if (cs.length && chests.length < wantChests) chests.push(cs[Math.floor(rand() * cs.length)])
+  }
+  for (const d of rest) if (chests.length < wantChests) chests.push({ x: d.x, y: d.y })
   m.nests = nests
   // Shrine: the side chamber nearest the middle of the route (a rest stop), else a corridor tile.
   const mid = exitDist / 2
@@ -333,6 +347,9 @@ export function planLayout(maze: Maze, plan: Pick<FloorPlan, 'depth' | 'floor'>,
   const pool = packs.filter((p) => p.dist >= exitDist * 0.35 && outside(p))
   const elitePool = pool.length >= nElites ? pool : packs.filter(outside)
   shuffle(elitePool, rand)
+  // Elites guard the side rooms first (an optional fight for the loot there).
+  const inSide = (p: Pack) => sideRooms.some((r) => inRect(r, p.x, p.y))
+  elitePool.sort((a, b) => Number(inSide(b)) - Number(inSide(a)))
   const affixes = Object.keys(ELITE_AFFIXES) as EliteAffix[]
   for (const p of elitePool.slice(0, nElites)) {
     const k = depthStep(plan.depth, plan.floor) >= 0.8 ? 2 : 1
