@@ -63,7 +63,8 @@ const fs = require('fs')
         let best = 0, by = s.view.yaw
         for (let k = 0; k < 48; k++) { const y = (k / 48) * Math.PI * 2; const d = r.skillWorld.solid(p.x, 0.8, p.z, Math.sin(y), 0, Math.cos(y), 30); if (d > best + 0.01) { best = d; by = y } }
         // the camera looks along -forward of yaw in this rig; try both and keep the one whose aim runs down the open line
-        s.view.yaw = by
+        // the gameplay camera is shooter.view (__slice.view is the dev close-up camera)
+        s.shooter.view.yaw = by
         return best
       },
       // Park every foe far off so a test sees only what it places.
@@ -131,15 +132,30 @@ const fs = require('fs')
     return pick.map((f) => ({ hp: Math.round(f.hp), max: f.maxHp }))
   }, { what, d })
   const readTargets = () => p.evaluate(() => (window.__tgt || []).map((f) => ({ hp: Math.max(0, Math.round(f.f.hp)), max: f.maxHp, dead: f.f.hp <= 0 || f.f.dying > 0 || f.f.alive === false })))
-  const placeBoss = (d) => p.evaluate((d) => {
-    const s = window.__slice, r = window.__rp, b = s.run?.boss
-    if (!b) return null
-    r.parkAll()
-    const at = r.fwd(d); b.awake = true; b.hp = b.maxHp; b.x = at.x; b.z = at.z
-    window.__tgt = [{ f: b, maxHp: b.maxHp }]
-    s.hero.hp = s.hero.maxHp
-    return [{ hp: Math.round(b.hp), max: b.maxHp, awake: b.awake }]
-  }, d)
+  // The boss as a player meets her: full HP, awake, left to walk in to her own distance (BOSS.keep),
+  // then the crosshair turned onto her body (fix/skill-hit-proof: the old probe teleported her along a
+  // stale aim line, so a bomb or overdrive sometimes "did 0" to an empty spot).
+  const placeBoss = async (d) => {
+    const first = await p.evaluate((d) => {
+      const s = window.__slice, r = window.__rp, b = s.run?.boss
+      if (!b) return null
+      r.parkAll()
+      const h = s.hero.object.position, far = Math.hypot(b.x - h.x, b.z - h.z)
+      if (!b.awake || far > 7) { const at = r.fwd(Math.max(4.4, d)); b.x = at.x; b.z = at.z }
+      b.awake = true; b.hp = b.maxHp
+      window.__tgt = [{ f: b, maxHp: b.maxHp }]
+      s.hero.hp = s.hero.maxHp
+      return true
+    }, d)
+    if (!first) return null
+    await waitGame(1.5)
+    return p.evaluate(async () => {
+      const s = window.__slice, b = s.run.boss, h = s.hero.object.position, v = s.shooter.view
+      for (let i = 0; i < 6; i++) { v.yaw = Math.atan2(b.x - h.x, b.z - h.z); await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))) }
+      b.hp = b.maxHp
+      return [{ hp: Math.round(b.hp), max: b.maxHp, awake: b.awake, d: +Math.hypot(b.x - h.x, b.z - h.z).toFixed(2), aimOnBoss: +Math.hypot(s.rig.aim.x - b.x, s.rig.aim.z - b.z).toFixed(2) }]
+    })
+  }
   const frac = (before, after) => before.map((t, i) => +(((t.hp - (after[i]?.hp ?? 0)) / t.max) * 100).toFixed(1))
   const shoot = async () => { const bx = await box(); await p.mouse.move(bx.x + bx.width / 2, bx.y + bx.height / 2); await p.mouse.down(); await p.waitForTimeout(60); await p.mouse.up(); await p.waitForTimeout(500) }
   const KEYS = { bomb: 'Digit1', overdrive: 'Digit2', rush: 'Digit3', aura: 'Digit4' }
@@ -167,7 +183,8 @@ const fs = require('fs')
         await heal()
         await p.evaluate(() => { const s = window.__slice.skills; for (const id of Object.keys(s.cooldown)) s.cooldown[id] = 0; s.aura = 0 })
         const d = k === 'bomb' ? 0 : k === 'rush' ? 4 : 2.2
-        before = tone === 'boss' ? await pl(d) : await pl(d)
+        before = await pl(d)
+        if (tone === 'boss') t[k + 'At'] = before?.[0] && { d: before[0].d, aimOnBoss: before[0].aimOnBoss }
         await p.waitForTimeout(150)
         before = await readTargets()
         await p.evaluate(() => { window.__dmgs = [] })
