@@ -855,3 +855,4 @@ body.compact .set-group { width: auto; }
 #quest-body details.qdone summary { cursor: pointer; color: #8a7898; font-size: 13px; }
 #quest-body details.qdone div { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 12px; opacity: 0.75; }
 #quest-body .qfoot { display: block; margin-top: 8px; color: #a090b0; font-size: 11px; text-align: center; }
+.toast.quest.fin { border: 2px solid #ffd36b; }

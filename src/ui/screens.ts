@@ -106,6 +106,15 @@ export function toast(text: string, kind: 'quest' | 'reward' | 'info' = 'info'):
   if (!layer) return
   // Completions coming in together fold into one toast ("… 외 2개") instead of a stack.
   const finished = kind === 'quest' && /완료!|달성!/.test(text)
+  const same = [...layer.querySelectorAll<HTMLElement>('.toast:not(.out):not(.fin)')].find((t) => t.textContent === text)
+  if (same) {
+    // The same line twice in a row (e.g. two bounties taken) refreshes the toast instead of stacking.
+    window.clearTimeout(Number(same.dataset.t1))
+    window.clearTimeout(Number(same.dataset.t2))
+    same.dataset.t1 = String(window.setTimeout(() => same.classList.add('out'), 2800))
+    same.dataset.t2 = String(window.setTimeout(() => same.remove(), 3400))
+    return
+  }
   const live = finished ? layer.querySelector<HTMLElement>('.toast.quest.fin:not(.out)') : null
   if (live) {
     const n = Number(live.dataset.n ?? '1') + 1
