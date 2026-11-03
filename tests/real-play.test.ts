@@ -62,6 +62,14 @@ describe('실제 플레이: 미로·하수도·들판에서도 피가 빠진다 
     }
   })
 
+  it('브라우저에서 벗어났던 무리도 범위 안: 깊이 2 박쥐(18.7%), 깊이 3 해골 마법사(42.7%)', () => {
+    for (const [d, kind] of [[2, 'bat'], [3, 'skel_mage'], [3, 'bat'], [1, 'slime']] as const) {
+      const r = stand(floorPlan(d, 2), [kind, kind, kind, kind, kind])
+      expect(r.lost, `d${d} ${kind}`).toBeGreaterThanOrEqual(0.2)
+      expect(r.lost, `d${d} ${kind}`).toBeLessThanOrEqual(0.4)
+    }
+  })
+
   it('레벨이 올라 최대 체력이 커져도(300) 같은 비율로 깎인다', () => {
     const r = stand(floorPlan(1, 2), ['slime', 'slime', 'bug', 'slime', 'bat'], 300)
     expect(r.lost).toBeGreaterThanOrEqual(0.18)

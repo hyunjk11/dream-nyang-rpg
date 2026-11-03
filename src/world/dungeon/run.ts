@@ -76,11 +76,18 @@ export function foeHit(maxHp: number): number {
   return FOE_HIT * Math.max(1, maxHp / DIFFICULTY.hero.maxHp)
 }
 /** The horde's hp / damage scale for a floor, exactly as the run sets it (tests use this too). */
-export function runFoeScale(plan: Pick<FloorPlan, 'scale' | 'objective'>, isBoss: boolean, maxHp: number): { hp: number; damage: number } {
-  const scale = { hp: plan.scale.hp, damage: plan.scale.damage }
+/**
+ * A normal foe's hit as a share of her max HP (browser-measured, fix/real-play): bats rounded to 4
+ * (18.7% in 10 s) and depth-3 mages to 11 (42.7%). Every fighting floor keeps normals in this band,
+ * so a pack takes 20–40% in 10 s anywhere; elites still multiply on top.
+ */
+export const FOE_HIT_BAND = [0.032, 0.052] as const
+export function runFoeScale(plan: Pick<FloorPlan, 'scale' | 'objective'>, isBoss: boolean, maxHp: number): { hp: number; damage: number; hit?: readonly [number, number] } {
+  const scale: { hp: number; damage: number; hit?: readonly [number, number] } = { hp: plan.scale.hp, damage: plan.scale.damage }
   // 몽실 마을 (objective 'town') has no foes; every fighting floor hits for real.
-  if (isBoss) scale.damage *= bossRoomHit(maxHp, 'adds')
-  else if (plan.objective !== 'town') scale.damage *= foeHit(maxHp)
+  if (plan.objective === 'town') return scale
+  scale.damage *= isBoss ? bossRoomHit(maxHp, 'adds') : foeHit(maxHp)
+  scale.hit = [FOE_HIT_BAND[0] * maxHp, FOE_HIT_BAND[1] * maxHp]
   return scale
 }
 /** Damage factor for the boss room, given her max HP (150 at Lv 1). */

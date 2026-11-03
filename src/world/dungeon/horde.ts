@@ -231,6 +231,11 @@ export function eliteHpMul(kind: HordeKind): number {
  * Rest after a swing, different per foe and per swing (fix/real-play): a pack that started together
  * kept swinging on the same frame, and her i-frames ate all but the first hit. ±35% of the cooldown.
  */
+/** A normal foe's hit inside the run's band (none = as is). */
+export function clampHit(raw: number, band?: readonly [number, number]): number {
+  return band ? Math.min(band[1], Math.max(band[0], raw)) : raw
+}
+
 export function swingRest(f: Pick<HordeFoe, 'beat'>): number {
   f.beat = (f.beat + 0.618034) % 1
   return DIFFICULTY.horde.cooldown * (0.65 + 0.7 * f.beat)
@@ -262,7 +267,8 @@ export class Horde {
   kills = 0
   eliteKills = 0
   /** Depth/floor multipliers on hp and damage (1 = depth 1, floor 1). */
-  scale = { hp: 1, damage: 1 }
+  /** hp / damage multipliers; `hit` clamps a normal foe's hit to [min, max] before the elite multiplier. */
+  scale: { hp: number; damage: number; hit?: readonly [number, number] } = { hp: 1, damage: 1 }
   /** Every killing blow, whatever dealt it (droplets, bombs, candy). */
   onKill: ((f: HordeFoe) => void) | null = null
   /** An elite just enraged (VFX / banner). */
@@ -352,7 +358,7 @@ export class Horde {
       maxHp: hp,
       radius: s.radius * (elite ? ELITE.scale : 1),
       speed: s.speed * DIFFICULTY.horde.speed * (elite ? ELITE.speed : 1) * (0.88 + ((this.nextId * 0.618) % 1) * 0.24),
-      damage: Math.max(1, Math.round(s.damage * DIFFICULTY.horde.damage * this.scale.damage * (elite ? ELITE.damage : 1))),
+      damage: Math.max(1, Math.round(clampHit(s.damage * DIFFICULTY.horde.damage * this.scale.damage, this.scale.hit) * (elite ? ELITE.damage : 1))),
       age: 0,
       dying: 0,
       hurt: 0,
