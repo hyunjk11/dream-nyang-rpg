@@ -75,7 +75,7 @@ const VPS = (process.env.VPS || '1280x720').split(',').map((v) => v.split('x').m
     check('bomb_wipes_normals', normals.length > 0 && normals.every((f) => f.after.hp <= 0), normals.map((f) => [f.hp, f.after.hp]))
     check('bomb_bites_elite', bite >= 0.25 && bite <= 0.45, { bite: Math.round(bite * 100) + '%', elite })
     await p.keyboard.press('i'); await p.waitForTimeout(500)
-    const stat = await p.evaluate(() => document.querySelector('.inv-gun-stats')?.textContent || '')
+    const stat = await p.evaluate(() => document.querySelector('.inv-gun-stats')?.title || '')
     check('bag_stat_line', /초당 .*발 · 한 발/.test(stat), stat)
     await p.screenshot({ path: `${OUT}/${vw}x${vh}-bag-gunline.png` })
     check('no_errors', errs.length === 0, errs.slice(0, 5))
