@@ -352,6 +352,9 @@ export class MongsilTown {
     const door = new InstancedMesh(new BoxGeometry(0.5, 0.9, 0.06).translate(0, 0.45, 0), toon(0x9a6a7a, 0.15), n)
     const win = new InstancedMesh(new BoxGeometry(0.42, 0.42, 0.05), new MeshBasicMaterial({ color: new Color(0xffe6a0).multiplyScalar(1.35) }), n * 2)
     const chim = new InstancedMesh(new BoxGeometry(0.3, 0.8, 0.3).translate(0, 0.4, 0), toon(0xd8c8e8, 0.15), n)
+    // Cloud houses: soft puffs ringing every eave, so the roofs look tucked into a cloud.
+    const puff = new InstancedMesh(new IcosahedronGeometry(0.5, 1), toon(0xfff4fb, 0.5, 0xffe0f0), n * 4)
+    puff.name = 'town-roof-clouds'
     const WALLS = [0xffd9e8, 0xe4d8ff, 0xd2f2e2, 0xffeec4, 0xd8eaff]
     const ROOFS = [0xff7fb0, 0x9a80f0, 0x5fc8b0, 0xffa060, 0x70a8ff, 0xe880c8]
     const o = this.dummy
@@ -377,8 +380,12 @@ export class MongsilTown {
       place(win, i * 2, -s.w * 0.3, h * 0.62, d / 2 + 0.03, 1, 1, 1)
       place(win, i * 2 + 1, s.w * 0.3, h * 0.62, d / 2 + 0.03, 1, 1, 1)
       place(chim, i, s.w * 0.25, h + 0.3, -0.3, 1, i % 3 === 0 ? 1 : 0, 1)
+      for (let k = 0; k < 4; k += 1) {
+        const r = 0.55 + rand() * 0.35
+        place(puff, i * 4 + k, (k - 1.5) * s.w * 0.3, h + 0.05, (k % 2 ? 0.55 : 0.75) * (d / 2), r * 1.3, r * 0.75, r)
+      }
     })
-    for (const m of [wall, roof, door, win, chim]) {
+    for (const m of [wall, roof, door, win, chim, puff]) {
       m.castShadow = false
       g.add(m)
     }
@@ -407,7 +414,7 @@ export class MongsilTown {
     at.forEach((p, i) => {
       this.dummy.position.set(p.x, 0.16, p.z)
       this.dummy.rotation.set(0, rand() * 3, 0)
-      this.dummy.scale.setScalar(0.8 + rand() * 0.7)
+      this.dummy.scale.setScalar(0.55 + rand() * 0.45)
       this.dummy.updateMatrix()
       mesh.setMatrixAt(i, this.dummy.matrix)
       mesh.setColorAt(i, col.set(PETALS[i % PETALS.length]))
