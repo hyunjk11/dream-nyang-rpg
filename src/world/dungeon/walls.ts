@@ -1,4 +1,4 @@
-import { CEILING, TILE, Tile, type Maze } from './maze'
+import { CEILING, TILE, Tile, blocksWalk, type Maze } from './maze'
 
 /** Pure collision queries against the maze's solid tiles (walls run floor to ceiling). */
 
@@ -20,7 +20,7 @@ export function collideCircle(maze: Maze, x: number, z: number, r: number): { x:
       for (let dx = -1; dx <= 1; dx += 1) {
         const nx = tx + dx
         const ny = ty + dy
-        const solid = nx < 0 || ny < 0 || nx >= maze.w || ny >= maze.h || maze.tiles[ny * maze.w + nx] === Tile.Solid
+        const solid = nx < 0 || ny < 0 || nx >= maze.w || ny >= maze.h || blocksWalk(maze.tiles[ny * maze.w + nx])
         if (!solid) continue
         const minX = (nx - maze.w / 2) * TILE
         const minZ = (ny - maze.h / 2) * TILE
@@ -36,7 +36,7 @@ export function collideCircle(maze: Maze, x: number, z: number, r: number): { x:
           pz = cz + (oz / d) * r
         } else {
           // Centre inside the block: leave by the nearest face that opens onto a walkable tile.
-          const open = (x: number, y: number) => x >= 0 && y >= 0 && x < maze.w && y < maze.h && maze.tiles[y * maze.w + x] !== Tile.Solid
+          const open = (x: number, y: number) => x >= 0 && y >= 0 && x < maze.w && y < maze.h && !blocksWalk(maze.tiles[y * maze.w + x])
           const exits = [
             { d: px - minX, ok: open(nx - 1, ny), x: minX - r, z: pz },
             { d: minX + TILE - px, ok: open(nx + 1, ny), x: minX + TILE + r, z: pz },

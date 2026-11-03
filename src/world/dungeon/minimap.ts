@@ -137,7 +137,7 @@ export class Minimap {
     let open = 0
     let seen = 0
     for (let i = 0; i < this.maze.tiles.length; i += 1) {
-      if (this.maze.tiles[i] === Tile.Solid) continue
+      if (this.maze.tiles[i] === Tile.Solid || this.maze.tiles[i] === Tile.Water) continue
       open += 1
       if (this.seen[i]) seen += 1
     }
@@ -157,6 +157,7 @@ export class Minimap {
         if (!this.seen[i]) continue
         const kind = maze.tiles[i]
         if (kind === Tile.Solid) ctx.fillStyle = 'rgba(58,40,88,0.85)'
+        else if (kind === Tile.Water) ctx.fillStyle = 'rgba(110,170,255,0.92)'
         else if (kind === Tile.Boss) ctx.fillStyle = 'rgba(255,150,205,0.95)'
         else if (kind === Tile.Start) ctx.fillStyle = 'rgba(160,220,255,0.95)'
         else if (kind === Tile.Chamber) ctx.fillStyle = 'rgba(140,230,215,0.92)'

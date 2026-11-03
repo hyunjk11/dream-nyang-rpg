@@ -5,7 +5,7 @@
  * three.js — run.ts draws it, tests drive it headless.
  */
 import { Horde, type HordeFoe, type HordeKind } from './horde'
-import { TILE, Tile, rng, tileCentre, type Maze, type Rect } from './maze'
+import { TILE, Tile, distances, rng, tileCentre, type Crossing, type Maze, type Rect } from './maze'
 
 export const FIELD = {
   /** Field size in tiles (odd). */
@@ -25,8 +25,11 @@ export const FIELD = {
   every: 2,
   /** Share of packs led by an elite. */
   eliteShare: 0.12,
-  /** Sleeping packs farther than this (m) are recycled into fresh ones nearer her (was 52: the first fill now spreads over the whole field). */
-  recycle: 78,
+  /**
+   * Sleeping packs farther than this (m) are recycled into fresh ones nearer her. Was 52; the first
+   * fill now spreads over the whole field (the field is ~119 m across), so only the far corners recycle.
+   */
+  recycle: 96,
   /** Wake range and leash (m). */
   aggro: 14,
   leash: 22,
@@ -49,22 +52,62 @@ export function fieldMaze(seed: number, size: number = FIELD.size): Maze {
   const startRoom: Rect = { x: 2, y: Math.floor(h / 2) - 1, w: 3, h: 3 }
   const bossRoom: Rect = { x: w - 10, y: Math.floor(h / 2) - 3, w: 7, h: 7 }
   const near = (x: number, y: number, r: Rect, m: number) => x >= r.x - m && y >= r.y - m && x < r.x + r.w + m && y < r.y + r.h + m
+  // The river (2026-11): two tiles wide, winding north-south through the middle, never more than a
+  // tile sideways per row (no diagonal leaks). Three crossings: a bridge on her line to the boss ring
+  // and one more bridge plus stepping stones north and south, so nobody is ever cut off.
+  const phase = rand() * Math.PI * 2
+  const riverX = (y: number) => Math.round(w * 0.47 + 2.4 * Math.sin(y * 0.3 + phase))
+  const crossings: Crossing[] = []
+  const mid = Math.floor(h / 2) - 1
+  const rows = [Math.round(h * 0.2), mid, Math.round(h * 0.72)]
+  let last = riverX(1)
+  const xs: number[] = []
+  for (let y = 1; y < h - 1; y += 1) {
+    const want = riverX(y)
+    const x = last + Math.max(-1, Math.min(1, want - last))
+    xs[y] = x
+    last = x
+    tiles[y * w + x] = Tile.Water
+    tiles[y * w + x + 1] = Tile.Water
+  }
+  rows.forEach((y, k) => {
+    // A crossing spans every water tile on its two rows.
+    let a = w
+    let b = 0
+    for (const yy of [y, y + 1]) {
+      a = Math.min(a, xs[yy])
+      b = Math.max(b, xs[yy] + 1)
+    }
+    for (const yy of [y, y + 1]) for (let x = a; x <= b; x += 1) tiles[yy * w + x] = Tile.Corridor
+    crossings.push({ x: a, y, len: b - a + 1, kind: k === 2 ? 'stones' : 'bridge' })
+  })
+  const nearRiver = (x: number, y: number) => {
+    for (let yy = Math.max(1, y - 1); yy <= Math.min(h - 2, y + 1); yy += 1) if (xs[yy] !== undefined && x >= xs[yy] - 1 && x <= xs[yy] + 2) return true
+    return crossings.some((c) => x >= c.x - 3 && x < c.x + c.len + 3 && y >= c.y - 2 && y <= c.y + 3)
+  }
   // Pillar clumps (2×2 / 1×3) and a few short hedges: cover, never walls of a maze.
-  const clumps = Math.round((w * h) / 70)
-  for (let k = 0; k < clumps; k += 1) {
+  // Tree groves since 2026-11 (drawn as round toon trees): keep trying until ~15 stand.
+  const clumps = Math.round((w * h) / 80)
+  let placed = 0
+  for (let k = 0; k < clumps * 8 && placed < clumps; k += 1) {
     const x = 3 + Math.floor(rand() * (w - 6))
     const y = 3 + Math.floor(rand() * (h - 6))
     const long = rand() < 0.35
     const cw = long ? (rand() < 0.5 ? 3 : 1) : 2
     const ch = long ? (cw === 3 ? 1 : 3) : 2
     let ok = true
-    for (let yy = y - 1; yy < y + ch + 1 && ok; yy += 1) for (let xx = x - 1; xx < x + cw + 1; xx += 1) if (near(xx, yy, startRoom, FIELD.safe - 2) || near(xx, yy, bossRoom, 1) || tiles[yy * w + xx] === Tile.Solid) ok = false
+    for (let yy = y - 1; yy < y + ch + 1 && ok; yy += 1) for (let xx = x - 1; xx < x + cw + 1; xx += 1) if (near(xx, yy, startRoom, FIELD.safe - 2) || near(xx, yy, bossRoom, 1) || tiles[yy * w + xx] !== Tile.Chamber || nearRiver(xx, yy)) ok = false
     if (!ok) continue
     for (let yy = y; yy < y + ch; yy += 1) for (let xx = x; xx < x + cw; xx += 1) tiles[yy * w + xx] = Tile.Solid
+    placed += 1
   }
   for (let y = startRoom.y; y < startRoom.y + startRoom.h; y += 1) for (let x = startRoom.x; x < startRoom.x + startRoom.w; x += 1) tiles[y * w + x] = Tile.Start
   for (let y = bossRoom.y; y < bossRoom.y + bossRoom.h; y += 1) for (let x = bossRoom.x; x < bossRoom.x + bossRoom.w; x += 1) tiles[y * w + x] = Tile.Boss
-  return { seed, w, h, tiles, start: { x: startRoom.x + 1, y: startRoom.y + 1 }, startRoom, bossRoom, chambers: [], nests: [] }
+  // Any open pocket the trees and the river sealed off becomes grove (nothing spawns or gets stuck there).
+  const start = { x: startRoom.x + 1, y: startRoom.y + 1 }
+  const reach = distances(tiles, w, h, start.x, start.y)
+  for (let i = 0; i < tiles.length; i += 1) if (reach[i] < 0 && tiles[i] !== Tile.Solid && tiles[i] !== Tile.Water) tiles[i] = Tile.Solid
+  return { seed, w, h, tiles, start, startRoom, bossRoom, chambers: [], nests: [], river: { crossings } }
 }
 
 export type FieldDirectorEvent = { type: 'pack'; size: number; elite: boolean } | { type: 'named-spawn'; foe: HordeFoe } | { type: 'named-down' }
