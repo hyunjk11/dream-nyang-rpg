@@ -52,7 +52,7 @@ import { xpToNext } from './sim/formulas'
 import { findItem } from './sim/inventory'
 import { ilvText, itemName, makeItem, type Drop } from './sim/loot'
 import { skillSvg } from './ui/skillicons'
-import { Help, keepHintItems } from './ui/help'
+import { Help, hintHtml } from './ui/help'
 import { RARITY_COLOR, type ItemInstance } from './sim/types'
 import { InventoryUI, compareEquip, dpsOf } from './ui/inventory'
 import { TownUI, type TownPanel, type TownSuccess } from './ui/town'
@@ -283,13 +283,14 @@ function loadDungeon(): Promise<typeof import('./world/dungeon/run')> {
 const crosshair = document.getElementById('crosshair')
 const help = new Help(document.getElementById('ui') ?? document.body)
 const hint = document.getElementById('hint')
-const TPS_HINT_MOUSE = '클릭: 시점 고정 · WASD 이동 · 클릭 사격 · Space 대시 · 1–4 스킬 · I 가방 · H 도움말'
+const TPS_HINT_MOUSE = '클릭 조준·사격 · WASD 이동 · Space 대시 · 1–4 스킬 · I 가방 · H 도움말'
 const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · 공격 길게 눌러 연사 · 대시 · 사탕 버튼으로 회복'
 /** Same controls everywhere now, so one hint; it fades after a few seconds like the sewer's. */
 function showHint(): void {
   if (!hint) return
-  const sewer = run ? (stage.touch ? ' · 귀환 버튼' : ' · M 지도 · T 귀환') : ''
-  hint.textContent = keepHintItems((stage.touch ? TPS_HINT_TOUCH : TPS_HINT_MOUSE) + sewer)
+  // 몽실 마을 is a run world too, but there is nothing to recall from: its way out is the 별문.
+  const sewer = !run ? '' : inMongsil() ? (stage.touch ? '' : ' · M 지도 · E 별문') : stage.touch ? ' · 귀환 버튼' : ' · M 지도 · T 귀환'
+  hint.innerHTML = hintHtml((stage.touch ? TPS_HINT_TOUCH : TPS_HINT_MOUSE) + sewer)
   hint.classList.remove('fade')
   void hint.offsetWidth
   hint.classList.add('fade')
@@ -573,8 +574,18 @@ const inventory = new InventoryUI({
     paintHotbar()
     paintCandy()
   },
+  // The codex is read-only, so it opens anywhere; down in a run it holds the frame like the bag.
+  codex: () => {
+    townUI.open('codex')
+    if (run && !inMongsil() && mode === 'play') {
+      mode = 'menu'
+      codexPaused = true
+    }
+  },
 })
 let bagPaused = false
+/** The codex was opened from the bag inside a run (it holds the frame until it closes). */
+let codexPaused = false
 
 const townUI = new TownUI({
   save: () => game.save,
@@ -604,7 +615,8 @@ const townUI = new TownUI({
     document.body.classList.add('bag-open')
   },
   closed: () => {
-    if (inMongsil() && mode === 'menu') mode = 'play'
+    if ((inMongsil() || codexPaused) && mode === 'menu') mode = 'play'
+    codexPaused = false
     clearQueued()
     document.body.classList.remove('bag-open')
     paintHotbar()

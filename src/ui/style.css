@@ -772,3 +772,33 @@ body.compact .spot-tag { font-size: 12px; padding: 1px 8px; }
 
 /* fix/gun-identity: the bag's gun stat line under the gun name. */
 .inv-gun-stats { margin: -2px 0 6px; font-size: 11.5px; opacity: 0.85; color: #6b4f8a; }
+
+/* ---- UI 다듬기: 조작 힌트 키 칩 · 가방 총 카드 · 도감 버튼 · 설정 토글 ---- */
+#hint { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; max-width: calc(100% - 360px); padding: 7px 14px; font-size: 13px; color: #4a3358; }
+.hk { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.hk kbd {
+  display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 6px; background: #fff; border: 1px solid #e2d0ec; border-bottom-width: 2px;
+  font: 12px/18px "Jua", sans-serif; color: #8a4fb0; text-align: center;
+}
+.inv-tabs .inv-codex { background: #fff3c4; color: #8a5a10; }
+.inv-tabs .inv-codex::before { content: "★"; margin-right: 4px; color: #e0a020; }
+.inv-gun {
+  margin: 8px 0 4px; padding: 6px 9px; border-radius: 12px; background: linear-gradient(135deg, #f6ecff, #ffeef6);
+  border: 1px solid #ead8f4; font-size: 13px; line-height: 1.3; word-break: keep-all;
+}
+.inv-gun-stats { margin: 0 0 8px; padding: 0 4px; font-size: 11.5px; line-height: 1.45; word-break: keep-all; }
+#inv-stats .inv-gun b { display: block; font-size: 14px; color: #8a4fb0; }
+#inv-stats .inv-gun span { display: block; font: 12px/1.35 system-ui, sans-serif; color: #5a4468; }
+.inv-gun[data-gun="water"] { background: linear-gradient(135deg, #e6f6ff, #f1ecff); border-color: #c7e6fb; }
+.inv-gun[data-gun="bubble"] { background: linear-gradient(135deg, #ffeef8, #f3ecff); border-color: #f6cde4; }
+.inv-gun[data-gun="star"] { background: linear-gradient(135deg, #fff7d6, #ffeef4); border-color: #f5e09c; }
+.inv-gun[data-gun="dart"] { background: linear-gradient(135deg, #ffe9e2, #f1e8ff); border-color: #f3c3b4; }
+.inv-gun-stats { display: flex; flex-wrap: wrap; gap: 3px; opacity: 1; }
+.inv-gun-stats span { padding: 1px 7px; border-radius: 999px; background: #f3e9f6; color: #6b4f8a; white-space: nowrap; }
+.set-group { align-items: stretch; width: 220px; }
+body.compact .set-group { width: auto; }
+.set-group legend { padding: 2px 8px; border-radius: 999px; background: #f3e6f8; color: #8a4fb0; }
+.set-group > button { text-align: left; background: #f6eff9; border: 1px solid #eadcf2; }
+.set-group > button[aria-pressed="true"] { background: #dff7ec; border-color: #a8e3c6; color: #1f6b48; }
+.set-group > button[aria-pressed]::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: #d6c3e0; vertical-align: 1px; }
+.set-group > button[aria-pressed="true"]::before { background: #35c288; box-shadow: 0 0 0 3px rgba(53, 194, 136, 0.2); }

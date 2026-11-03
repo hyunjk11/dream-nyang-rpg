@@ -42,6 +42,21 @@ export function keepHintItems(text: string): string {
     .join(' · ')
 }
 
+/** Words that read as a key at the front of a hint item ("I 가방" → <kbd>I</kbd> 가방). */
+const HINT_KEY = /^(클릭|WASD|Space|Shift|Tab|Esc|Enter|[A-Z]|[0-9]–[0-9]|[0-9])\s+(.+)$/
+
+/** The control hint as little key chips: one chip per " · " item, a <kbd> for its key. */
+export function hintHtml(text: string): string {
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return text
+    .split(' · ')
+    .map((item) => {
+      const m = HINT_KEY.exec(item)
+      return m ? `<span class="hk"><kbd>${esc(m[1])}</kbd>${esc(m[2]).replace(/ /g, '\u00a0')}</span>` : `<span class="hk">${esc(item).replace(/ /g, '\u00a0')}</span>`
+    })
+    .join('')
+}
+
 export class Help {
   readonly root: HTMLElement
   private shown = false

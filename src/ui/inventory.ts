@@ -31,6 +31,8 @@ export interface InventoryHost {
   sfx(cue: 'ui' | 'coin' | 'quest' | 'pop'): void
   opened(): void
   closed(): void
+  /** The bag's 도감 button: the legend codex (it closes the bag first). */
+  codex?(): void
 }
 
 
@@ -103,6 +105,11 @@ export class InventoryUI {
   constructor(host: InventoryHost) {
     this.host = host
     document.getElementById('inv-close')?.addEventListener('click', () => this.close())
+    document.getElementById('inv-codex')?.addEventListener('click', () => {
+      this.host.sfx('ui')
+      this.close()
+      this.host.codex?.()
+    })
     this.root?.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) =>
       b.addEventListener('click', () => {
         this.tab = b.dataset.tab as InvTab
@@ -374,8 +381,16 @@ export class InventoryUI {
     bar.append(fill)
     head.append(bar)
     box.append(head)
-    box.append(el('p', 'inv-gun', `${GUN_KO[s.weaponKind]} · ${GUN_PROFILES[s.weaponKind].blurb}`))
-    box.append(el('p', 'inv-gun-stats', gunStatLine(GUN_PROFILES[s.weaponKind], s.shotDamage, s.fireRate)))
+    // The gun's personality as a little card: its kind on top, the blurb under, then the stat chips.
+    const gun = el('p', 'inv-gun')
+    gun.dataset.gun = s.weaponKind
+    gun.append(el('b', '', GUN_KO[s.weaponKind]), el('span', '', GUN_PROFILES[s.weaponKind].blurb))
+    box.append(gun)
+    const line = gunStatLine(GUN_PROFILES[s.weaponKind], s.shotDamage, s.fireRate)
+    const chips = el('p', 'inv-gun-stats')
+    chips.title = line
+    for (const part of line.split(' · ')) chips.append(el('span', '', part))
+    box.append(chips)
     const dl = el('dl')
     for (const row of STAT_ROWS) {
       const v = row.value(s)
