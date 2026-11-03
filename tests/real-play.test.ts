@@ -8,7 +8,7 @@ import { BOSS } from '../src/world/dungeon/boss'
 import { floorPlan, fieldPlan } from '../src/sim/delve'
 import { DIFFICULTY } from '../src/combat/difficulty'
 import { Hero } from '../src/actors/hero'
-import { SKILL_BITE, skillBlast, skillGear, SKILL_REF_MUL, type SkillBody } from '../src/combat/skills'
+import { AURA_PULSE, AURA_TIME, SKILL_BITE, auraShare, skillBlast, skillGear, SKILL_REF_MUL, type SkillBody } from '../src/combat/skills'
 import { migrateSave } from '../src/sim/migrate'
 import { freshSave } from '../src/sim/mutate'
 
@@ -132,6 +132,18 @@ describe('실제 플레이: 스킬 한 번 = 무리 정리 · 정예 30–40% ·
       }
     })
   }
+  it('사탕 오라는 첫 펄스에 절반이 한 번에 들어가 큰 숫자로 보이고, 전체 합은 그대로다', () => {
+    const pulses = AURA_TIME / AURA_PULSE
+    let sum = auraShare(true)
+    for (let i = 1; i < pulses; i += 1) sum += auraShare(false)
+    expect(sum).toBeCloseTo(1, 5)
+    expect(auraShare(true)).toBeGreaterThanOrEqual(0.4)
+    // 정예 첫 숫자 = 최대 체력의 15% 이상 (예전 2.5%: 물총 한 방보다 작았다).
+    const elite = body('elite', 4000)
+    skillBlast([elite], 0, 0, 3, { kind: 'aura', rank: 1, gear: 1, share: auraShare(true) })
+    expect(4000 - elite.hp).toBeGreaterThanOrEqual(4000 * 0.15)
+  })
+
   it('랭크가 올라도 상한(정예 40%, 보스 25%)을 넘지 않는다', () => {
     const elite = body('elite', 10000)
     skillBlast([elite], 0, 0, 3, { kind: 'wave', rank: 10, gear: 1.15 })

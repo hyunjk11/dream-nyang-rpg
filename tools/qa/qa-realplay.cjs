@@ -112,7 +112,9 @@ const fs = require('fs')
     window.__tgt = pick
     window.__dmgs = []
     window.__dobs?.disconnect()
-    window.__dobs = new MutationObserver(() => {})
+    // DOM damage numbers (what the player reads): every new .dmg element's text and kind class.
+    window.__dobs = new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && n.classList.contains('dmg')) window.__dmgs.push(n.className.replace('dmg', '').trim() + ':' + n.textContent.trim()) })
+    window.__dobs.observe(document.body, { childList: true, subtree: true })
     const s0 = s.hero; s0.hp = s0.maxHp
     return pick.map((f) => ({ hp: Math.round(f.hp), max: f.maxHp }))
   }, { what, d })
@@ -144,8 +146,10 @@ const fs = require('fs')
       if (!before || !before.length) { out[tone] = 'no target'; continue }
       await p.waitForTimeout(200)
       before = await readTargets()
+      await p.evaluate(() => { window.__dmgs = [] })
       await shoot()
       t.bullet = frac(before, await readTargets())[0]
+      t.bulletNums = await p.evaluate(() => window.__dmgs.slice(0, 6))
       t.maxHp = before[0].max
       for (const [k, key] of Object.entries(KEYS)) {
         await heal()
@@ -154,6 +158,7 @@ const fs = require('fs')
         before = tone === 'boss' ? await pl(d) : await pl(d)
         await p.waitForTimeout(150)
         before = await readTargets()
+        await p.evaluate(() => { window.__dmgs = [] })
         const used0 = await p.evaluate(() => ({ ...window.__slice.skills.used }))
         await p.keyboard.press(key)
         // keep the aura's targets inside its ring while it burns
@@ -162,6 +167,7 @@ const fs = require('fs')
         const after = await readTargets()
         const fr = frac(before, after)
         t[k] = tone === 'pack' ? { killed: after.filter((x) => x.dead).length + '/' + after.length, pct: fr } : fr[0]
+        t[k + 'Nums'] = await p.evaluate(() => window.__dmgs.slice(0, 6))
         if (Object.values(used1).reduce((a, x) => a + x, 0) === Object.values(used0).reduce((a, x) => a + x, 0)) t[k] = 'NOT CAST'
       }
       out[tone] = t
@@ -172,7 +178,7 @@ const fs = require('fs')
   const go = {
     guide: async () => { await fresh(); await p.waitForTimeout(1500) },
     maze1: async () => { await fresh(); await p.evaluate(() => { const c = window.__slice.chapters; c.guide.done = true; if (!c.cleared.includes(1)) c.cleared.push(1); c.current = 2; c.card = 0; window.__slice.enterArea('maze') }); await p.waitForFunction(() => window.__slice.run?.plan.area === 'maze', null, { timeout: 90000 }); await settle() },
-    maze3: async () => { await p.evaluate(() => window.__slice.leaveSewer?.('recall')); await p.waitForTimeout(3000); await p.evaluate(() => { window.__slice.enterArea('maze') }); await p.waitForFunction(() => window.__slice.run?.plan.area === 'maze', null, { timeout: 90000 }); await settle(); await p.evaluate(async () => { const s = window.__slice; for (let i = 0; i < 2; i++) { s.nextFloor(); await new Promise((r) => setTimeout(r, 4000)) } }); await settle() },
+    maze3: async () => { await go.maze1(); await p.evaluate(async () => { const s = window.__slice; for (let i = 0; i < 2; i++) { s.nextFloor(); await new Promise((r) => setTimeout(r, 4500)) } }); await settle() },
     d1: async () => { await fresh(); await p.evaluate(() => window.__slice.enterSewer(1, 1)); await p.waitForFunction(() => window.__slice.run?.horde && !window.__slice.run.plan.area, null, { timeout: 90000 }); await settle() },
     d2: async () => { await fresh(); await p.evaluate(() => { window.__slice.game.save.delve = { ...(window.__slice.game.save.delve || {}), unlocked: 3, best: 3 } ; window.__slice.enterSewer(2, 2) }); await p.waitForFunction(() => window.__slice.run?.horde, null, { timeout: 90000 }); await settle() },
     d3: async () => { await fresh(); await p.evaluate(() => { window.__slice.game.save.delve = { ...(window.__slice.game.save.delve || {}), unlocked: 3, best: 3 }; window.__slice.enterSewer(3, 2) }); await p.waitForFunction(() => window.__slice.run?.horde, null, { timeout: 90000 }); await settle() },
