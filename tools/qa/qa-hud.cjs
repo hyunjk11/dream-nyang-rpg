@@ -32,6 +32,10 @@ async function boot(b, w, h, touch) {
   const p = await ctx.newPage()
   p.on('pageerror', (e) => log('PAGEERROR', e.message))
   await p.addInitScript(GPU)
+  // The audit clicks HUD pieces with a free cursor. Start buttons now take the view lock in their own
+  // click (one-click resume), and headless Chrome grants it; refuse it here like the lock-less browsers
+  // this audit has always modelled (qa-relock covers the real lock headed).
+  await p.addInitScript(() => { Element.prototype.requestPointerLock = function () { queueMicrotask(() => document.dispatchEvent(new Event('pointerlockerror'))); return Promise.reject(new DOMException('qa: no lock', 'NotSupportedError')) } })
   await p.goto(BASE); await p.evaluate(() => localStorage.clear()); await p.goto(BASE)
   await p.waitForFunction(() => !document.getElementById('btn-new').disabled, null, { timeout: 120000 })
   await p.click('#btn-new'); await p.waitForTimeout(600); await p.keyboard.press('Escape'); await p.waitForTimeout(1500)
