@@ -35,6 +35,24 @@ export function goalForQuest(kind: string, target: string, done: boolean, inRun:
   return { kind: 'foe' }
 }
 
+/** Where she stands, seen from a 몽실 들판 quest. */
+export type FieldLeg = 'island' | 'mongsil' | 'field' | 'elsewhere'
+
+/** The field's real name on every sign (board, tracker, waypoint chip). */
+export const FIELD_NAME = '몽실 들판'
+
+/**
+ * A 몽실 들판 quest row → the next leg of the walk and what the chip says. The field is only reached
+ * from 몽실 마을's 별문, so on the island the trail goes to the island 별문 (→ 몽실 마을) first.
+ */
+export function fieldQuestWay(kind: string, target: string, done: boolean, leg: FieldLeg, title: string): { goal: WaypointGoal; label: string } {
+  if (done) return { goal: { kind: 'board' }, label: `${title} · 게시판에서 보상` }
+  if (leg === 'field') return { goal: goalForQuest(kind, target, false, true), label: title }
+  if (leg === 'mongsil') return { goal: { kind: 'gate' }, label: `${title} · 몽실 마을 별문 → ${FIELD_NAME}` }
+  if (leg === 'island') return { goal: { kind: 'gate' }, label: `${title} · 별문 → 몽실 마을 → ${FIELD_NAME}` }
+  return { goal: { kind: 'exit' }, label: `${title} · 마을로 돌아가 ${FIELD_NAME}으로` }
+}
+
 /** A board contract row → its goal (down in the sewer), the board when done, else the gate. */
 export function goalForContract(kind: string, done: boolean, inRun: boolean): WaypointGoal {
   if (done) return { kind: 'board' }

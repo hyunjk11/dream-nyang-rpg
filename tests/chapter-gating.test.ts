@@ -123,6 +123,8 @@ describe('챕터 게이팅 · 챕터 2 저장', () => {
   it('챕터 2에서는 게시판 퀘스트를 받고 진행할 수 있다', () => {
     const save = freshSave()
     skipGuide(save)
+    expect(takeQuest(save, 'c2_slime').ok).toBe(false)
+    passMaze(save)
     expect(takeQuest(save, 'c2_slime').ok).toBe(true)
     questEvent(save, kill)
     expect(chaptersOf(save).quests.c2_slime.progress).toBe(1)
@@ -210,6 +212,7 @@ describe('퀘스트 정리', () => {
   it('고정은 2개까지, 메인은 고정할 수 없다', () => {
     const save = freshSave()
     skipGuide(save)
+    passMaze(save)
     for (const id of ['c2_slime', 'c2_bat']) takeQuest(save, id)
     expect(togglePin(save, 'main').ok).toBe(false)
     expect(togglePin(save, 'c2_slime').pinned).toBe(true)

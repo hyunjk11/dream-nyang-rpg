@@ -231,8 +231,8 @@ describe('예전 세이브 이어 하기', () => {
     c.guide.done = true
     if (!c.cleared.includes(1)) c.cleared.push(1)
     c.current = 2
-    c.quests[CHAPTER2[0]!.id].status = 'offered'
-    expect(takeQuest(save, CHAPTER2[0]!.id).ok).toBe(true)
+    // An old save took a field quest before the 꿈 미로 existed.
+    c.quests[CHAPTER2[0]!.id].status = 'active'
     c.cleared.push(2)
     c.card = 2
     delete save.dream

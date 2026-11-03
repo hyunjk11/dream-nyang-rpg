@@ -42,7 +42,7 @@ export function summaryLines(s: DelveSummary): { sub: string; stats: [string, st
     ? s.end === 'down'
       ? '몽실 들판에서 쓰러졌어. 골드를 조금 흘렸지만 퀘스트 진행은 그대로야.'
       : s.end === 'clear'
-        ? '들판의 악몽 꽃을 쓰러뜨렸어! 게시판에서 챕터 2 마지막 보상을 받자.'
+        ? '몽실 들판의 악몽 꽃을 쓰러뜨렸어! 게시판에서 챕터 2 마지막 보상을 받자.'
         : '몽실 들판에서 돌아왔어. 다 채운 퀘스트는 게시판에서 보상!'
     : s.end === 'clear'
       ? s.unlocked

@@ -13,6 +13,8 @@
 import { GEAR_IDS, ITEMS, MATERIAL_KO, WEAPON_IDS } from '../data/items'
 import type { HordeKind } from '../world/dungeon/horde'
 import { addItem } from './inventory'
+// Cycle with dreamstory (it reads chapter2Open): both only call each other inside functions.
+import { dreamOf } from './dreamstory'
 import { makeItem } from './loot'
 import { gainGold, gainXp } from './stats'
 import { RARITY_KO, emptyResult, type MutationResult, type Rarity, type SaveData } from './types'
@@ -82,13 +84,13 @@ export const FLUFF = 'fluff'
 export const NAMED = { kind: 'slime' as HordeKind, name: '솜사탕 대장 몽글이', hp: 2.2 }
 
 export const CHAPTER2: ChapterQuestDef[] = [
-  { id: 'c2_slime', title: '솜사탕 슬라임 퇴치', text: '들판을 덮은 솜사탕 슬라임을 줄여 줘.', kind: 'kill', target: 'slime', goal: 10, reward: { gold: 60, xp: 120, mats: { dream_dust: 3 } } },
-  { id: 'c2_bat', title: '꿈박쥐 쫓기', text: '밤하늘에서 내려온 꿈박쥐가 잠을 깨운대.', kind: 'kill', target: 'bat', goal: 8, reward: { gold: 70, xp: 140, gear: 'uncommon' } },
-  { id: 'c2_fluff', title: '몽실 솜사탕 모으기', text: '들판 괴물이 떨어뜨리는 몽실 솜사탕을 모아 와.', kind: 'collect', target: 'fluff', goal: 8, reward: { gold: 80, xp: 160, mats: { toy_part: 2 } } },
-  { id: 'c2_sweep', title: '들판 대청소', text: '종류는 상관없어. 많이, 아주 많이!', kind: 'kill', target: 'any', goal: 25, reward: { gold: 100, xp: 220, gear: 'rare' } },
-  { id: 'c2_named', title: '솜사탕 대장 몽글이', text: '들판 어딘가에 거대한 대장 슬라임이 있대. 찾아서 쓰러뜨려.', kind: 'named', target: 'named', goal: 1, reward: { gold: 130, xp: 260, gear: 'rare', mats: { star_shard: 1 } } },
-  { id: 'c2_knight', title: '구름 기사단', text: '구름 기사들이 들판 길목을 막고 있어.', kind: 'kill', target: 'knight', goal: 4, reward: { gold: 120, xp: 260, mats: { toy_part: 2, dream_dust: 4 } } },
-  { id: 'c2_boss', title: '들판의 악몽 꽃', text: '들판 한가운데에서 악몽 꽃이 피어났어. 챕터 2의 마지막!', kind: 'boss', target: 'boss', goal: 1, reward: { gold: 220, xp: 420, gear: 'epic', mats: { star_shard: 2 } } },
+  { id: 'c2_slime', title: '솜사탕 슬라임 퇴치', text: '몽실 들판(몽실 마을 별문)을 덮은 솜사탕 슬라임을 줄여 줘.', kind: 'kill', target: 'slime', goal: 10, reward: { gold: 60, xp: 120, mats: { dream_dust: 3 } } },
+  { id: 'c2_bat', title: '꿈박쥐 쫓기', text: '몽실 들판(몽실 마을 별문)에 밤하늘에서 내려온 꿈박쥐가 잠을 깨운대.', kind: 'kill', target: 'bat', goal: 8, reward: { gold: 70, xp: 140, gear: 'uncommon' } },
+  { id: 'c2_fluff', title: '몽실 솜사탕 모으기', text: '몽실 들판 괴물이 떨어뜨리는 몽실 솜사탕을 모아 와.', kind: 'collect', target: 'fluff', goal: 8, reward: { gold: 80, xp: 160, mats: { toy_part: 2 } } },
+  { id: 'c2_sweep', title: '몽실 들판 대청소', text: '몽실 들판 괴물이면 종류는 상관없어. 많이, 아주 많이!', kind: 'kill', target: 'any', goal: 25, reward: { gold: 100, xp: 220, gear: 'rare' } },
+  { id: 'c2_named', title: '솜사탕 대장 몽글이', text: '몽실 들판 어딘가에 거대한 대장 슬라임이 있대. 찾아서 쓰러뜨려.', kind: 'named', target: 'named', goal: 1, reward: { gold: 130, xp: 260, gear: 'rare', mats: { star_shard: 1 } } },
+  { id: 'c2_knight', title: '구름 기사단', text: '구름 기사들이 몽실 들판 길목을 막고 있어.', kind: 'kill', target: 'knight', goal: 4, reward: { gold: 120, xp: 260, mats: { toy_part: 2, dream_dust: 4 } } },
+  { id: 'c2_boss', title: '몽실 들판의 악몽 꽃', text: '몽실 들판 한가운데에서 악몽 꽃이 피어났어. 챕터 2의 마지막!', kind: 'boss', target: 'boss', goal: 1, reward: { gold: 220, xp: 420, gear: 'epic', mats: { star_shard: 2 } } },
 ]
 
 /** At most this many chapter quests taken at once. */
@@ -287,6 +289,14 @@ export function chapter2Open(save: SaveData): boolean {
   return chaptersOf(save).current >= 2
 }
 
+/**
+ * 몽실 들판 can be reached: chapter 2 is open and 모찌's 꿈 미로 is behind her (the field's only door
+ * is 몽실 마을's 별문). The board offers, tracks and counts its quests only from then on.
+ */
+export function fieldOpen(save: SaveData): boolean {
+  return chapter2Open(save) && dreamOf(save).maze.passed
+}
+
 /** Chapter 3 (꿈 바깥의 목소리) is open: chapter 2's story is over. */
 export function chapter3Open(save: SaveData): boolean {
   const c = chaptersOf(save)
@@ -296,7 +306,7 @@ export function chapter3Open(save: SaveData): boolean {
 /** Board field quests on the go. Parked (none) before chapter 2, whatever an old save holds. */
 export function activeQuests(save: SaveData): ChapterQuestDef[] {
   const c = chaptersOf(save)
-  if (!chapter2Open(save)) return []
+  if (!fieldOpen(save)) return []
   return CHAPTER2.filter((d) => c.quests[d.id].status === 'active')
 }
 
@@ -304,6 +314,7 @@ export function takeQuest(save: SaveData, id: string): { ok: boolean; reason?: s
   const c = chaptersOf(save)
   const q = c.quests[id]
   if (!chapter2Open(save)) return { ok: false, reason: '가이드 챕터를 먼저 마쳐 줘.' }
+  if (!fieldOpen(save)) return { ok: false, reason: '꿈 미로를 지나 몽실 마을에 닿으면 몽실 들판 퀘스트를 맡을 수 있어.' }
   if (!q || q.status !== 'offered') return { ok: false, reason: '지금은 맡을 수 없는 퀘스트야.' }
   if (activeQuests(save).length >= ACTIVE_CAP) return { ok: false, reason: `퀘스트는 한 번에 ${ACTIVE_CAP}개까지 맡을 수 있어.` }
   q.status = 'active'
@@ -382,7 +393,7 @@ export function claimQuest(save: SaveData, id: string, rng: () => number = Math.
 /** Tracker lines for the HUD: active quests and progress. */
 export function questHud(save: SaveData): { id: string; title: string; prog: string; done: boolean }[] {
   const c = chaptersOf(save)
-  if (!chapter2Open(save)) return []
+  if (!fieldOpen(save)) return []
   return CHAPTER2.filter((d) => c.quests[d.id].status === 'active' || c.quests[d.id].status === 'done').map((d) => ({
     id: d.id,
     title: d.title,

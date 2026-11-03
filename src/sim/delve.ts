@@ -206,7 +206,7 @@ export function floorLabel(depth: number, floor: number): string {
  * 1 = key in hand (or no key needed). The run adds a direction arrow and distance.
  */
 export function objectiveText(plan: Pick<FloorPlan, 'objective' | 'goal'> & { key?: boolean }, progress = 0, done = false): string {
-  if (plan.objective === 'field') return done ? '들판의 악몽 꽃을 쓰러뜨렸어!' : '퀘스트 사냥 · T 또는 파란 포털로 마을'
+  if (plan.objective === 'field') return done ? '몽실 들판의 악몽 꽃을 쓰러뜨렸어!' : '퀘스트 사냥 · T 또는 파란 포털로 마을'
   if (plan.objective === 'town') return '야시장 · NPC와 대화 · 별문에서 E로 이동'
   if (done) return plan.objective === 'boss' ? '보물 상자를 열고 출구 포털로!' : '출구 방에 도착 · 금빛 계단으로 다음 층'
   switch (plan.objective) {

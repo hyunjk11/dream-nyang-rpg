@@ -13,7 +13,7 @@ import { formatAffix, ilvText, itemLines, itemName, itemPower, plusOf, sellValue
 import { fillCell, ilvRow, nameTitle } from './itemcell'
 import { buyBack, buyConsumable, buyStock, consumableCount, CONSUMABLES, RESTOCK_COST, restock, sellItem, shopStock, STASH_CAP, stashPut, stashTake, townOf } from '../sim/town'
 import { canPay, changeElement, ELEMENT_COST, elementOf, MAX_PLUS, rerollAffix, rerollAffixCost, rerollChoices, upgradeCost, upgradeGun, type Cost } from '../sim/workshop'
-import { CHAPTER2, CHAPTER_TITLE, chapter2Open, chapterProgress, chaptersOf, claimQuest, questRewardText, takeQuest } from '../sim/chapters'
+import { CHAPTER2, CHAPTER_TITLE, chapter2Open, chapterProgress, chaptersOf, claimQuest, fieldOpen, questRewardText, takeQuest } from '../sim/chapters'
 import { BAG_CAP, type MutationResult, type Element, type ItemInstance, type SaveData } from '../sim/types'
 import { compareEquip } from './inventory'
 import { iconSvg } from './icons'
@@ -590,6 +590,11 @@ export class TownUI {
       list.append(box)
       return
     }
+    if (!fieldOpen(save)) {
+      box.append(el('b', '', `챕터 2 · ${CHAPTER_TITLE[2]}`), el('small', '', '모찌와 꿈 미로를 지나 몽실 마을에 닿으면, 그곳 별문 너머 "몽실 들판" 퀘스트가 여기 붙어.'))
+      list.append(box)
+      return
+    }
     const prog = chapterProgress(save)
     const head = prog.claimed >= prog.total ? `몽실 들판 퀘스트 · 모두 완료!` : `몽실 들판 퀘스트 (${prog.claimed}/${prog.total}) · 챕터 2 ${CHAPTER_TITLE[2]}${c.cleared.includes(2) ? ' 클리어' : ''}`
     box.append(el('b', 'town-chapter-head', head))
@@ -607,7 +612,7 @@ export class TownUI {
       bar.append(fill)
       card.append(bar, el('small', 'town-prog', `${q.progress}/${d.goal}`))
       const row = el('div', 'inv-actions')
-      if (q.status === 'offered') row.append(this.button('퀘스트 받기', () => this.run(takeQuest(save, d.id), `퀘스트 "${d.title}" 시작! 별문 → 몽실 들판`, 'take'), { primary: true, id: `chapter-take-${d.id}` }))
+      if (q.status === 'offered') row.append(this.button('퀘스트 받기', () => this.run(takeQuest(save, d.id), `퀘스트 "${d.title}" 시작! 몽실 마을 별문 → 몽실 들판 · 퀘스트 줄을 누르면 길 안내`, 'take'), { primary: true, id: `chapter-take-${d.id}` }))
       else if (q.status === 'active') row.append(el('small', 'town-sub', '진행 중 · 몽실 들판에서'))
       else if (q.status === 'done')
         row.append(

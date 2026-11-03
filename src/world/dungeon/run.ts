@@ -693,6 +693,12 @@ export class DungeonRun {
       }
       case 'exit':
         return objective()
+      case 'board':
+      case 'gate': {
+        // 몽실 마을: the board and the 별문 are spots on the plaza.
+        const sp = this.spots.find((s) => s.id === goal.kind)
+        return sp ? { x: sp.x, z: sp.z } : objective()
+      }
       default:
         return null
     }

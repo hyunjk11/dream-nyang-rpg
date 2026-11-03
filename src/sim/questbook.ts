@@ -4,12 +4,12 @@
  *  - 메인 (one per chapter, always on top): 챕터 1 = the guide, 챕터 2 = 모찌의 꿈 미로 then 몽이의 꿈의 비밀,
  *    챕터 3 = 꿈 바깥의 목소리 (준비 중).
  *  - 이야기: the island folk's side stories.
- *  - 의뢰: the board's 들판 quests (챕터 2) and the sewer bounties.
+ *  - 의뢰: the board's 몽실 들판 quests (챕터 2, once 몽실 마을 is reached) and the sewer bounties.
  *
  * Each entry: a short title, one objective line, a progress count, and when it is ready, where to turn
  * it in and what it pays. The HUD tracker shows at most TRACK_CAP rows (main + pins / ready ones).
  */
-import { CHAPTER2, GUIDE, chapter2Open, chapter3Open, chaptersOf, guideStep, questRewardText, type ChapterQuestDef } from './chapters'
+import { CHAPTER2, GUIDE, chapter2Open, chapter3Open, fieldOpen, chaptersOf, guideStep, questRewardText, type ChapterQuestDef } from './chapters'
 import { activeContracts, rewardText as contractReward, type Contract } from './contracts'
 import { AREAS, MAZE_CHAIN, STORY, dreamOf, mazeOpen, mongsilOpen, type StoryQuest } from './dreamstory'
 import { objectiveLine, rewardText as islandReward } from './quests'
@@ -40,7 +40,7 @@ export interface QuestEntry {
 export const TRACK_CAP = 3
 
 const MAZE_SHORT: Record<string, string> = { m_kill: '미로의 악몽 잠재우기', m_frag: '꿈 조각 찾기', m_rescue: '구름양 뭉게 구하기', m_elite: '미로지기 쓰러뜨리기' }
-const FIELD_LINE: Record<string, string> = { slime: '들판의 솜사탕 슬라임 잡기', bat: '들판의 꿈박쥐 잡기', knight: '들판의 구름 기사 잡기', any: '들판 괴물 아무거나 잡기', fluff: '들판에서 몽실 솜사탕 줍기', named: '대장 몽글이 찾아 쓰러뜨리기', boss: '들판의 악몽 꽃 잠재우기' }
+const FIELD_LINE: Record<string, string> = { slime: '몽실 들판의 솜사탕 슬라임 잡기', bat: '몽실 들판의 꿈박쥐 잡기', knight: '몽실 들판의 구름 기사 잡기', any: '몽실 들판 괴물 아무거나 잡기', fluff: '몽실 들판에서 몽실 솜사탕 줍기', named: '몽실 들판의 대장 몽글이 쓰러뜨리기', boss: '몽실 들판의 악몽 꽃 잠재우기' }
 const BOUNTY_TITLE: Record<Contract['kind'], string> = { kills: '괴물 사냥', elites: '정예 사냥', nests: '둥지 부수기', chests: '상자 열기', clean: '무사 돌파', boss: '보스 잡기' }
 const BOARD = '마을 게시판에서 보상 받기'
 
@@ -104,7 +104,7 @@ export function questBook(save: SaveData): QuestEntry[] {
     const m = /\s(\d+\/\d+)$/.exec(todo)
     out.push({ id, group: 'story', title: def.title, line: m ? todo.slice(0, m.index) : todo, prog: ready ? '완료' : (m?.[1] ?? ''), ready, turnIn: def.autoTurnIn ? '끝나면 바로 보상' : '마을에 보고', reward: islandReward(def.rewards) })
   }
-  if (chapter2Open(save)) {
+  if (fieldOpen(save)) {
     const c = chaptersOf(save)
     for (const d of CHAPTER2) if (c.quests[d.id].status === 'active' || c.quests[d.id].status === 'done') out.push(fieldEntry(save, d))
   }
