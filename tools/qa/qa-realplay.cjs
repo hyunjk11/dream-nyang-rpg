@@ -112,10 +112,12 @@ const fs = require('fs')
     let foes = r.foes()
     const want = what === 'pack' ? 5 : 1
     let pick = foes.filter((f) => (what === 'elite' ? f.elite : !f.elite)).slice(0, want)
+    // In a run every test gets fresh, full-HP targets (a reused foe may be hurt, or run home and heal).
+    if (r.world() === 'run') pick = []
     if (r.world() === 'run' && pick.length < want) {
       const kind = foes.find((f) => !f.elite)?.kind ?? 'slime'
       for (let i = pick.length; i < want; i++) { const f = s.run.horde.spawn(kind, at.x, at.z, what === 'elite'); if (f) f.age = 5 }
-      foes = r.foes(); pick = foes.filter((f) => (what === 'elite' ? f.elite : !f.elite)).slice(0, want)
+      foes = r.foes(); pick = foes.filter((f) => (what === 'elite' ? f.elite : !f.elite) && Math.hypot(f.f.x - at.x, f.f.z - at.z) < 0.5 && f.hp >= f.maxHp).slice(0, want)
     }
     pick.forEach((f, i) => { const a = (i / want) * Math.PI * 2; const rr = want > 1 ? 0.9 : 0; f.set(at.x + Math.cos(a) * rr, at.z + Math.sin(a) * rr) })
     window.__tgt = pick
