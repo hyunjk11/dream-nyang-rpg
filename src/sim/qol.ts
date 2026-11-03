@@ -4,7 +4,9 @@
  */
 import { ITEMS } from '../data/items'
 import { bagItems, powerVsWorn } from './inventory'
+import { isLegend } from './legends'
 import { itemPower } from './loot'
+import { isMod, modKind } from './mods'
 import { EQUIP_SLOTS, RARITIES, type ItemInstance, type Rarity, type SaveData } from './types'
 
 export interface QolPrefs {
@@ -53,6 +55,23 @@ export function junkIds(save: SaveData): string[] {
   return bagItems(save)
     .filter((item) => rank(item.rarity) <= rank('uncommon') && !!ITEMS[item.defId]?.slot && !isUpgrade(save, item))
     .map((item) => item.uid)
+}
+
+/**
+ * Junk parts = loose 부품 in the bag (never one slotted in a gun: those live on gun.mods, not in the
+ * bag), with the same rarity rule as junk gear (common/uncommon only), never a legend and never a
+ * 특수 부품 (tricks are the rare, gun-changing ones).
+ */
+export function junkPartIds(save: SaveData): string[] {
+  return bagItems(save)
+    .filter((item) => isMod(item) && rank(item.rarity) <= rank('uncommon') && !isLegend(item) && modKind(item) !== 'trick')
+    .map((item) => item.uid)
+}
+
+/** The toast after 잡동사니 판매: how much gold and how many parts. */
+export function junkToast(gear: number, parts: number, gold: number): string {
+  const what = [gear ? `장비 ${gear}개` : '', parts ? `부품 ${parts}개` : ''].filter(Boolean).join(' · ')
+  return `잡동사니 판매: ${what} · +${gold} 골드`
 }
 
 /** Auto-sell on pickup: only commons that are not upgrades, and only when the pref is on. */
