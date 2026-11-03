@@ -26,6 +26,15 @@ const fs = require('fs')
   }
   const box = async () => p.locator('canvas').first().boundingBox()
   // In-page helpers: foes of this world (horde or town), placement along the view.
+  // Game clock: the game steps min(0.1 s, frame) per frame, so headless at ~5 fps runs at half speed.
+  // Every wait below is in GAME seconds (window.__gt), not wall time.
+  await p.addInitScript(() => {
+    window.__gt = 0
+    let last = performance.now()
+    const tick = (now) => { window.__gt += Math.min(0.1, Math.max(0, (now - last) / 1000)); last = now; requestAnimationFrame(tick) }
+    requestAnimationFrame(tick)
+  })
+  const waitGame = async (sec) => { const t = await p.evaluate(() => window.__gt); await p.waitForFunction((t) => window.__gt >= t, t + sec, { timeout: 120000, polling: 50 }) }
   await p.addInitScript(() => {
     window.__rp = {
       world() {
@@ -35,7 +44,7 @@ const fs = require('fs')
       },
       foes() {
         const s = window.__slice
-        if (s.run?.horde) return s.run.horde.foes.filter((f) => f.dying === 0 && f.hp > 0).map((f) => ({ f, get x() { return f.x }, get hp() { return f.hp }, maxHp: f.maxHp, elite: f.elite, dmg: f.damage, kind: f.kind, set(x, z) { f.x = x; f.z = z; f.vx = 0; f.vz = 0; f.mode = 'chase'; f.age = Math.max(f.age, 5) } }))
+        if (s.run?.horde) return s.run.horde.foes.filter((f) => f.dying === 0 && f.hp > 0).map((f) => ({ f, get x() { return f.x }, get hp() { return f.hp }, maxHp: f.maxHp, elite: f.elite, dmg: f.damage, kind: f.kind, set(x, z) { f.x = x; f.z = z; f.homeX = x; f.homeZ = z; f.lost = 0; f.vx = 0; f.vz = 0; f.mode = 'chase'; f.age = Math.max(f.age, 5) } }))
         return s.combat.foes.filter((f) => f.alive).map((f) => ({ f, get hp() { return f.hp }, maxHp: f.maxHp, elite: !!f.elite, dmg: f.damage ?? f.spec?.damage, kind: f.kind, set(x, z) { f.object.position.x = x; f.object.position.z = z; if ('state' in f) f.state = 'chase'; if ('awake' in f) f.awake = true } }))
       },
       // Along the crosshair: from her toward the gun's aim point (d = 0: the aim point itself).
@@ -88,7 +97,7 @@ const fs = require('fs')
       trace.push(await p.evaluate(() => Math.round(window.__slice.hero.hp)))
       // keep the pack on her (they get knocked back), no input from her
       await p.evaluate(() => { const r = window.__rp, hp = window.__slice.hero.object.position; r.foes().filter((f) => !f.elite).slice(0, 6).forEach((f, i) => { if (Math.hypot(f.f.x ?? f.f.object.position.x - hp.x, 0) > 1e9) return }) })
-      if (t < 10) await p.waitForTimeout(1000)
+      if (t < 10) await waitGame(1)
     }
     const hurt = await p.evaluate(() => window.__hurt)
     const lost = trace[0] - Math.min(...trace)
@@ -113,8 +122,9 @@ const fs = require('fs')
     window.__dmgs = []
     window.__dobs?.disconnect()
     // DOM damage numbers (what the player reads): every new .dmg element's text and kind class.
-    window.__dobs = new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && n.classList.contains('dmg')) window.__dmgs.push(n.className.replace('dmg', '').trim() + ':' + n.textContent.trim()) })
-    window.__dobs.observe(document.body, { childList: true, subtree: true })
+    // (hudfx pools its .dmg elements: watch their text being replaced, read the class a tick later.)
+    window.__dobs = new MutationObserver((ms) => { for (const m of ms) { const el = m.target; if (m.type !== 'childList' || el.nodeType !== 1 || !el.classList.contains('dmg') || el.classList.contains('tally')) continue; queueMicrotask(() => window.__dmgs.push((el.className.replace('dmg', '').trim() || 'hit') + ':' + el.textContent.trim())) } })
+    window.__dobs.observe(document.getElementById('hud') || document.body, { childList: true, subtree: true })
     const s0 = s.hero; s0.hp = s0.maxHp
     return pick.map((f) => ({ hp: Math.round(f.hp), max: f.maxHp }))
   }, { what, d })
@@ -123,7 +133,7 @@ const fs = require('fs')
     const s = window.__slice, r = window.__rp, b = s.run?.boss
     if (!b) return null
     r.parkAll()
-    const at = r.fwd(d); b.x = at.x; b.z = at.z
+    const at = r.fwd(d); b.awake = true; b.x = at.x; b.z = at.z
     window.__tgt = [{ f: b, maxHp: b.maxHp }]
     s.hero.hp = s.hero.maxHp
     return [{ hp: Math.round(b.hp), max: b.maxHp, awake: b.awake }]
@@ -162,7 +172,7 @@ const fs = require('fs')
         const used0 = await p.evaluate(() => ({ ...window.__slice.skills.used }))
         await p.keyboard.press(key)
         // keep the aura's targets inside its ring while it burns
-        await p.waitForTimeout(k === 'aura' ? 6500 : 1200)
+        await waitGame(k === 'aura' ? 6.5 : 1.2)
         const used1 = await p.evaluate(() => ({ ...window.__slice.skills.used }))
         const after = await readTargets()
         const fr = frac(before, after)
@@ -182,7 +192,7 @@ const fs = require('fs')
     d1: async () => { await fresh(); await p.evaluate(() => window.__slice.enterSewer(1, 1)); await p.waitForFunction(() => window.__slice.run?.horde && !window.__slice.run.plan.area, null, { timeout: 90000 }); await settle() },
     d2: async () => { await fresh(); await p.evaluate(() => { window.__slice.game.save.delve = { ...(window.__slice.game.save.delve || {}), unlocked: 3, best: 3 } ; window.__slice.enterSewer(2, 2) }); await p.waitForFunction(() => window.__slice.run?.horde, null, { timeout: 90000 }); await settle() },
     d3: async () => { await fresh(); await p.evaluate(() => { window.__slice.game.save.delve = { ...(window.__slice.game.save.delve || {}), unlocked: 3, best: 3 }; window.__slice.enterSewer(3, 2) }); await p.waitForFunction(() => window.__slice.run?.horde, null, { timeout: 90000 }); await settle() },
-    boss1: async () => { await fresh(); await p.evaluate(() => window.__slice.enterSewer(1, 4)); await p.waitForFunction(() => window.__slice.run?.boss, null, { timeout: 90000 }); await settle(); await p.evaluate(async () => { const s = window.__slice, r = s.run, c = r.maze.bossRoom, T = 3.4; const x = (c.x + c.w / 2) * T + (r.maze.ox ?? 0), z = (c.y + c.h / 2) * T + (r.maze.oz ?? 0); s.hero.object.position.set(x, 0, z); await new Promise((ok) => setTimeout(ok, 1500)) }) },
+    boss1: async () => { await fresh(); await p.evaluate(() => window.__slice.enterSewer(1, 4)); await p.waitForFunction(() => window.__slice.run?.boss, null, { timeout: 90000 }); await settle(); await p.evaluate(async () => { const s = window.__slice, m = s.run.maze, T = 3.4; let sx = 0, sy = 0, n = 0; for (let i = 0; i < m.tiles.length; i++) { if (m.tiles[i] !== 4) continue; sx += i % m.w; sy += Math.floor(i / m.w); n++ } const tx = Math.round(sx / n), ty = Math.round(sy / n) + 1; s.hero.object.position.set((tx - m.w / 2 + 0.5) * T, 0, (ty - m.h / 2 + 0.5) * T); await new Promise((ok) => setTimeout(ok, 1500)) }) },
     field: async () => { await fresh(); await p.evaluate(() => { const c = window.__slice.chapters; c.guide.done = true; if (!c.cleared.includes(1)) c.cleared.push(1); c.current = 2; window.__slice.dream.maze.passed = true; window.__slice.dream.maze.entered = true; window.__slice.enterField() }); await p.waitForFunction(() => window.__slice.run?.horde, null, { timeout: 90000 }); await settle() },
     loft: async () => { await fresh(); await p.evaluate(() => { const c = window.__slice.chapters; c.guide.done = true; if (!c.cleared.includes(1)) c.cleared.push(1); c.current = 2; const d = window.__slice.dream; d.maze.passed = true; d.maze.entered = true; d.story.step = 1; d.story.state = 'active'; window.__slice.enterArea('loft') }); await p.waitForFunction(() => window.__slice.run?.plan.area === 'loft', null, { timeout: 90000 }); await settle() },
   }

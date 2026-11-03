@@ -8,7 +8,7 @@ import { BOSS } from '../src/world/dungeon/boss'
 import { floorPlan, fieldPlan } from '../src/sim/delve'
 import { DIFFICULTY } from '../src/combat/difficulty'
 import { Hero } from '../src/actors/hero'
-import { AURA_PULSE, AURA_TIME, SKILL_BITE, auraShare, skillBlast, skillGear, SKILL_REF_MUL, type SkillBody } from '../src/combat/skills'
+import { AURA_PULSE, AURA_TIME, SKILL_BITE, SKILL_CAP, SKILL_SHOTS, auraShare, skillBite, skillBlast, skillGear, SKILL_REF_MUL, type SkillBody } from '../src/combat/skills'
 import { migrateSave } from '../src/sim/migrate'
 import { freshSave } from '../src/sim/mutate'
 
@@ -142,6 +142,20 @@ describe('실제 플레이: 스킬 한 번 = 무리 정리 · 정예 30–40% ·
     const elite = body('elite', 4000)
     skillBlast([elite], 0, 0, 3, { kind: 'aura', rank: 1, gear: 1, share: auraShare(true) })
     expect(4000 - elite.hp).toBeGreaterThanOrEqual(4000 * 0.15)
+  })
+
+  it('스킬 숫자는 장비 좋은 물총 치명타 한 방보다 늘 크다 (총알 한발 수준도 안 돼)', () => {
+    const crit = 620 // 강한 총의 치명타 한 방울
+    const floor = SKILL_SHOTS * crit
+    for (const k of ['bomb', 'wave', 'rush'] as const) {
+      expect(skillBite({ tone: 'n', maxHp: 374 }, k, 1, 1, 1, floor)).toBeGreaterThan(crit)
+      expect(skillBite({ tone: 'elite', maxHp: 6570 }, k, 1, 1, 1, floor)).toBeGreaterThan(crit)
+      // 상한은 그대로.
+      expect(skillBite({ tone: 'elite', maxHp: 6570 }, k, 1, 1, 1, floor)).toBeLessThanOrEqual(Math.round(6570 * SKILL_CAP.elite))
+      expect(skillBite({ tone: 'boss', maxHp: 28000 }, k, 1, 1, 1, floor)).toBeLessThanOrEqual(Math.round(28000 * SKILL_CAP.boss))
+    }
+    // 오라 첫 펄스도.
+    expect(skillBite({ tone: 'n', maxHp: 374 }, 'aura', 1, 1, auraShare(true), floor)).toBeGreaterThan(crit)
   })
 
   it('랭크가 올라도 상한(정예 40%, 보스 25%)을 넘지 않는다', () => {
