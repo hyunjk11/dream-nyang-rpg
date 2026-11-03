@@ -1207,7 +1207,7 @@ export class DungeonRun {
     const out = this.aimTargets
     out.length = 0
     for (const f of this.horde.foes) if (this.horde.hittable(f)) out.push(this.horde.capsule(f))
-    if (this.boss?.alive && this.boss.awake) out.push(this.boss.capsule())
+    if (this.boss?.alive) out.push(this.boss.capsule())
     for (const n of this.nests) if (n.hp > 0) out.push(this.nestCapsule(n))
     const crack = this.crackCapsule()
     if (crack) out.push(crack)
@@ -1301,7 +1301,8 @@ export class DungeonRun {
       })
     }
     const boss = this.boss
-    if (boss?.alive && boss.awake) {
+    // Asleep too: a skill from the doorway lands and wakes her (Boss.damage).
+    if (boss?.alive) {
       out.push({
         id: 'boss',
         x: boss.x,

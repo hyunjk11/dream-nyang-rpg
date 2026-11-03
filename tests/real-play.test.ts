@@ -6,9 +6,10 @@ import { tileCentre, walkable, worldToTile } from '../src/world/dungeon/maze'
 import { runFoeScale, foeHit } from '../src/world/dungeon/run'
 import { BOSS } from '../src/world/dungeon/boss'
 import { floorPlan, fieldPlan } from '../src/sim/delve'
+import { bombRadius } from '../src/data/tree'
 import { DIFFICULTY } from '../src/combat/difficulty'
 import { Hero } from '../src/actors/hero'
-import { AURA_BURN, AURA_PULSE, AURA_TIME, SKILL_BITE, SKILL_CAP, SKILL_SHOTS, auraShare, skillBite, skillBlast, skillGear, SKILL_REF_MUL, type SkillBody } from '../src/combat/skills'
+import { AURA_BURN, OVERDRIVE_WAVE, SKILL_RANGE, rushLock, AURA_PULSE, AURA_TIME, SKILL_BITE, SKILL_CAP, SKILL_SHOTS, auraShare, skillBite, skillBlast, skillGear, SKILL_REF_MUL, type SkillBody } from '../src/combat/skills'
 import { migrateSave } from '../src/sim/migrate'
 import { freshSave } from '../src/sim/mutate'
 
@@ -140,6 +141,17 @@ describe('실제 플레이: 스킬 한 번 = 무리 정리 · 정예 30–40% ·
       }
     })
   }
+  it('보스가 스스로 멈추는 거리(BOSS.keep)와 그보다 조금 먼 곳에서도 네 스킬이 모두 닿는다', () => {
+    for (const d of [BOSS.keep, BOSS.keep + 0.8]) {
+      const mk = () => { const b = body('boss', 28000); b.r = BOSS.radius; b.x = d; return b }
+      // 폭탄: 조준점 = 보스 몸통 앞면 (실제 조준선이 캡슐에 맞는 곳)
+      expect(skillBlast([mk()], d - BOSS.radius, 0, bombRadius(0), { kind: 'bomb', rank: 1, gear: 1 }), `폭탄 ${d}`).toBe(1)
+      expect(skillBlast([mk()], 0, 0, OVERDRIVE_WAVE.radius, { kind: 'wave', rank: 1, gear: 1 }), `과열 ${d}`).toBe(1)
+      expect(rushLock([mk()], 0, 0, 1, 0, SKILL_RANGE.rush), `돌진 ${d}`).not.toBeNull()
+      expect(skillBlast([mk()], 0, 0, AURA_BURN.burst, { kind: 'aura', rank: 1, gear: 1, share: auraShare(true) }), `오라 ${d}`).toBe(1)
+    }
+  })
+
   it('사탕 오라는 4.4–5.6 m 거리를 지키는 보스에게도 닿는다 (브라우저 추적: 예전 3.2 m 고리는 보스 −5%)', () => {
     const boss = body('boss', 28000)
     boss.r = 1.0 // BOSS.radius 1.25: 조금 작게 잡아도 닿아야 한다
