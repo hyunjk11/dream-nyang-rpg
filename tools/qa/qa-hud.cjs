@@ -108,7 +108,7 @@ const loot = (p) => p.evaluate(() => { const s = window.__slice; const el = docu
     await p.waitForTimeout(5000)
     await check(p, vp, 'auto_collapse_5s', () => window.__slice.guideView, 'chip')
     await scene(p, vp, 'guide_chip', w, h)
-    await p.click('#guide-chip')
+    await p.click('#quest-main')
     await check(p, vp, 'chip_click_expands', () => window.__slice.guideView, 'full')
     await p.keyboard.press('KeyJ')
     await check(p, vp, 'J_collapses', () => window.__slice.guideView, 'chip')

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { freshSave } from '../src/sim/mutate'
-import { chaptersOf, claimQuest, takeQuest, CHAPTER2 } from '../src/sim/chapters'
+import { chaptersOf, claimQuest, skipGuide, takeQuest, CHAPTER2 } from '../src/sim/chapters'
 import { BOSS_FLOOR, Delve, floorScale } from '../src/sim/delve'
 import { floorStateLabel } from '../src/sim/floorsnap'
 import {
@@ -22,6 +22,7 @@ import {
   storyTalk,
   townPlan,
   wantsSparks,
+  enterMaze,
 } from '../src/sim/dreamstory'
 import { summaryLines } from '../src/ui/summary'
 import { TOWN_SPOTS, townMaze } from '../src/world/dungeon/town'
@@ -50,6 +51,15 @@ function playStep(save: SaveData): void {
   if (q.kind === 'spark') storyEvent(save, { type: 'spark', amount: q.goal })
   else if (q.kind === 'area') storyEvent(save, { type: 'area', area: q.where as 'loft' })
   else storyEvent(save, { type: 'boss', area: q.where as 'moon' })
+}
+
+
+/** A save that really is in chapter 2: the guide is done and she has walked into the 꿈 미로. */
+function ch2Save() {
+  const save = freshSave()
+  skipGuide(save)
+  enterMaze(save)
+  return save
 }
 
 describe('챕터 2 지역 (꿈 미로 · 구름 다락 · 시계탑 · 달빛 둥지)', () => {
@@ -133,7 +143,7 @@ describe('몽실 마을', () => {
 
 describe('모찌의 미로 퀘스트', () => {
   it('넷을 차례로 끝내면 미로가 열리고 보상이 쌓인다', () => {
-    const save = freshSave()
+    const save = ch2Save()
     expect(mazeQuest(save)?.id).toBe('m_kill')
     expect(mazeCleared(save)).toBe(false)
     const gold = walkMaze(save)
@@ -143,7 +153,7 @@ describe('모찌의 미로 퀘스트', () => {
   })
 
   it('다른 종류 이벤트는 지금 퀘스트를 진행시키지 않는다', () => {
-    const save = freshSave()
+    const save = ch2Save()
     expect(mazeEvent(save, 'frag').result).toBeNull()
     expect(dreamOf(save).maze.step).toBe(0)
     for (let i = 0; i < 11; i += 1) mazeEvent(save, 'kill')
@@ -154,7 +164,7 @@ describe('모찌의 미로 퀘스트', () => {
   })
 
   it('미로를 나오면 집이 몽실 마을이 되고 이야기 HUD가 뜬다', () => {
-    const save = freshSave()
+    const save = ch2Save()
     walkMaze(save)
     passMaze(save)
     const d = dreamOf(save)
@@ -167,7 +177,7 @@ describe('모찌의 미로 퀘스트', () => {
 
 describe('꿈의 비밀 (몽이의 이야기)', () => {
   it('제안 → 진행 → 보고를 네 번 하면 챕터 2가 클리어되고 챕터 3이 열린다', () => {
-    const save = freshSave()
+    const save = ch2Save()
     walkMaze(save)
     passMaze(save)
     let cleared = 0
@@ -190,7 +200,7 @@ describe('꿈의 비밀 (몽이의 이야기)', () => {
   })
 
   it('별문은 이야기가 닿은 지역만 연다', () => {
-    const save = freshSave()
+    const save = ch2Save()
     expect(openAreas(save)).toEqual([])
     passMaze(save)
     expect(openAreas(save)).toEqual([])
@@ -204,7 +214,7 @@ describe('꿈의 비밀 (몽이의 이야기)', () => {
   })
 
   it('엉뚱한 지역 이벤트는 이야기를 진행시키지 않는다', () => {
-    const save = freshSave()
+    const save = ch2Save()
     passMaze(save)
     storyTalk(save, seeded())
     storyEvent(save, { type: 'area', area: 'tower' })
@@ -216,7 +226,7 @@ describe('꿈의 비밀 (몽이의 이야기)', () => {
 
 describe('예전 세이브 이어 하기', () => {
   it('들판 퀘스트를 해 본 세이브는 미로를 지난 것으로 치고 예전 챕터 2 클리어는 다시 연다', () => {
-    const save = freshSave()
+    const save = ch2Save()
     const c = chaptersOf(save)
     c.guide.done = true
     if (!c.cleared.includes(1)) c.cleared.push(1)
@@ -234,14 +244,14 @@ describe('예전 세이브 이어 하기', () => {
   })
 
   it('처음 하는 세이브는 미로부터 시작한다', () => {
-    const save = freshSave()
+    const save = ch2Save()
     const d = dreamOf(save)
     expect(d.maze.passed).toBe(false)
     expect(d.home).toBe('island')
   })
 
   it('깨진 dream 블록은 안전한 값으로 고쳐진다', () => {
-    const save = freshSave()
+    const save = ch2Save()
     ;(save as unknown as { dream: unknown }).dream = { maze: { step: 99, count: -4, passed: 'yes' }, story: { step: -2, state: 'wat' }, home: 'mongsil', gates: ['moon', 'nope', 'moon'] }
     const d = dreamOf(save)
     expect(d.maze.step).toBe(MAZE_CHAIN.length)

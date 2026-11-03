@@ -23,7 +23,7 @@ import { Landmarks } from './world/town/landmarks'
 import { Mochi } from './actors/mochi'
 import { killLoot, GameState, type Storageish } from './core/loop'
 import { nearestTalk, placesFor, pushOutOfPlaces, type Place } from './world/town/places'
-import { fadeThrough, hideTitle, LEVELUP_MS, openQuestLog, paintStats, paintTracker, playIntro, playOnce, showEnding, showTitle, titleReady, toast, zoneBanner } from './ui/screens'
+import { fadeThrough, hideTitle, LEVELUP_MS, openQuestLog, paintStats, playIntro, playOnce, showEnding, showTitle, titleReady, toast, zoneBanner } from './ui/screens'
 import { TalkBox, type TalkChoice, type TalkDef } from './ui/talk'
 import { PLAZA, PORTAL_ARRIVAL, destinations, gateLocked, zone3d, type ZoneId } from './world/town/zones3d'
 import { Color, Fog, HemisphereLight } from 'three'
@@ -60,9 +60,10 @@ import { activeContracts, contractEvent, contractLine, type ContractEvent } from
 import { eatCandy, townOf, useScroll } from './sim/town'
 import { tryEquip } from './sim/mutate'
 import { isEquipped } from './sim/inventory'
-import { CHAPTER2, CHAPTER_TITLE, FLUFF, chapter2Open, chaptersOf, fieldNeeds, guideEvent, guideStep, keepGuide, questEvent, questHud, skipGuide, type ChapterOut, type FieldEvent, type GuideEvent } from './sim/chapters'
+import { CHAPTER2, FLUFF, chapter2Open, chaptersOf, fieldNeeds, guideEvent, guideStep, keepGuide, questEvent, questHud, skipGuide, type ChapterOut, type FieldEvent, type GuideEvent } from './sim/chapters'
 import { ChapterUI } from './ui/chapters'
-import { AREAS, MAZE_ELITE, RESCUE_NAME, dreamOf, mazeCleared, mazeEvent, mazeHud, mazeQuest, openAreas, passMaze, storyEvent, storyHud, storyTalk, wantsSparks, type AreaId, type DreamOut } from './sim/dreamstory'
+import { GROUP_KO, pinsOf, questBook, togglePin, trackedQuests, type QuestGroup } from './sim/questbook'
+import { AREAS, MAZE_ELITE, RESCUE_NAME, dreamOf, enterMaze, mongsilOpen, mazeCleared, mazeEvent, mazeQuest, openAreas, passMaze, storyEvent, storyTalk, wantsSparks, type AreaId, type DreamOut } from './sim/dreamstory'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -599,13 +600,7 @@ const townUI = new TownUI({
   toast: (text) => toast(text, 'info'),
   sfx: (cue) => audio.sfx(cue),
   success: (kind, item) => townSuccess(kind, item),
-  openStory: () => {
-    mode = 'menu'
-    releaseLook()
-    openQuestLog(game.save, () => {
-      mode = 'play'
-    })
-  },
+  openStory: () => openQuests('story'),
   opened: () => {
     pad.fire = false
     releaseLook()
@@ -667,7 +662,7 @@ function townSuccess(kind: TownSuccess, item?: ItemInstance): void {
     chime('contract')
     audio.sfx('coin')
     vfx.burst(at, 0xffd66b, { count: 22, speed: 3, up: 2.2, life: 0.7, size: 0.13, gravity: 2.5, drag: 1.6, additive: true })
-    paintTracker(game.tracker())
+    paintContracts()
   } else if (kind === 'buy' || kind === 'sell') audio.sfx('coin')
   else audio.sfx(kind === 'take' ? 'quest' : 'ui')
 }
@@ -786,51 +781,84 @@ function waypointFrame(dt: number): void {
   const time = performance.now() / 1000
   waypointView.show(wpGoal ? trailDots(wpLine, 1.4, 16, (time * 1.8) % 1.4) : [], wpGoal, time)
 }
-/** Taken contracts in the HUD (town and sewer). */
+/** The quest tracker: the chapter's main quest on top, then pins / ready ones, at most TRACK_CAP rows. */
 function paintContracts(): void {
   if (!contractHud) return
-  const list = mode === 'title' ? [] : activeContracts(game.save)
-  const dream = mode === 'title' ? [] : [mazeHud(game.save), storyHud(game.save)].filter((r): r is { title: string; prog: string; done?: boolean } => !!r)
-  const chapter = mode === 'title' ? [] : questHud(game.save)
-  contractHud.classList.toggle('hidden', list.length + chapter.length + dream.length === 0)
+  const book = mode === 'title' ? [] : questBook(game.save)
+  const { shown, more } = trackedQuests(book, pinsOf(game.save))
+  contractHud.classList.toggle('hidden', shown.length === 0)
   contractHud.innerHTML = ''
   // Small screens fold the rows into one chip; a tap (or click) opens them.
   const chip = document.createElement('button')
   chip.type = 'button'
   chip.id = 'quest-chip'
-  const doneCount = chapter.filter((q) => q.done).length + list.filter((c) => c.status === 'done').length
-  chip.textContent = `퀘스트 ${list.length + chapter.length + dream.length}${doneCount ? ` · 완료 ${doneCount}` : ''} ${contractHud.classList.contains('open') ? '▴' : '▾'}`
+  const ready = book.filter((q) => q.ready).length
+  chip.textContent = `퀘스트 ${book.length}${ready ? ` · 완료 ${ready}` : ''} ${contractHud.classList.contains('open') ? '▴' : '▾'}`
   chip.setAttribute('aria-expanded', String(contractHud.classList.contains('open')))
   contractHud.append(chip)
-  for (const q of dream) {
+  const pins = pinsOf(game.save)
+  for (const q of shown) {
     const row = document.createElement('div')
-    row.className = q.done ? 'ch story done' : 'ch story'
-    row.dataset.tip = `챕터 2 · ${CHAPTER_TITLE[2]}\n${q.title}\n${q.prog}`
-    const b = document.createElement('b')
-    b.textContent = '이야기'
-    row.append(b, document.createTextNode(`${q.title.replace(/^이야기 · /, '')} · ${q.prog}`))
-    contractHud.append(row)
-  }
-  for (const q of chapter) {
-    const row = document.createElement('div')
-    row.className = (q.done ? 'ch done' : 'ch') + (waypoint?.id === q.id ? ' wp' : '')
+    row.className = `q ${q.group}${q.ready ? ' done' : ''}${waypoint?.id === q.id ? ' wp' : ''}${pins.includes(q.id) ? ' pin' : ''}`
     row.dataset.id = q.id
-    row.dataset.tip = `챕터 2 · ${q.title}\n진행 ${q.prog}${q.done ? '\n완료! 마을 게시판에서 보상을 받아.' : ''}\n${waypoint?.id === q.id ? '다시 누르면 길 안내 끄기' : '눌러서 길 안내'}`
+    if (q.group === 'main') row.id = 'quest-main'
+    const how = q.group === 'main' ? (guideStep(game.save) ? '눌러서 가이드 펼치기 (J)' : 'L 퀘스트 수첩') : waypointFor(q.id) ? (waypoint?.id === q.id ? '다시 누르면 길 안내 끄기' : '눌러서 길 안내') : 'L 퀘스트 수첩'
+    row.dataset.tip = `${GROUP_KO[q.group]} · ${q.title}\n${q.line}${q.prog ? ` ${q.prog}` : ''}${q.ready ? `\n완료! ${q.turnIn}` : ''}${q.reward ? `\n보상: ${q.reward}` : ''}\n${how}`
     const b = document.createElement('b')
-    b.textContent = '챕터 2'
-    row.append(b, document.createTextNode(`${q.title} ${q.prog}`))
+    b.textContent = GROUP_KO[q.group]
+    const t = document.createElement('span')
+    t.className = 'qt'
+    t.textContent = q.title
+    const l = document.createElement('span')
+    l.className = 'ql'
+    l.textContent = q.ready ? `✓ ${q.turnIn}` : q.line
+    row.append(b, t, l)
+    if (q.prog && !q.ready) {
+      const em = document.createElement('em')
+      em.textContent = q.prog
+      row.append(em)
+    }
     contractHud.append(row)
   }
-  for (const c of list) {
+  if (more) {
     const row = document.createElement('div')
-    row.className = (c.status === 'done' ? 'done' : '') + (waypoint?.id === c.id ? ' wp' : '')
-    row.dataset.id = c.id
-    row.dataset.tip = `의뢰\n${contractLine(c)}\n${waypoint?.id === c.id ? '다시 누르면 길 안내 끄기' : '눌러서 길 안내'}`
-    const b = document.createElement('b')
-    b.textContent = '의뢰'
-    row.append(b, document.createTextNode(contractLine(c)))
+    row.className = 'q more'
+    row.id = 'quest-more'
+    row.textContent = `+${more}개 더 · L 퀘스트 수첩`
     contractHud.append(row)
   }
+}
+let questKey = ''
+/** Repaint the tracker when the main quest's count moves (cheap: a short key). */
+function questTick(): void {
+  if (mode === 'title') return
+  const c = chaptersOf(game.save)
+  const k = `${c.current}|${c.guide.step}|${Math.floor(c.guide.count)}|${c.guide.done}`
+  if (k === questKey) return
+  questKey = k
+  paintContracts()
+}
+
+/** The quest log (L, or the board's button): 메인 / 이야기 / 의뢰 tabs, pins, finished ones folded. */
+function openQuests(tab?: QuestGroup): void {
+  if (mode === 'title' || shown('quest-log')) return
+  const back = mode
+  mode = 'menu'
+  releaseLook()
+  openQuestLog(
+    game.save,
+    () => {
+      mode = back === 'menu' ? 'play' : back
+    },
+    (id) => {
+      const r = togglePin(game.save, id)
+      if (!r.ok && r.reason) toast(r.reason, 'info')
+      game.persist(store)
+      paintContracts()
+      return r.pinned
+    },
+    tab,
+  )
 }
 
 /** Push a sewer happening into the taken contracts; cheer for any it finishes. */
@@ -950,6 +978,7 @@ function chapterTick(): void {
   const step = mode === 'play' ? guideStep(game.save) : null
   const now = performance.now()
   chapterUI.paint(game.save, stage.touch, !!step && !travelling, inFight(now), now)
+  questTick()
   if (!step) return
   const p = hero.object.position
   if (step.id === 'move' && guideLast) {
@@ -1239,6 +1268,13 @@ installAlt((free) => {
     toast(cursor.mode === 'hold' ? 'Alt를 떼면 다시 조준해.' : 'Alt를 다시 누르거나 화면을 클릭하면 조준해.', 'info')
   }
 })
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyL' || e.repeat || mode !== 'play') return
+  const tag = (e.target as HTMLElement | null)?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return
+  e.preventDefault()
+  openQuests()
+})
 contractHud?.addEventListener('click', (event) => {
   const t = event.target as HTMLElement
   if (t.id === 'quest-chip') {
@@ -1247,14 +1283,26 @@ contractHud?.addEventListener('click', (event) => {
     return
   }
   const row = t.closest<HTMLElement>('#contract-hud > div')
+  if (row?.id === 'quest-more' && mode === 'play') {
+    openQuests()
+    return
+  }
   if (!row?.dataset.id || mode !== 'play') return
+  if (row.dataset.id === 'main') {
+    if (guideStep(game.save)) chapterUI.toggle()
+    else openQuests('main')
+    return
+  }
   // 편의성: a click tracks the quest (trail on the ground, minimap pin, distance); again clears it.
   if (waypoint?.id === row.dataset.id) {
     setWaypoint(null)
     return
   }
   const next = waypointFor(row.dataset.id)
-  if (!next) return
+  if (!next) {
+    openQuests()
+    return
+  }
   setWaypoint(next)
   toast(`길 안내: ${next.label}`, 'quest')
 })
@@ -1274,7 +1322,7 @@ document.getElementById('guide-skip')?.addEventListener('click', () => {
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, makeMod, makeLegend, legendDrop, get legends() { return legendsOf(game.save) }, get lastLegend() { return lastLegend }, codexRows: () => codexRows(game.save), get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, aimZone, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, get keptFloor() { return savedFloor() }, enterArea, enterMongsil, mongsilToIsland, get travelling() { return travelling }, get dream() { return dreamOf(game.save) }, dreamHit, placeMazeQuest, spotUsed, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() } } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, makeMod, makeLegend, legendDrop, get legends() { return legendsOf(game.save) }, get lastLegend() { return lastLegend }, codexRows: () => codexRows(game.save), get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, aimZone, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, get keptFloor() { return savedFloor() }, enterArea, enterMongsil, mongsilToIsland, get travelling() { return travelling }, get dream() { return dreamOf(game.save) }, dreamHit, placeMazeQuest, spotUsed, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() }, questLog: (tab?: QuestGroup) => openQuests(tab), questBook: () => questBook(game.save) } })
 
 void bootGame()
 
@@ -1366,7 +1414,7 @@ function beginPlay(): void {
   enterZone(game.zone, game.zone === 'meadow' || game.zone === 'village' ? PLAZA : PORTAL_ARRIVAL)
   syncCodex(game.save)
   // 챕터 2: she went to sleep in 몽실 마을, so she wakes there.
-  if (dreamOf(game.save).home === 'mongsil' && dreamOf(game.save).maze.passed) window.setTimeout(() => enterMongsil(true), 200)
+  if (dreamOf(game.save).home === 'mongsil' && mongsilOpen(game.save)) window.setTimeout(() => enterMongsil(true), 200)
   if (!game.save.flags.metMochi) window.setTimeout(() => talk.start('mochi_meet'), 700)
   const ch = chaptersOf(game.save)
   guideLast = null
@@ -1799,6 +1847,7 @@ function enterArea(id: AreaId): void {
     toast('아직 이야기가 거기까지 닿지 않았어.', 'info')
     return
   }
+  if (id === 'maze') enterMaze(game.save)
   if (AREAS[id].home === 'island') dropParked()
   travelling = true
   audio.sfx('windup', 0.7)
@@ -1821,7 +1870,7 @@ function enterArea(id: AreaId): void {
 /** To 몽실 마을 (from the island 별문, or straight in on a resume). */
 function enterMongsil(quiet = false): void {
   if ((run && !inMongsil()) || travelling) return
-  if (!dreamOf(game.save).maze.passed) {
+  if (!mongsilOpen(game.save)) {
     toast('꿈 미로를 지나야 닿는 마을이야.', 'info')
     return
   }
@@ -1977,7 +2026,7 @@ function showResult(result: MutationResult): void {
   }
   if (result.questPop) audio.sfx('quest')
   if (result.leveled) levelUpFx()
-  paintTracker(game.tracker())
+  paintContracts()
   paintStats(game.save)
 }
 

@@ -1,5 +1,5 @@
 import { INTRO } from '../data/story'
-import { questLog } from '../sim/quests'
+import { GROUP_KO, TRACK_CAP, pinsOf, questArchive, questBook, type QuestGroup } from '../sim/questbook'
 import type { SaveData } from '../sim/types'
 import { MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { diffMode, setDiffMode, type DiffMode } from '../combat/difficulty'
@@ -104,12 +104,38 @@ export function playIntro(base: string, done: () => void): void {
 export function toast(text: string, kind: 'quest' | 'reward' | 'info' = 'info'): void {
   const layer = $('toasts')
   if (!layer) return
+  // Completions coming in together fold into one toast ("… 외 2개") instead of a stack.
+  const finished = kind === 'quest' && /완료!|달성!/.test(text)
+  const same = [...layer.querySelectorAll<HTMLElement>('.toast:not(.out):not(.fin)')].find((t) => t.textContent === text)
+  if (same) {
+    // The same line twice in a row (e.g. two bounties taken) refreshes the toast instead of stacking.
+    window.clearTimeout(Number(same.dataset.t1))
+    window.clearTimeout(Number(same.dataset.t2))
+    same.dataset.t1 = String(window.setTimeout(() => same.classList.add('out'), 2800))
+    same.dataset.t2 = String(window.setTimeout(() => same.remove(), 3400))
+    return
+  }
+  const live = finished ? layer.querySelector<HTMLElement>('.toast.quest.fin:not(.out)') : null
+  if (live) {
+    const n = Number(live.dataset.n ?? '1') + 1
+    live.dataset.n = String(n)
+    live.textContent = `${live.dataset.first ?? text} 외 ${n - 1}개`
+    window.clearTimeout(Number(live.dataset.t1))
+    window.clearTimeout(Number(live.dataset.t2))
+    live.dataset.t1 = String(window.setTimeout(() => live.classList.add('out'), 2800))
+    live.dataset.t2 = String(window.setTimeout(() => live.remove(), 3400))
+    return
+  }
   const el = document.createElement('div')
-  el.className = `toast ${kind}`
+  el.className = `toast ${kind}${finished ? ' fin' : ''}`
   el.textContent = text
+  if (finished) {
+    el.dataset.first = text
+    el.dataset.n = '1'
+  }
   layer.append(el)
-  window.setTimeout(() => el.classList.add('out'), 2800)
-  window.setTimeout(() => el.remove(), 3400)
+  el.dataset.t1 = String(window.setTimeout(() => el.classList.add('out'), 2800))
+  el.dataset.t2 = String(window.setTimeout(() => el.remove(), 3400))
   while (layer.children.length > 4) layer.firstElementChild?.remove()
 }
 
@@ -180,23 +206,67 @@ export function fadeThrough(swap: () => void): Promise<void> {
 }
 
 /** The board's quest log (the open-quests action). */
-export function openQuestLog(save: SaveData, onClose: () => void): void {
+const escHtml = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c)
+
+/**
+ * 퀘스트 수첩 (L, or the board's button): tabs 메인 / 이야기 / 의뢰. Each card: short title, one objective
+ * line + count, where to turn it in, the reward, a 📌 to pin it on the HUD. Finished ones fold away.
+ */
+export function openQuestLog(save: SaveData, onClose: () => void, onPin?: (id: string) => boolean, tab?: QuestGroup): void {
   const el = $('quest-log')
   const body = $('quest-body')
   if (!el || !body) return
-  body.innerHTML = questLog(save)
-    .map((q) => `<article class="${q.statusKey}"><h3>${q.title}<em>${q.status}</em></h3><p>${q.summary}</p>${q.lines.map((l) => `<span>${l}</span>`).join('')}<small>보상: ${q.reward}</small></article>`)
-    .join('')
+  let at: QuestGroup = tab ?? 'main'
+  const paint = () => {
+    const book = questBook(save)
+    const done = questArchive(save)
+    const pins = pinsOf(save)
+    const groups: QuestGroup[] = ['main', 'story', 'bounty']
+    const tabs = groups
+      .map((g) => {
+        const n = book.filter((q) => q.group === g).length
+        return `<button type="button" role="tab" class="qtab${g === at ? ' on' : ''}" data-tab="${g}" aria-selected="${g === at}">${GROUP_KO[g]}${n ? ` <i>${n}</i>` : ''}</button>`
+      })
+      .join('')
+    const live = book.filter((q) => q.group === at)
+    const cards = live
+      .map((q) => {
+        const pin = q.group === 'main' ? '' : `<button type="button" class="qpin${pins.includes(q.id) ? ' on' : ''}" data-pin="${escHtml(q.id)}" aria-pressed="${pins.includes(q.id)}">${pins.includes(q.id) ? '📌 고정됨' : '📌 고정'}</button>`
+        const state = q.ready ? `<em class="qready">완료 · ${escHtml(q.turnIn)}</em>` : q.prog ? `<em>${escHtml(q.prog)}</em>` : ''
+        return `<article class="q ${q.group}${q.ready ? ' done' : ''}"><h3>${escHtml(q.title)}${pin}</h3><p>${escHtml(q.line)}${state}</p>${q.reward ? `<small>보상: ${escHtml(q.reward)}</small>` : ''}${!q.ready && q.turnIn ? `<small class="qturn">${escHtml(q.turnIn)}</small>` : ''}</article>`
+      })
+      .join('')
+    const old = done.filter((d) => d.group === at)
+    const archive = old.length ? `<details class="qdone"><summary>완료한 퀘스트 ${old.length}개</summary>${old.map((d) => `<div><b>${escHtml(d.title)}</b><small>${escHtml(d.note)}</small></div>`).join('')}</details>` : ''
+    const empty = live.length ? '' : `<p class="qempty">${at === 'bounty' ? '맡은 의뢰가 없어. 마을 게시판에서 받아 봐.' : '지금 진행 중인 이야기가 없어.'}</p>`
+    body.innerHTML = `<div class="qtabs" role="tablist">${tabs}</div><div class="qlist" role="tabpanel">${cards}${empty}${archive}</div><small class="qfoot">HUD에는 메인 + 고정·완료한 것 최대 ${TRACK_CAP}개가 보여</small>`
+  }
+  paint()
+  body.onclick = (e) => {
+    const t = e.target as HTMLElement
+    const tb = t.closest<HTMLElement>('[data-tab]')
+    if (tb) {
+      at = tb.dataset.tab as QuestGroup
+      paint()
+      return
+    }
+    const pb = t.closest<HTMLElement>('[data-pin]')
+    if (pb && onPin) {
+      onPin(pb.dataset.pin ?? '')
+      paint()
+    }
+  }
   el.classList.remove('hidden')
   document.body.classList.add('menu')
   const close = () => {
     el.classList.add('hidden')
     document.body.classList.remove('menu')
     window.removeEventListener('keydown', onKey)
+    body.onclick = null
     onClose()
   }
   const onKey = (event: KeyboardEvent) => {
-    if (['Escape', 'KeyE', 'Enter', 'Space'].includes(event.code)) {
+    if (['Escape', 'KeyE', 'KeyL', 'Enter'].includes(event.code)) {
       event.preventDefault()
       close()
     }

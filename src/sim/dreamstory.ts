@@ -10,7 +10,7 @@
 import { BOSS_FLOOR, floorScale, floorSeed, type FloorPlan, type FloorScale } from './delve'
 import { GEAR_IDS, ITEMS, WEAPON_IDS } from '../data/items'
 import { AREAS, AREA_IDS, areaLabel, isArea, type AreaId } from './areas'
-import { chaptersOf } from './chapters'
+import { chapter2Open, chaptersOf } from './chapters'
 import { addItem } from './inventory'
 import { makeItem } from './loot'
 import { gainGold, gainXp } from './stats'
@@ -55,7 +55,8 @@ export function townPlan(salt = 0): FloorPlan {
 export type StoryState = 'offer' | 'active' | 'ready'
 
 export interface DreamSave {
-  maze: { step: number; count: number; passed: boolean }
+  /** entered: she has walked into the 꿈 미로 at least once (모찌's chain starts there). */
+  maze: { step: number; count: number; passed: boolean; entered: boolean }
   story: { step: number; state: StoryState; count: number; done: boolean }
   /** Where she wakes up after a reload: the island, or in 몽실 마을. */
   home: 'island' | 'mongsil'
@@ -63,7 +64,7 @@ export interface DreamSave {
   gates: AreaId[]
 }
 
-const fresh = (): DreamSave => ({ maze: { step: 0, count: 0, passed: false }, story: { step: 0, state: 'offer', count: 0, done: false }, home: 'island', gates: [] })
+const fresh = (): DreamSave => ({ maze: { step: 0, count: 0, passed: false, entered: false }, story: { step: 0, state: 'offer', count: 0, done: false }, home: 'island', gates: [] })
 
 const int = (v: unknown, min: number, max: number, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, Math.floor(v))) : d)
 
@@ -80,16 +81,19 @@ export function dreamOf(save: SaveData): DreamSave {
   if (raw && typeof raw === 'object') {
     const m = (raw.maze ?? {}) as Partial<DreamSave['maze']>
     const s = (raw.story ?? {}) as Partial<DreamSave['story']>
-    d.maze = { step: int(m.step, 0, MAZE_CHAIN.length, 0), count: int(m.count, 0, 1e6, 0), passed: !!m.passed }
+    d.maze = { step: int(m.step, 0, MAZE_CHAIN.length, 0), count: int(m.count, 0, 1e6, 0), passed: !!m.passed, entered: false }
+    // Older saves had no 'entered': any maze progress means she was in there.
+    d.maze.entered = !!m.entered || d.maze.passed || d.maze.step > 0 || d.maze.count > 0
     d.story = { step: int(s.step, 0, STORY.length, 0), state: s.state === 'active' || s.state === 'ready' ? s.state : 'offer', count: int(s.count, 0, 1e6, 0), done: !!s.done }
     d.home = raw.home === 'mongsil' && d.maze.passed ? 'mongsil' : 'island'
     d.gates = Array.isArray(raw.gates) ? [...new Set(raw.gates.filter(isArea))] : []
     if (d.story.done) d.story.step = STORY.length
   } else {
     const c = chaptersOf(save)
-    const played = c.cleared.includes(2) || Object.values(c.quests).some((q) => q.status !== 'locked' && q.status !== 'offered')
+    // Only a save that really reached chapter 2 counts: one that took a board quest during the guide stays put.
+    const played = c.current >= 2 && (c.cleared.includes(2) || Object.values(c.quests).some((q) => q.status !== 'locked' && q.status !== 'offered'))
     if (played) {
-      d.maze = { step: MAZE_CHAIN.length, count: 0, passed: true }
+      d.maze = { step: MAZE_CHAIN.length, count: 0, passed: true, entered: true }
       if (c.cleared.includes(2)) {
         c.cleared = c.cleared.filter((n) => n !== 2)
         c.current = 2
@@ -130,7 +134,24 @@ export const MAZE_CHAIN: MazeQuest[] = [
   { id: 'm_elite', kind: 'elite', title: `${MAZE_ELITE.name} 쓰러뜨리기`, goal: 1, give: '미로의 문지기가 깨어났어. 저 기사를 쓰러뜨리면 출구가 열려. 같이 하자, 별하!', done: '출구가 열렸어! 마지막 층의 금빛 계단으로 미로 밖으로 나가자.', reward: { gold: 80, xp: 160 } },
 ]
 
+/** 모찌's maze chain is on: chapter 2 is open and she has stepped into the 꿈 미로. */
+export function mazeOpen(save: SaveData): boolean {
+  const d = dreamOf(save)
+  return chapter2Open(save) && (d.maze.entered || d.maze.passed)
+}
+
+/** 몽실 마을 (and 몽이's story) is reachable: chapter 2 open and the maze walked out of. */
+export function mongsilOpen(save: SaveData): boolean {
+  return chapter2Open(save) && dreamOf(save).maze.passed
+}
+
+/** Walked into the 꿈 미로 (only counts once chapter 2 is open). */
+export function enterMaze(save: SaveData): void {
+  if (chapter2Open(save)) dreamOf(save).maze.entered = true
+}
+
 export function mazeQuest(save: SaveData): MazeQuest | null {
+  if (!mazeOpen(save)) return null
   return MAZE_CHAIN[dreamOf(save).maze.step] ?? null
 }
 
@@ -163,7 +184,7 @@ function reward(save: SaveData, gold: number, xp: number, o: DreamOut): void {
 export function mazeEvent(save: SaveData, kind: MazeQuestKind, amount = 1): DreamOut {
   const o = dout()
   const d = dreamOf(save)
-  const q = MAZE_CHAIN[d.maze.step]
+  const q = mazeOpen(save) ? MAZE_CHAIN[d.maze.step] : undefined
   if (!q || q.kind !== kind) return o
   d.maze.count = Math.min(q.goal, d.maze.count + amount)
   if (d.maze.count < q.goal) {
@@ -184,6 +205,7 @@ export function mazeEvent(save: SaveData, kind: MazeQuestKind, amount = 1): Drea
 export function passMaze(save: SaveData): void {
   const d = dreamOf(save)
   d.maze.passed = true
+  d.maze.entered = true
   d.maze.step = MAZE_CHAIN.length
   d.home = 'mongsil'
 }
@@ -191,7 +213,7 @@ export function passMaze(save: SaveData): void {
 /** HUD tracker row for the maze, or null. */
 export function mazeHud(save: SaveData): { title: string; prog: string } | null {
   const d = dreamOf(save)
-  if (d.maze.passed) return null
+  if (d.maze.passed || !mazeOpen(save)) return null
   const q = MAZE_CHAIN[d.maze.step]
   if (!q) return { title: '미로 밖으로', prog: '마지막 층 금빛 계단' }
   return { title: `모찌 · ${q.title}`, prog: q.goal > 1 ? `${d.maze.count}/${q.goal}` : '0/1' }
@@ -278,6 +300,7 @@ export const STORY: StoryQuest[] = [
 
 export function storyQuest(save: SaveData): StoryQuest | null {
   const d = dreamOf(save)
+  if (!mongsilOpen(save)) return null
   return d.story.done ? null : (STORY[d.story.step] ?? null)
 }
 
@@ -286,6 +309,7 @@ export function storyTalk(save: SaveData, rng: () => number = Math.random): { li
   const o = dout()
   const d = dreamOf(save)
   const q = storyQuest(save)
+  if (!mongsilOpen(save)) return { lines: [{ who: '몽이', text: '미로를 건너온 손님만 몽실 마을에 닿을 수 있어요. 꿈 미로에서 기다릴게요.' }], out: o, took: false }
   if (!q) return { lines: [{ who: '몽이', text: '등불이 오늘도 따뜻해요. 꿈 바깥의 목소리… 별하 씨라면 따라갈 수 있을 거예요.' }], out: o, took: false }
   if (d.story.state === 'offer') {
     d.story.state = 'active'
@@ -345,7 +369,7 @@ export function storyEvent(save: SaveData, e: { type: 'spark'; amount?: number }
 /** Areas the 별문 in 몽실 offers: those the story reached so far (plus the field). */
 export function openAreas(save: SaveData): AreaId[] {
   const d = dreamOf(save)
-  if (!d.maze.passed) return []
+  if (!mongsilOpen(save)) return []
   const out: AreaId[] = []
   const reach = d.story.done ? STORY.length : d.story.step + (d.story.state === 'offer' ? 0 : 1)
   for (let i = 0; i < reach; i += 1) {
@@ -365,7 +389,7 @@ export function wantsSparks(save: SaveData): boolean {
 export function storyHud(save: SaveData): { title: string; prog: string; done: boolean } | null {
   const d = dreamOf(save)
   const q = storyQuest(save)
-  if (!d.maze.passed || !q) return null
+  if (!mongsilOpen(save) || !q) return null
   if (d.story.state === 'offer') return { title: `이야기 · ${q.title}`, prog: '몽이에게 말 걸기', done: false }
   if (d.story.state === 'ready') return { title: `이야기 · ${q.title}`, prog: '완료 · 몽이에게', done: true }
   return { title: `이야기 · ${q.title}`, prog: storyGoal(q, d.story.count), done: false }
