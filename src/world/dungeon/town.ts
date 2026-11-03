@@ -10,6 +10,7 @@ import {
   AdditiveBlending,
   BoxGeometry,
   CapsuleGeometry,
+  CircleGeometry,
   Color,
   ConeGeometry,
   CylinderGeometry,
@@ -29,8 +30,8 @@ import {
 import { toonGradient } from '../../core/materials'
 import { Tile, rng, tileCentre, type Maze, type Rect } from './maze'
 
-/** Town square size in tiles (odd; border wall included). */
-export const TOWN_SIZE = 15
+/** Town square size in tiles (odd; border ring included): small, so every door is a few steps away. */
+export const TOWN_SIZE = 11
 
 export type TownNpcId = 'mongi' | 'somsom' | 'bolt' | 'toto' | 'board' | 'gate'
 
@@ -43,12 +44,12 @@ export interface TownSpot {
 }
 
 export const TOWN_SPOTS: TownSpot[] = [
-  { id: 'mongi', name: '이장 몽이', hint: '몽이와 대화 (이야기 퀘스트)', tile: { x: 7, y: 6 } },
-  { id: 'somsom', name: '솜솜 상점', hint: '솜솜 상점', tile: { x: 2, y: 6 } },
-  { id: 'toto', name: '토토 창고', hint: '토토 창고', tile: { x: 2, y: 9 } },
-  { id: 'bolt', name: '총포상 볼트', hint: '볼트 총포상', tile: { x: 12, y: 6 } },
-  { id: 'board', name: '구름 게시판', hint: '들판 퀘스트 게시판', tile: { x: 12, y: 9 } },
-  { id: 'gate', name: '별문', hint: '별문 (이동)', tile: { x: 7, y: 2 } },
+  { id: 'mongi', name: '이장 몽이', hint: '몽이와 대화 (이야기 퀘스트)', tile: { x: 5, y: 5 } },
+  { id: 'somsom', name: '솜솜 상점', hint: '솜솜 상점', tile: { x: 2, y: 4 } },
+  { id: 'toto', name: '토토 창고', hint: '토토 창고', tile: { x: 2, y: 6 } },
+  { id: 'bolt', name: '총포상 볼트', hint: '볼트 총포상', tile: { x: 8, y: 4 } },
+  { id: 'board', name: '구름 게시판', hint: '들판 퀘스트 게시판', tile: { x: 8, y: 6 } },
+  { id: 'gate', name: '별문', hint: '별문 (이동)', tile: { x: 5, y: 2 } },
 ]
 
 /** The square: a wall ring round open ground; she arrives at the south end, the 별문 is north. */
@@ -66,6 +67,20 @@ export function townMaze(seed: number, size = TOWN_SIZE): Maze {
 
 const toon = (color: number, lift = 0.18, emissive?: number) =>
   new MeshToonMaterial({ color, gradientMap: toonGradient(), emissive: emissive ?? color, emissiveIntensity: lift })
+
+/** Awning colours of each keeper's stall. */
+const STALL_ROOF: Record<Exclude<TownNpcId, 'gate' | 'mongi'>, [number, number]> = {
+  somsom: [0xff9fd2, 0xfff4fa],
+  toto: [0xb9a3ff, 0xfff4fa],
+  bolt: [0x9fe8d8, 0xfff4fa],
+  board: [0xffe08a, 0xfff4fa],
+}
+
+/** A cheap per-tile hash in [0, 1). */
+function hash2(x: number, y: number): number {
+  const h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453
+  return h - Math.floor(h)
+}
 
 /** A round blocker for the run's extra collision (stall counters, figures). */
 export interface Blocker {
@@ -202,18 +217,21 @@ export class MongsilTown {
       this.group.add(stall)
       this.blockers.push({ x: c.x, z: c.z, r: 1.15 })
     }
-    stallAt(1, 6, [0xff9fd2, 0xfff4fa], Math.PI / 2)
-    stallAt(1, 9, [0xb9a3ff, 0xfff4fa], Math.PI / 2)
-    stallAt(maze.w - 2, 6, [0x9fe8d8, 0xfff4fa], -Math.PI / 2)
-    stallAt(maze.w - 2, 9, [0xffe08a, 0xfff4fa], -Math.PI / 2)
-    stallAt(3, maze.h - 2, [0xffb36b, 0xfff4fa], Math.PI)
-    stallAt(maze.w - 4, maze.h - 2, [0x9ad7ff, 0xfff4fa], Math.PI)
+    for (const s of TOWN_SPOTS) {
+      if (s.id === 'gate' || s.id === 'mongi') continue
+      const west = s.tile.x < mid
+      stallAt(west ? 1 : maze.w - 2, s.tile.y, STALL_ROOF[s.id], west ? Math.PI / 2 : -Math.PI / 2)
+    }
+    stallAt(2, maze.h - 2, [0xffb36b, 0xfff4fa], Math.PI)
+    stallAt(maze.w - 3, maze.h - 2, [0x9ad7ff, 0xfff4fa], Math.PI)
+    // The village round the square: pastel cottages on the border ring, paths, flowers, lamps.
+    this.group.add(this.cottages(rand), this.flowers(rand), this.lampPosts())
     // Lantern strings criss-crossing the square (one instanced draw for every bulb).
     const strings: [number, number, number, number][] = []
     const lo = tileCentre(maze, 1, 1)
     const hi = tileCentre(maze, maze.w - 2, maze.h - 2)
-    for (let k = 0; k < 4; k += 1) {
-      const t = (k + 0.5) / 4
+    for (let k = 0; k < 3; k += 1) {
+      const t = (k + 0.5) / 3
       strings.push([lo.x, lo.z + (hi.z - lo.z) * t, hi.x, lo.z + (hi.z - lo.z) * (1 - t)])
     }
     strings.push([lo.x, lo.z, hi.x, hi.z], [hi.x, lo.z, lo.x, hi.z])
@@ -226,8 +244,8 @@ export class MongsilTown {
     for (const [ax, az, bx, bz] of strings) {
       for (let i = 0; i < per; i += 1) {
         const t = (i + 0.5) / per
-        const sag = Math.sin(t * Math.PI) * 1.4
-        this.dummy.position.set(ax + (bx - ax) * t, 4.3 - sag, az + (bz - az) * t)
+        const sag = Math.sin(t * Math.PI) * 0.9
+        this.dummy.position.set(ax + (bx - ax) * t, 4.1 - sag, az + (bz - az) * t)
         this.dummy.scale.setScalar(i % 3 === 0 ? 1.5 : 1)
         this.dummy.updateMatrix()
         this.bulbs.setMatrixAt(n, this.dummy.matrix)
@@ -238,15 +256,15 @@ export class MongsilTown {
     this.bulbs.count = n
     this.group.add(this.bulbs)
     // Cloud puffs over the wall tops and drifting farther out.
-    const puffs = 44
+    const puffs = 36
     this.clouds = new InstancedMesh(new IcosahedronGeometry(1, 1), toon(0xfff0fa, 0.55, 0xffd8ee), puffs)
     this.clouds.name = 'town-clouds'
     const span = (maze.w * 3.4) / 2
     for (let i = 0; i < puffs; i += 1) {
       const a = (i / puffs) * Math.PI * 2 + rand() * 0.2
       const far = i % 3 === 0
-      const r = span * (far ? 1.5 + rand() * 0.6 : 1.02 + rand() * 0.08)
-      this.cloudData.push({ x: centre.x + Math.sin(a) * r, y: far ? 7 + rand() * 6 : 4.4 + rand() * 0.8, z: centre.z + Math.cos(a) * r, s: far ? 2.4 + rand() * 2 : 1.2 + rand() * 0.9, drift: rand() * 6 })
+      const r = span * (far ? 1.7 + rand() * 0.7 : 1.25 + rand() * 0.15)
+      this.cloudData.push({ x: centre.x + Math.sin(a) * r, y: far ? 8 + rand() * 6 : 5.6 + rand() * 1.2, z: centre.z + Math.cos(a) * r, s: far ? 2.4 + rand() * 2 : 1.2 + rand() * 0.9, drift: rand() * 6 })
     }
     this.placeClouds(0)
     this.group.add(this.clouds)
@@ -265,11 +283,165 @@ export class MongsilTown {
     }
     stars.name = 'town-stars'
     this.group.add(stars)
+    // Lawn out past the cottages (the border ring has no floor tiles of its own).
+    const ground = new Mesh(new CircleGeometry(span * 2.6, 48), toon(0x9ccfb4, 0.12))
+    ground.rotation.x = -Math.PI / 2
+    ground.position.set(centre.x, -0.02, centre.z)
+    ground.name = 'town-ground'
+    this.group.add(ground)
     // A soft round plaza rug under 몽이.
-    const rug = new Mesh(new RingGeometry(0, 4.2, 40), new MeshBasicMaterial({ color: 0xffd8ee, transparent: true, opacity: 0.22, depthWrite: false }))
+    const rug = new Mesh(new RingGeometry(0, 3.2, 40), new MeshBasicMaterial({ color: 0xfff0d8, transparent: true, opacity: 0.5, depthWrite: false }))
     rug.rotation.x = -Math.PI / 2
     rug.position.set(centre.x, 0.03, centre.z)
     this.group.add(rug)
+  }
+
+  /** Floor colours: a cream path from her arrival up to the 별문 and round the plaza, soft lawn elsewhere. */
+  paintFloor(floor: Mesh): void {
+    const color = floor.geometry.getAttribute('color')
+    if (!color) return
+    const maze = this.maze
+    const mid = Math.floor(maze.w / 2)
+    const cy = Math.floor(maze.h / 2)
+    const c = new Color()
+    let v = 0
+    for (let ty = 0; ty < maze.h; ty += 1) {
+      for (let tx = 0; tx < maze.w; tx += 1) {
+        if (maze.tiles[ty * maze.w + tx] === Tile.Solid) continue
+        const shopRow = TOWN_SPOTS.some((s) => s.id !== 'gate' && s.id !== 'mongi' && s.tile.y === ty && tx >= Math.min(s.tile.x, mid) && tx <= Math.max(s.tile.x, mid))
+        const plaza = Math.abs(tx - mid) <= 1 && Math.abs(ty - cy) <= 1
+        const path = tx === mid || shopRow || plaza
+        c.set(path ? ((tx + ty) % 2 ? 0xf4e2d0 : 0xeedac8) : (hash2(tx, ty) > 0.5 ? 0xb8e0c0 : 0xa8d8b8))
+        for (let k = 0; k < 6; k += 1) color.setXYZ(v++, c.r, c.g, c.b)
+      }
+    }
+    color.needsUpdate = true
+  }
+
+  /** Pastel cottages on the border ring (instanced parts: walls, roofs, doors, windows, chimneys). */
+  private cottages(rand: () => number): Group {
+    const g = new Group()
+    g.name = 'town-cottages'
+    const maze = this.maze
+    const mid = Math.floor(maze.w / 2)
+    const spots: { x: number; z: number; yaw: number; w: number }[] = []
+    // Every other border tile, skipping the north gap behind the 별문 (it stays in view from the plaza).
+    const push = (tx: number, ty: number, yaw: number) => {
+      if (ty === 0 && Math.abs(tx - mid) <= 1) return
+      const c = tileCentre(maze, tx, ty)
+      spots.push({ x: c.x, z: c.z, yaw, w: 2.4 + rand() * 0.6 })
+    }
+    for (let tx = 1; tx < maze.w - 1; tx += 2) {
+      push(tx, 0, 0)
+      push(tx, maze.h - 1, Math.PI)
+    }
+    for (let ty = 1; ty < maze.h - 1; ty += 2) {
+      push(0, ty, Math.PI / 2)
+      push(maze.w - 1, ty, -Math.PI / 2)
+    }
+    // A second, taller row farther out for a skyline over the roofs.
+    const back = spots.length
+    for (let i = 0; i < back; i += 2) {
+      const s = spots[i]
+      const out = 3.6
+      spots.push({ x: s.x - Math.sin(s.yaw) * out + (rand() - 0.5), z: s.z - Math.cos(s.yaw) * out, yaw: s.yaw, w: 2.8 + rand() * 0.6 })
+    }
+    const n = spots.length
+    const wall = new InstancedMesh(new BoxGeometry(1, 1, 1).translate(0, 0.5, 0), toon(0xffffff, 0.22), n)
+    const roof = new InstancedMesh(new ConeGeometry(0.78, 1, 4).rotateY(Math.PI / 4).translate(0, 0.5, 0), toon(0xffffff, 0.2), n)
+    const door = new InstancedMesh(new BoxGeometry(0.5, 0.9, 0.06).translate(0, 0.45, 0), toon(0x9a6a7a, 0.15), n)
+    const win = new InstancedMesh(new BoxGeometry(0.42, 0.42, 0.05), new MeshBasicMaterial({ color: new Color(0xffe6a0).multiplyScalar(1.35) }), n * 2)
+    const chim = new InstancedMesh(new BoxGeometry(0.3, 0.8, 0.3).translate(0, 0.4, 0), toon(0xd8c8e8, 0.15), n)
+    const WALLS = [0xffd9e8, 0xe4d8ff, 0xd2f2e2, 0xffeec4, 0xd8eaff]
+    const ROOFS = [0xff7fb0, 0x9a80f0, 0x5fc8b0, 0xffa060, 0x70a8ff, 0xe880c8]
+    const o = this.dummy
+    const col = new Color()
+    spots.forEach((s, i) => {
+      const far = i >= back
+      const h = far ? 2.6 + rand() * 1.4 : 1.9 + rand() * 0.6
+      const d = 2.2
+      const place = (mesh: InstancedMesh, k: number, lx: number, ly: number, lz: number, sx: number, sy: number, sz: number) => {
+        const cos = Math.cos(s.yaw)
+        const sin = Math.sin(s.yaw)
+        o.position.set(s.x + lx * cos + lz * sin, ly, s.z - lx * sin + lz * cos)
+        o.rotation.set(0, s.yaw, 0)
+        o.scale.set(sx, sy, sz)
+        o.updateMatrix()
+        mesh.setMatrixAt(k, o.matrix)
+      }
+      place(wall, i, 0, 0, 0, s.w, h, d)
+      wall.setColorAt(i, col.set(WALLS[i % WALLS.length]))
+      place(roof, i, 0, h, 0, s.w * 0.95, 1.3 + rand() * 0.5, d * 0.95)
+      roof.setColorAt(i, col.set(ROOFS[(i * 7 + 3) % ROOFS.length]))
+      place(door, i, (rand() - 0.5) * 0.6, 0, d / 2 + 0.02, 1, far ? 0 : 1, 1)
+      place(win, i * 2, -s.w * 0.3, h * 0.62, d / 2 + 0.03, 1, 1, 1)
+      place(win, i * 2 + 1, s.w * 0.3, h * 0.62, d / 2 + 0.03, 1, 1, 1)
+      place(chim, i, s.w * 0.25, h + 0.3, -0.3, 1, i % 3 === 0 ? 1 : 0, 1)
+    })
+    for (const m of [wall, roof, door, win, chim]) {
+      m.castShadow = false
+      g.add(m)
+    }
+    return g
+  }
+
+  /** Flower clumps on the lawn tiles (one instanced draw, toon colours). */
+  private flowers(rand: () => number): InstancedMesh {
+    const maze = this.maze
+    const mid = Math.floor(maze.w / 2)
+    const cy = Math.floor(maze.h / 2)
+    const at: { x: number; z: number }[] = []
+    for (let ty = 1; ty < maze.h - 1; ty += 1) {
+      for (let tx = 1; tx < maze.w - 1; tx += 1) {
+        if (tx === mid || (Math.abs(tx - mid) <= 1 && Math.abs(ty - cy) <= 1)) continue
+        if (TOWN_SPOTS.some((s) => Math.abs(s.tile.x - tx) + Math.abs(s.tile.y - ty) <= 0)) continue
+        const c = tileCentre(maze, tx, ty)
+        const k = 2 + Math.floor(rand() * 3)
+        for (let i = 0; i < k; i += 1) at.push({ x: c.x + (rand() - 0.5) * 2.6, z: c.z + (rand() - 0.5) * 2.6 })
+      }
+    }
+    const mesh = new InstancedMesh(new IcosahedronGeometry(0.16, 0), toon(0xffffff, 0.45), at.length)
+    mesh.name = 'town-flowers'
+    const PETALS = [0xff9fd2, 0xffe08a, 0xc8b0ff, 0xffffff, 0x9fe8ff, 0xffb3a0]
+    const col = new Color()
+    at.forEach((p, i) => {
+      this.dummy.position.set(p.x, 0.16, p.z)
+      this.dummy.rotation.set(0, rand() * 3, 0)
+      this.dummy.scale.setScalar(0.8 + rand() * 0.7)
+      this.dummy.updateMatrix()
+      mesh.setMatrixAt(i, this.dummy.matrix)
+      mesh.setColorAt(i, col.set(PETALS[i % PETALS.length]))
+    })
+    return mesh
+  }
+
+  /** Lamp posts along the path (glowing heads, no real lights: the town stays cheap). */
+  private lampPosts(): Group {
+    const g = new Group()
+    g.name = 'town-lamps'
+    const maze = this.maze
+    const mid = Math.floor(maze.w / 2)
+    const at: [number, number][] = []
+    for (const ty of [3, maze.h - 4]) for (const sx of [-1, 1]) at.push([mid + sx, ty])
+    const post = new InstancedMesh(new CylinderGeometry(0.06, 0.08, 2.4, 6).translate(0, 1.2, 0), toon(0x7a6a9a, 0.15), at.length)
+    const head = new InstancedMesh(new SphereGeometry(0.22, 12, 8), new MeshBasicMaterial({ color: new Color(0xffe6a0).multiplyScalar(1.6) }), at.length)
+    const halo = new InstancedMesh(new SphereGeometry(0.6, 12, 8), new MeshBasicMaterial({ color: 0xffd8a0, transparent: true, opacity: 0.16, blending: AdditiveBlending, depthWrite: false }), at.length)
+    at.forEach(([tx, ty], i) => {
+      const c = tileCentre(maze, tx, ty)
+      const x = c.x + (tx < mid ? 0.9 : -0.9)
+      this.dummy.rotation.set(0, 0, 0)
+      this.dummy.scale.setScalar(1)
+      this.dummy.position.set(x, 0, c.z)
+      this.dummy.updateMatrix()
+      post.setMatrixAt(i, this.dummy.matrix)
+      this.dummy.position.set(x, 2.5, c.z)
+      this.dummy.updateMatrix()
+      head.setMatrixAt(i, this.dummy.matrix)
+      halo.setMatrixAt(i, this.dummy.matrix)
+      this.blockers.push({ x, z: c.z, r: 0.25 })
+    })
+    g.add(post, head, halo)
+    return g
   }
 
   private stall([roof, stripe]: [number, number]): Group {

@@ -387,6 +387,20 @@ export class DungeonRun {
       if (roof) roof.visible = false
       this.town = new MongsilTown(maze)
       this.sewer.group.add(this.town.group)
+      // The cottages are the town's edge: the brick tunnel walls stay for collision only.
+      const walls = this.sewer.group.getObjectByName('sewer-walls')
+      if (walls) walls.visible = false
+      const floor = this.sewer.group.getObjectByName('sewer-floor')
+      if (floor) this.town.paintFloor(floor as Mesh)
+      // Tunnel dressing doesn't belong on a village lawn (wall lamps, gutters, pipes, mushrooms);
+      // the decor's few real lights still follow her round the square.
+      for (const name of ['sewer-water', 'sewer-pipes', 'sewer-moons', 'sewer-star-lamps', 'sewer-lamp-pools', 'sewer-mushroom-stems', 'sewer-mushroom-caps']) {
+        this.decor.group.traverse((o) => {
+          if (o.name === name) o.visible = false
+        })
+      }
+      // Arrive facing north: the 별문 and 몽이 straight ahead.
+      this.shooter.view.yaw = Math.PI
       this.blockers.push(...this.town.blockers)
       this.director.quiet = true
       this.homePortal.group.visible = false

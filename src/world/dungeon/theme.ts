@@ -119,7 +119,7 @@ export const THEMES: Record<ThemeId, DungeonTheme> = {
   market: {
     id: 'market',
     name: '몽실 마을',
-    fog: 0x3a2a5e,
+    fog: 0x5a4a8e,
     sky: 0xffe6f4,
     brick: [0xffd6e8, 0xd8ccff, 0xc8eef0],
     floor: { corridor: 0x9a88c0, chamber: 0xa894c8, start: 0xb0a0d8, boss: 0xa894c8 },
