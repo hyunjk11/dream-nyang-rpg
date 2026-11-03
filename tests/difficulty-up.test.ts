@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { DIFF_MODES, DIFFICULTY, diff, diffMode, setDiffMode } from '../src/combat/difficulty'
+import { describe, expect, it } from 'vitest'
+import { DIFFICULTY, OLD_DIFF_KEY, dropOldDifficulty } from '../src/combat/difficulty'
 import { generateMaze, tileCentre, walkable, worldToTile } from '../src/world/dungeon/maze'
 import { Horde } from '../src/world/dungeon/horde'
 import { floorScale } from '../src/sim/delve'
@@ -20,10 +20,6 @@ function openLine(metres: number): { x: number; z: number } | null {
   }
   return null
 }
-
-afterEach(() => {
-  setDiffMode('normal')
-})
 
 describe('난이도 상향 (보통 기본)', () => {
   it('보통은 몬스터가 단단하고 빠르며, 싸움이 길어진 만큼 한 대는 약하고 드물다', () => {
@@ -53,19 +49,14 @@ describe('난이도 상향 (보통 기본)', () => {
     expect(EXPLORE.chaseCap).toBeGreaterThanOrEqual(3)
   })
 
-  it('쉬움/보통/어려움: 기본은 보통, 바꾸면 저장되고 새로 나오는 몬스터 체력에 반영된다', () => {
-    expect(diffMode()).toBe('normal')
-    expect(Object.values(DIFF_MODES).map((m) => m.label)).toEqual(['쉬움', '보통', '어려움'])
+  it('난이도 선택은 없다: 예전 선택(localStorage)은 지우고 모두 같은 기준 체력을 쓴다', () => {
+    const kept: Record<string, string> = { [OLD_DIFF_KEY]: 'easy', other: '1' }
+    dropOldDifficulty({ removeItem: (k) => delete kept[k] })
+    expect(kept).toEqual({ other: '1' })
     const h = new Horde(maze)
-    const normal = h.spawn('slime', start.x, start.z)!.maxHp
-    setDiffMode('hard')
-    expect(globalThis.localStorage?.getItem('dnr3d.difficulty') ?? 'hard').toBe('hard')
-    const hard = h.spawn('slime', start.x, start.z)!.maxHp
-    setDiffMode('easy')
-    const easy = h.spawn('slime', start.x, start.z)!.maxHp
-    expect(hard).toBeGreaterThan(normal)
-    expect(easy).toBeLessThan(normal)
-    expect(diff().regen).toBeGreaterThan(1)
+    const a = h.spawn('slime', start.x, start.z)!.maxHp
+    const b = h.spawn('slime', start.x, start.z)!.maxHp
+    expect(a).toBe(b)
   })
 })
 

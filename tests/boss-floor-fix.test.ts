@@ -122,10 +122,10 @@ describe('스킬이 새 체력 곡선을 따라간다 (fix/gun-identity: 스킬�
     expect(skillBite({ tone: 'boss', maxHp: 1000 }, 'bomb', 5, 1)).toBeLessThanOrEqual(250)
   })
 
-  it('장비가 좋으면 조금 더, 나쁘면 조금 덜 (0.8~1.2배로 묶임)', () => {
+  it('장비가 좋으면 조금 더, 나빠도 덜하지 않다 (1~1.15배로 묶임, fix/real-play)', () => {
     expect(skillGear(SKILL_REF_MUL[2], SKILL_REF_MUL[2])).toBe(1)
-    expect(skillGear(10, SKILL_REF_MUL[1])).toBe(1.2)
-    expect(skillGear(0.5, SKILL_REF_MUL[3])).toBe(0.8)
+    expect(skillGear(10, SKILL_REF_MUL[1])).toBe(1.15)
+    expect(skillGear(0.5, SKILL_REF_MUL[3])).toBe(1)
   })
 
   it('스킬 범위 피해는 범위 안 무리 전체에 들어가고, 정예·보스는 최대 체력 비율로 깎인다', () => {

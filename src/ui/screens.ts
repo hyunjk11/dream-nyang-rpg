@@ -2,7 +2,6 @@ import { INTRO } from '../data/story'
 import { GROUP_KO, TRACK_CAP, pinsOf, questArchive, questBook, type QuestGroup } from '../sim/questbook'
 import type { SaveData } from '../sim/types'
 import { MATERIAL_HELP, MATERIAL_KO } from '../data/items'
-import { diffMode, setDiffMode, type DiffMode } from '../combat/difficulty'
 
 const $ = (id: string) => document.getElementById(id)
 
@@ -18,25 +17,6 @@ export function showTitle(base: string, canContinue: boolean, handlers: { fresh:
   const fresh = $('btn-new')
   if (fresh) fresh.onclick = () => handlers.fresh()
   if (cont) cont.onclick = () => canContinue && handlers.resume()
-  wireDiffPick()
-}
-
-/** 쉬움 / 보통 / 어려움 on the title card (saved; foes spawned after a change use it). */
-export function wireDiffPick(root: ParentNode = document): void {
-  const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('#diff-pick [data-diff]'))
-  const paint = () => {
-    for (const b of buttons) {
-      const on = b.dataset.diff === diffMode()
-      b.classList.toggle('on', on)
-      b.setAttribute('aria-checked', String(on))
-      b.setAttribute('role', 'radio')
-    }
-  }
-  for (const b of buttons) b.onclick = () => {
-    setDiffMode(b.dataset.diff as DiffMode)
-    paint()
-  }
-  paint()
 }
 
 export function titleReady(ready: boolean, text: string): void {

@@ -40,7 +40,7 @@ import { Delve, delveOf, fieldPlan, itemLevelFor, portalChoices, type DelveEnd, 
 import { floorStateLabel, type FloorState } from './sim/floorsnap'
 import { showSummary } from './ui/summary'
 import { playChime, type Chime } from './audio/chime'
-import { DIFFICULTY } from './combat/difficulty'
+import { DIFFICULTY, dropOldDifficulty } from './combat/difficulty'
 import { blast, SKILL_POWER, SkillRunner, type SkillBody, type SkillWorld } from './combat/skills'
 import { applyProcs, chill, ELEMENTS, procBursts } from './combat/elements'
 import { ACTIVES, TREE_BY_ID, hotbarName } from './data/tree'
@@ -134,6 +134,8 @@ function safeStore(): Storageish | null {
   }
 }
 const store = safeStore()
+// The old title-card difficulty pick is gone: forget what it stored.
+dropOldDifficulty(typeof localStorage === 'undefined' ? null : localStorage)
 let game = new GameState()
 /** title → intro → play; 'menu' freezes play under the quest log or ending card. */
 let mode: 'title' | 'intro' | 'play' | 'menu' = 'title'
