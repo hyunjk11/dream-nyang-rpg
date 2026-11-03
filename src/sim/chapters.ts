@@ -158,9 +158,26 @@ export function chaptersOf(save: SaveData): ChapterSave {
     card: int(raw.card, 0, 3, 0),
     offerSkip: !!raw.offerSkip,
   }
+  gateChapters(c)
   save.chapters = c
   whole.add(c)
   return c
+}
+
+/**
+ * Keep the chapter number honest with what was cleared: chapter 2 needs chapter 1 (the guide) done,
+ * chapter 3 needs chapter 2 cleared. A save that jumped ahead (an early-accepted chapter-2 quest, a
+ * hand-edited number) drops back; its quest progress stays in the save, parked, until it unlocks.
+ */
+function gateChapters(c: ChapterSave): void {
+  const one = c.guide.done || c.cleared.includes(1)
+  if (one) {
+    c.guide.done = true
+    if (!c.cleared.includes(1)) c.cleared.push(1)
+  }
+  const max = !one ? 1 : c.cleared.includes(2) ? 3 : 2
+  c.current = one ? Math.max(2, Math.min(c.current, max)) : 1
+  if (!one) c.cleared = c.cleared.filter((n) => n !== 2)
 }
 
 export interface ChapterOut {
@@ -270,8 +287,16 @@ export function chapter2Open(save: SaveData): boolean {
   return chaptersOf(save).current >= 2
 }
 
+/** Chapter 3 (꿈 바깥의 목소리) is open: chapter 2's story is over. */
+export function chapter3Open(save: SaveData): boolean {
+  const c = chaptersOf(save)
+  return c.current >= 3 && c.cleared.includes(2)
+}
+
+/** Board field quests on the go. Parked (none) before chapter 2, whatever an old save holds. */
 export function activeQuests(save: SaveData): ChapterQuestDef[] {
   const c = chaptersOf(save)
+  if (!chapter2Open(save)) return []
   return CHAPTER2.filter((d) => c.quests[d.id].status === 'active')
 }
 
@@ -327,6 +352,7 @@ export function claimQuest(save: SaveData, id: string, rng: () => number = Math.
   const q = c.quests[id]
   const d = questDef(id)
   const none = { result: emptyResult(), cleared: 0, gear: null }
+  if (!chapter2Open(save)) return { ok: false, reason: '가이드 챕터를 먼저 마쳐 줘.', ...none }
   if (!q || !d || q.status !== 'done') return { ok: false, reason: '아직 끝나지 않은 퀘스트야.', ...none }
   q.status = 'claimed'
   gainGold(save, d.reward.gold)
@@ -356,6 +382,7 @@ export function claimQuest(save: SaveData, id: string, rng: () => number = Math.
 /** Tracker lines for the HUD: active quests and progress. */
 export function questHud(save: SaveData): { id: string; title: string; prog: string; done: boolean }[] {
   const c = chaptersOf(save)
+  if (!chapter2Open(save)) return []
   return CHAPTER2.filter((d) => c.quests[d.id].status === 'active' || c.quests[d.id].status === 'done').map((d) => ({
     id: d.id,
     title: d.title,

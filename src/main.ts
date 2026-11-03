@@ -62,7 +62,7 @@ import { tryEquip } from './sim/mutate'
 import { isEquipped } from './sim/inventory'
 import { CHAPTER2, CHAPTER_TITLE, FLUFF, chapter2Open, chaptersOf, fieldNeeds, guideEvent, guideStep, keepGuide, questEvent, questHud, skipGuide, type ChapterOut, type FieldEvent, type GuideEvent } from './sim/chapters'
 import { ChapterUI } from './ui/chapters'
-import { AREAS, MAZE_ELITE, RESCUE_NAME, dreamOf, mazeCleared, mazeEvent, mazeHud, mazeQuest, openAreas, passMaze, storyEvent, storyHud, storyTalk, wantsSparks, type AreaId, type DreamOut } from './sim/dreamstory'
+import { AREAS, MAZE_ELITE, RESCUE_NAME, dreamOf, enterMaze, mongsilOpen, mazeCleared, mazeEvent, mazeHud, mazeQuest, openAreas, passMaze, storyEvent, storyHud, storyTalk, wantsSparks, type AreaId, type DreamOut } from './sim/dreamstory'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -1366,7 +1366,7 @@ function beginPlay(): void {
   enterZone(game.zone, game.zone === 'meadow' || game.zone === 'village' ? PLAZA : PORTAL_ARRIVAL)
   syncCodex(game.save)
   // 챕터 2: she went to sleep in 몽실 마을, so she wakes there.
-  if (dreamOf(game.save).home === 'mongsil' && dreamOf(game.save).maze.passed) window.setTimeout(() => enterMongsil(true), 200)
+  if (dreamOf(game.save).home === 'mongsil' && mongsilOpen(game.save)) window.setTimeout(() => enterMongsil(true), 200)
   if (!game.save.flags.metMochi) window.setTimeout(() => talk.start('mochi_meet'), 700)
   const ch = chaptersOf(game.save)
   guideLast = null
@@ -1799,6 +1799,7 @@ function enterArea(id: AreaId): void {
     toast('아직 이야기가 거기까지 닿지 않았어.', 'info')
     return
   }
+  if (id === 'maze') enterMaze(game.save)
   if (AREAS[id].home === 'island') dropParked()
   travelling = true
   audio.sfx('windup', 0.7)
@@ -1821,7 +1822,7 @@ function enterArea(id: AreaId): void {
 /** To 몽실 마을 (from the island 별문, or straight in on a resume). */
 function enterMongsil(quiet = false): void {
   if ((run && !inMongsil()) || travelling) return
-  if (!dreamOf(game.save).maze.passed) {
+  if (!mongsilOpen(game.save)) {
     toast('꿈 미로를 지나야 닿는 마을이야.', 'info')
     return
   }

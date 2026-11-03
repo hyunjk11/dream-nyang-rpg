@@ -159,7 +159,7 @@ describe('챕터 저장', () => {
     const save = freshSave()
     ;(save as unknown as { chapters: unknown }).chapters = { current: 99, guide: { step: -4, count: 'x' }, quests: { c2_slime: { status: 'wat', progress: 1e9 }, c2_bat: { status: 'active', progress: 1e9 } }, cleared: 'no' }
     const c = chaptersOf(save)
-    expect(c.current).toBe(3)
+    expect(c.current).toBe(1) // 가이드를 안 끝낸 저장은 챕터 1로 돌아온다
     expect(c.guide.step).toBe(0)
     expect(c.guide.count).toBe(0)
     expect(c.cleared).toEqual([])
