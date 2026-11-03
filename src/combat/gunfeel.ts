@@ -24,8 +24,8 @@ export const GUN = {
   /** Overheated: locked until heat falls back to this, cooling faster. */
   resumeAt: 0.3,
   ventRate: 0.85,
-  /** Light droplets (8 × 18/s): the 연사 gun wins on volume, not on any one hit. */
-  damage: 8,
+  /** Light droplets (8.6 × 18/s): the 연사 gun wins on volume, not on any one hit. */
+  damage: 8.6,
   critChance: 0.1,
   critMul: 1.7,
   /** Crosshair tick gap in px at no bloom; full bloom adds spreadPx. */

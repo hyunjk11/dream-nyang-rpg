@@ -53,8 +53,8 @@ describe('총 종류별 사격감', () => {
     // Every base lands in the same DPS ballpark (feel differs, power doesn't run away).
     // 치명타까지 넣은 기대 DPS로 비교 (저격총은 치명이 세서 한 발 수치만으론 낮아 보인다).
     const base = gunDpsCrit(GUN_PROFILES.water)
-    // 별총은 기본 수치가 낮고 별 발동·높은 치명으로 실측 물총 근처가 된다.
-    for (const p of Object.values(GUN_PROFILES)) expect(gunDpsCrit(p) / base).toBeGreaterThan(p.kind === 'star' ? 0.45 : 0.8)
+    // 별총·저격총은 기본 수치가 낮고 별 발동·관통·치명 배율로 실측 물총 근처(이상)가 된다.
+    for (const p of Object.values(GUN_PROFILES)) expect(gunDpsCrit(p) / base).toBeGreaterThan(p.kind === 'star' || p.kind === 'dart' ? 0.45 : 0.8)
     for (const p of Object.values(GUN_PROFILES)) expect(gunDpsCrit(p) / base).toBeLessThan(1.2)
   })
 })

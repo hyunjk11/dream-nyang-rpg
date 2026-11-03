@@ -7,7 +7,7 @@ import { Tile, distances, tileCentre } from '../src/world/dungeon/maze'
 import { BOSS_LIVE, BOSS_ADDS, BOSS_GUARD, bossRoomHit } from '../src/world/dungeon/run'
 import { floorPlan } from '../src/sim/delve'
 import { DIFFICULTY } from '../src/combat/difficulty'
-import { SKILL_POWER, SKILL_REF_MUL, skillBite, skillBlast, skillGear, type SkillBody } from '../src/combat/skills'
+import { SKILL_BITE, SKILL_POWER, SKILL_REF_MUL, skillBite, skillBlast, skillGear, type SkillBody } from '../src/combat/skills'
 import { REF_DPS } from '../tools/sim-ttk-ref'
 
 describe('보스층은 웨이브가 아니라 보스 방', () => {
@@ -135,8 +135,8 @@ describe('스킬이 새 체력 곡선을 따라간다 (fix/gun-identity: 스킬�
     expect(n).toBe(4)
     expect(got.a).toBeGreaterThanOrEqual(300)
     expect(got.b).toBeGreaterThanOrEqual(900)
-    expect(got.e).toBe(600)
-    expect(got.B).toBe(3000)
+    expect(got.e).toBe(Math.round(2000 * SKILL_BITE.bomb.elite))
+    expect(got.B).toBe(Math.round(20000 * SKILL_BITE.bomb.boss))
     expect(got.far).toBeUndefined()
   })
 
