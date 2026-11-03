@@ -35,7 +35,7 @@ export const LEGENDS: LegendDef[] = [
   },
   {
     id: 'leg_cotton', name: '솜사탕 교란기', gun: 'bubble',
-    stats: { cloud: 0.16, candy: 0.2, lifesteal: 0.014, damage: 0.05 },
+    stats: { cloud: 0.16, candy: 0.2, lifesteal: 0.014, damage: 0.1 },
     signature: '맞은 자리마다 끈적한 솜사탕 구름 · 몰려오는 무리를 붙잡는다',
     sources: [{ kind: 'boss', depth: 2 }], where: '깊이 2 보스',
     look: { body: 0xffc6e5, tank: 0xffffff, barrel: 0xff9fd6, tracer: 0xffd6ee, barrelLen: 0.85, size: 1.2 },

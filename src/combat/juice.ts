@@ -1,5 +1,6 @@
 /**
- * 팡팡 터지는 총 맛: 별 도탄과 솜사탕 구름.
+ * 팡팡 터지는 총 맛: 별 도탄과 솜사탕 구름 — fix/mod-parts 부터 특수 부품(도탄 · 뭉게뭉게)이나 전설
+ * 옵션, 총 종류(별똥 점사총 · 방울 샷건)가 있어야 나온다. 부품 조합(COMBOS)이 모양과 맛을 바꾼다.
  *  - 별 도탄: 몇 발마다(또는 '별도탄 확률' 옵션으로) 반짝이는 별이 튀어나가 벽·바닥·몹에 맞고
  *    팅팅 튕기며 다음 몹을 찾아 날아간다. 반짝 꼬리를 남긴다.
  *  - 솜사탕 구름: 맞힌 자리(치명타면 더 자주)에 분홍·하늘색 몽실 구름이 피어 잠깐 동안 안의 몹에게
@@ -10,9 +11,10 @@ import { AdditiveBlending, Color, DoubleSide, Group, IcosahedronGeometry, Instan
 import type { RayFn } from '../core/tps'
 import type { Vfx } from '../core/vfx'
 import type { SkillBody } from './skills'
+import { COMBO, type ComboId } from '../data/mods'
 
 export const JUICE = {
-  /** Every Nth droplet throws a ricochet star even with no affix. */
+  /** With any star chance on the gun, every Nth droplet also throws one. */
   starEvery: 7,
   starSpeed: 21,
   /** Bounces (walls + foes) before a star fizzles. */
@@ -22,7 +24,7 @@ export const JUICE = {
   starShare: 0.6,
   /** How far a star looks for its next foe after a bounce. */
   starSeek: 9,
-  /** Cloud chance on a landed droplet (plus the '솜사탕 구름' affix), and on a crit. */
+  /** With any cloud chance on the gun: extra chance on a landed droplet, and on a crit. */
   cloudBase: 0.05,
   cloudCrit: 0.3,
   cloudRadius: 1.7,
@@ -35,14 +37,34 @@ export const JUICE = {
   maxClouds: [8, 3] as const,
 }
 
-/** Does this droplet throw a star? `shot` counts droplets fired (1-based). */
+/** Does this droplet throw a star? `shot` counts droplets fired (1-based). No star chance = no stars. */
 export function rollStar(shot: number, chance: number, r: number): boolean {
-  return (shot > 0 && shot % JUICE.starEvery === 0) || (chance > 0 && r < chance)
+  if (!(chance > 0)) return false
+  return (shot > 0 && shot % JUICE.starEvery === 0) || r < chance
 }
 
-/** Does this landed droplet puff a cotton-candy cloud? */
+/** Does this landed droplet puff a cotton-candy cloud? No cloud chance = no clouds. */
 export function rollCloud(crit: boolean, chance: number, r: number): boolean {
+  if (!(chance > 0)) return false
   return r < Math.min(0.9, (crit ? JUICE.cloudCrit : JUICE.cloudBase) + chance)
+}
+
+/**
+ * Expected juice damage per droplet as a share of the droplet (balance: tests and sims).
+ * Stars: chance × share × average foes hit; clouds: chance × ticks × share × average foes inside.
+ */
+export function juiceShare(starShot: number, cloud: number, critChance: number, combos: readonly ComboId[] = [], foes = 2): number {
+  const has = (c: ComboId) => combos.includes(c)
+  const starP = starShot > 0 ? Math.min(1, 1 / JUICE.starEvery + starShot) : 0
+  const hops = Math.min(foes, JUICE.starBounces + 1 + (has('piercestar') ? COMBO.pierceBounces : 0))
+  let star = starP * JUICE.starShare * (has('piercestar') ? COMBO.pierceShare : 1) * hops
+  if (has('sparkstar')) star += starP * JUICE.starShare * COMBO.sparkShare * hops * Math.max(0, foes - 1) * 0.5
+  const cloudP = cloud > 0 ? Math.min(0.9, (critChance * JUICE.cloudCrit + (1 - critChance) * JUICE.cloudBase) + cloud) : 0
+  const ticks = JUICE.cloudLife / JUICE.cloudTick
+  // One cloud per trigger pull at most, and most land on one or two foes.
+  let puff = cloudP * ticks * JUICE.cloudShare * Math.min(foes, 1.5) * 0.5
+  if (has('fluffstar')) puff += starP * ticks * JUICE.cloudShare * COMBO.fluffShare * JUICE.starShare * 0.6 * 0.5
+  return Math.round((star + puff) * 1000) / 1000
 }
 
 /** Mirror a velocity off a surface with unit normal n (keeps speed). */
@@ -92,6 +114,8 @@ export interface JuiceHost {
   vfx: Vfx
   number: (amount: number, at: Vector3, tone: 'n' | 'crit' | 'elite' | 'boss' | 'star' | 'candy') => void
   sound?: (cue: 'star' | 'boing' | 'puff' | 'pop', gain?: number, pitch?: number) => void
+  /** 달콤 구름: hp back from cloud ticks. */
+  heal?: (amount: number) => void
   lowPower: boolean
 }
 
@@ -104,6 +128,8 @@ interface Star {
   hit: Set<string>
   trail: number
   spin: number
+  /** 통통 솜사탕: this star already puffed its mini cloud. */
+  puffed: boolean
 }
 
 interface Cloud {
@@ -115,10 +141,16 @@ interface Cloud {
   amount: number
   blue: boolean
   seed: number
+  /** Radius (mini clouds from stars are smaller). */
+  r: number
+  /** 서리 구름: icy white-blue and a strong slow. */
+  frost: boolean
 }
 
 const PUFFS = 6
 const STAR_TINTS = [0xfff2a0, 0xffd0f0, 0xbfeaff]
+/** 꿰뚫는 별똥: hotter lilac-gold stars. */
+const PIERCE_TINTS = [0xffd36b, 0xd9b8ff, 0xffe9a8]
 
 function starShape(outer: number, inner: number): Shape {
   const s = new Shape()
@@ -146,6 +178,10 @@ export class Juice {
   cloudHits = 0
   readonly maxStars: number
   readonly maxClouds: number
+  /** 부품 조합 on the equipped gun (set from the loadout). */
+  combos: ReadonlySet<ComboId> = new Set()
+  /** Combo procs for QA. */
+  comboHits = 0
 
   constructor(private readonly host: JuiceHost) {
     this.group.name = 'gun-juice'
@@ -176,16 +212,29 @@ export class Juice {
   /** Throw a ricochet star from the muzzle along `dir`. */
   star(from: Vector3, dir: Vector3, amount: number): void {
     if (this.stars.length >= this.maxStars) this.stars.shift()
-    this.stars.push({ p: from.clone(), v: dir.clone().normalize().multiplyScalar(JUICE.starSpeed), bounces: JUICE.starBounces, age: 0, amount, hit: new Set(), trail: 0, spin: Math.random() * 6 })
+    const pierce = this.combos.has('piercestar')
+    this.stars.push({
+      p: from.clone(),
+      v: dir.clone().normalize().multiplyScalar(JUICE.starSpeed),
+      bounces: JUICE.starBounces + (pierce ? COMBO.pierceBounces : 0),
+      age: 0,
+      amount: amount * (pierce ? COMBO.pierceShare : 1),
+      hit: new Set(),
+      trail: 0,
+      spin: Math.random() * 6,
+      puffed: false,
+    })
     this.host.sound?.('star', 0.7, (Math.random() - 0.5) * 0.2)
   }
 
-  /** Puff a cotton-candy cloud where a droplet landed. */
-  cloud(at: Vector3, amount: number): void {
+  /** Puff a cotton-candy cloud where a droplet landed (mini: the small one a 통통 솜사탕 star leaves). */
+  cloud(at: Vector3, amount: number, mini = false): void {
     if (this.clouds.length >= this.maxClouds) this.clouds.shift()
-    const blue = Math.random() < 0.4
-    this.clouds.push({ x: at.x, y: Math.max(0.6, Math.min(1.4, at.y)), z: at.z, age: 0, tick: JUICE.cloudTick * 0.5, amount, blue, seed: Math.random() * 10 })
-    this.host.vfx.burst(at, blue ? 0xbfe6ff : 0xffbfe2, { count: this.host.lowPower ? 6 : 12, speed: 2.2, up: 1.2, life: 0.5, size: 0.3, grow: 1.2, gravity: -0.5, drag: 3 })
+    const frost = this.combos.has('frostcloud')
+    const blue = frost || Math.random() < 0.4
+    const r = JUICE.cloudRadius * (mini ? 0.6 : 1)
+    this.clouds.push({ x: at.x, y: Math.max(0.6, Math.min(1.4, at.y)), z: at.z, age: 0, tick: JUICE.cloudTick * 0.5, amount, blue, seed: Math.random() * 10, r, frost })
+    this.host.vfx.burst(at, frost ? 0xe6f8ff : blue ? 0xbfe6ff : 0xffbfe2, { count: this.host.lowPower ? 6 : mini ? 8 : 12, speed: 2.2, up: 1.2, life: 0.5, size: mini ? 0.2 : 0.3, grow: 1.2, gravity: -0.5, drag: 3 })
     this.host.sound?.('puff', 0.8, (Math.random() - 0.5) * 0.15)
   }
 
@@ -229,7 +278,8 @@ export class Juice {
         hitBody.hit(amount, dir.x / hl, dir.z / hl, 0.4, 0)
         this.starHits += 1
         this.host.number(amount, this.q.set(hitBody.x, 1.3, hitBody.z), 'star')
-        this.host.vfx.burst(s.p, STAR_TINTS[this.starHits % 3], { count: this.host.lowPower ? 6 : 12, speed: 4, up: 1.6, life: 0.35, size: 0.14, shape: 1, gravity: 3, drag: 2, additive: true })
+        this.starCombos(s, hitBody, amount, bodies)
+        this.host.vfx.burst(s.p, (this.combos.has('piercestar') ? PIERCE_TINTS : STAR_TINTS)[this.starHits % 3], { count: this.host.lowPower ? 6 : 12, speed: 4, up: 1.6, life: 0.35, size: 0.14, shape: 1, gravity: 3, drag: 2, additive: true })
         this.host.sound?.('boing', 0.8, 0.15 + (JUICE.starBounces - s.bounces) * 0.08)
         s.bounces -= 1
         const next = seekNext(bodies, s.p.x, s.p.z, s.hit, JUICE.starSeek)
@@ -261,6 +311,27 @@ export class Juice {
     }
   }
 
+  /** 통통 솜사탕 · 별빛 폭죽: what a star does on a foe besides its own hit. */
+  private starCombos(s: Star, hit: SkillBody, amount: number, bodies: SkillBody[]): void {
+    if (this.combos.has('fluffstar') && !s.puffed) {
+      s.puffed = true
+      this.comboHits += 1
+      this.cloud(this.q.set(hit.x, 1, hit.z), amount * COMBO.fluffShare, true)
+    }
+    if (this.combos.has('sparkstar')) {
+      const pop = Math.max(1, Math.round(amount * COMBO.sparkShare))
+      let any = false
+      for (const b of inCloud(bodies, hit.x, hit.z, COMBO.sparkRadius)) {
+        if (b.id === hit.id) continue
+        b.hit(pop, 0, 0, 0.2, 0)
+        this.host.number(pop, this.q.set(b.x, 1.4, b.z), 'star')
+        any = true
+      }
+      if (any) this.comboHits += 1
+      this.host.vfx.burst(this.q.set(hit.x, 1.1, hit.z), 0xffe27a, { count: this.host.lowPower ? 8 : 18, speed: 5.5, up: 0.8, life: 0.3, size: 0.12, shape: 1, gravity: 1, drag: 3, additive: true })
+    }
+  }
+
   private stepClouds(dt: number, bodies: SkillBody[]): void {
     for (let i = this.clouds.length - 1; i >= 0; i -= 1) {
       const c = this.clouds[i]
@@ -273,11 +344,19 @@ export class Juice {
       if (c.tick > 0) continue
       c.tick += JUICE.cloudTick
       const amount = Math.max(1, Math.round(c.amount * JUICE.cloudShare))
-      for (const b of inCloud(bodies, c.x, c.z, JUICE.cloudRadius)) {
-        b.hit(amount, 0, 0, 0, 0.3)
+      let dealt = 0
+      for (const b of inCloud(bodies, c.x, c.z, c.r)) {
+        b.hit(amount, 0, 0, 0, c.frost ? COMBO.frostSlow : 0.3)
         this.cloudHits += 1
+        dealt += amount
         this.host.number(amount, this.q.set(b.x, 1.2, b.z), 'candy')
-        this.host.vfx.burst(this.q, c.blue ? 0xbfe6ff : 0xffb6dc, { count: 2, speed: 0.6, up: 0.6, life: 0.4, size: 0.16, gravity: -0.4, drag: 2 })
+        this.host.vfx.burst(this.q, c.frost ? 0xeaf8ff : c.blue ? 0xbfe6ff : 0xffb6dc, { count: c.frost ? 3 : 2, speed: 0.6, up: 0.6, life: 0.4, size: 0.16, gravity: c.frost ? 1.5 : -0.4, drag: 2 })
+      }
+      // 달콤 구름: a sip of the tickle back, with a little pink heart puff over the cloud.
+      if (dealt > 0 && this.combos.has('sweetcloud')) {
+        this.comboHits += 1
+        this.host.heal?.(Math.max(1, Math.round(dealt * COMBO.sweetShare)))
+        this.host.vfx.burst(this.q.set(c.x, c.y + 0.7, c.z), 0xff7fb5, { count: 3, speed: 0.8, up: 1.6, life: 0.5, size: 0.14, shape: 1, gravity: -1, drag: 2, additive: true })
       }
     }
   }
@@ -291,7 +370,7 @@ export class Juice {
       this.e.scale.setScalar(1 + Math.sin(s.age * 30) * 0.15)
       this.e.updateMatrix()
       this.starMesh.setMatrixAt(n, this.e.matrix)
-      this.starMesh.setColorAt(n, this.c.set(STAR_TINTS[i % 3]))
+      this.starMesh.setColorAt(n, this.c.set((this.combos.has('piercestar') ? PIERCE_TINTS : STAR_TINTS)[i % 3]))
       n += 1
     }
     this.starMesh.count = n
@@ -305,15 +384,15 @@ export class Juice {
       const size = grow * fade
       for (let p = 0; p < PUFFS; p += 1) {
         const a = (p / PUFFS) * Math.PI * 2 + c.seed
-        const ring = p === 0 ? 0 : JUICE.cloudRadius * 0.55
+        const ring = p === 0 ? 0 : c.r * 0.55
         const breathe = 1 + Math.sin(c.age * 5 + p * 1.7) * 0.08
         this.e.position.set(c.x + Math.cos(a) * ring * size, c.y + (p === 0 ? 0.25 : Math.sin(a * 2) * 0.15), c.z + Math.sin(a) * ring * size)
         this.e.rotation.set(0, a, 0)
-        this.e.scale.setScalar((p === 0 ? 1.5 : 1.05) * size * breathe)
+        this.e.scale.setScalar((p === 0 ? 1.5 : 1.05) * size * breathe * (c.r / JUICE.cloudRadius))
         this.e.updateMatrix()
         this.cloudMesh.setMatrixAt(k, this.e.matrix)
         const pink = c.blue ? p % 3 === 0 : p % 3 !== 0
-        this.cloudMesh.setColorAt(k, this.c.set(pink ? 0xffa8d8 : 0xa8dcff))
+        this.cloudMesh.setColorAt(k, this.c.set(c.frost ? (p % 2 ? 0xe8f8ff : 0x9fdcff) : pink ? 0xffa8d8 : 0xa8dcff))
         k += 1
       }
     }

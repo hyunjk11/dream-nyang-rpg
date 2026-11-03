@@ -1,15 +1,16 @@
 /**
- * 총 개조: mod parts (조준경 · 총열 · 탄창 · 속성 칩) slot into a gun. Slots come from the gun's
- * rarity (+1 at iLv 10), one part of each kind per gun. Parts drop with a rarity and iLv like gear;
+ * 총 개조: mod parts (조준경 · 총열 · 탄창 · 속성 칩 · 특수 부품) slot into a gun. Slots come from the gun's
+ * rarity (+1 at iLv 10), one part of each kind per gun, except 특수 부품: up to MAX_TRICKS different
+ * ones (two of them, or one with a chip, can make a 조합 — see COMBOS). Parts drop with a rarity and iLv like gear;
  * the gunsmith fits / pulls them, and salvage (장난감 부품 · 별조각) raises a part's rarity.
  */
 import type { GunLook } from '../actors/toygun'
 import { ITEMS } from '../data/items'
-import { CHIP_TINT, MOD_IDS, MOD_KO, MOD_SPECS, type ModKind, type ModSpec } from '../data/mods'
+import { CHIP_TINT, COMBOS, MAX_TRICKS, MOD_IDS, MOD_KO, MOD_SPECS, TRICK_KO, type ComboSpec, type ModKind, type ModSpec, type TrickId } from '../data/mods'
 import { addItem, bagItems, findItem, isEquipped, removeItem } from './inventory'
 import { levelScale, roundStat } from './loot'
 import { townOf } from './town'
-import { BAG_CAP, RARITIES, uid, type Affix, type ItemInstance, type Rarity, type SaveData, type StatKey } from './types'
+import { BAG_CAP, RARITIES, uid, type Affix, type Element, type ItemInstance, type Rarity, type SaveData, type StatKey } from './types'
 
 /** Rarity → how strong a part rolls. */
 export const MOD_RARITY: Record<Rarity, number> = { common: 1, uncommon: 1.15, rare: 1.35, epic: 1.6, legendary: 1.9 }
@@ -49,7 +50,9 @@ function modAffixes(defId: string, rarity: Rarity, itemLevel: number): Affix[] {
   const spec = MOD_SPECS[defId]
   if (!spec) return []
   const k = levelScale(itemLevel) * MOD_RARITY[rarity]
-  return (Object.entries(spec.stats) as [StatKey, number][]).map(([stat, v]) => ({ id: `mod_${stat}`, name: '', stat, value: roundStat(stat, v * k) }))
+  // 관통 is flat: one more foe, two from 영웅.
+  const value = (stat: StatKey, v: number) => (stat === 'pierce' ? v + (RARITIES.indexOf(rarity) >= 3 ? 1 : 0) : roundStat(stat, v * k))
+  return (Object.entries(spec.stats) as [StatKey, number][]).map(([stat, v]) => ({ id: `mod_${stat}`, name: '', stat, value: value(stat, v) }))
 }
 
 /** A fresh part (values fixed by kind, rarity and iLv: no roll, so upgrades are predictable). */
@@ -66,8 +69,50 @@ export function rollMod(rng: () => number, rarity: Rarity, itemLevel: number): I
 
 /** "조준경 · 치명타 +2%" style label. */
 export function modLabel(mod: ItemInstance): string {
+  const spec = modSpec(mod)
+  if (spec?.trick) return `특수 · ${TRICK_KO[spec.trick]}`
+  return spec ? MOD_KO[spec.kind] : '부품'
+}
+
+/** Which of a gun's parts a new part would swap: same kind, or for 특수 부품 the same trick. */
+export function swapIndex(mods: ItemInstance[], mod: ItemInstance): number {
   const kind = modKind(mod)
-  return kind ? MOD_KO[kind] : '부품'
+  if (kind === 'trick') return mods.findIndex((m) => m.defId === mod.defId)
+  return mods.findIndex((m) => modKind(m) === kind)
+}
+
+/** Why this part can't go in (null = it fits, maybe as a swap). */
+export function fitBlock(gun: ItemInstance, mod: ItemInstance): string | null {
+  const mods = gunMods(gun)
+  if (swapIndex(mods, mod) >= 0) return null
+  if (mods.length >= modSlots(gun)) return `빈 개조 칸이 없어. (${mods.length}/${modSlots(gun)})`
+  if (modKind(mod) === 'trick' && mods.filter((m) => modKind(m) === 'trick').length >= MAX_TRICKS) return `특수 부품은 ${MAX_TRICKS}개까지야. 하나 빼고 끼워 줘.`
+  return null
+}
+
+export type Trait = TrickId | Element
+/** Stat → the trait it gives a gun (for 조합): from parts, rolled options and legend options. */
+const TRAIT_OF: Partial<Record<StatKey, Trait>> = { starShot: 'star', cloud: 'cloud', pierce: 'pierce', lifesteal: 'sip', sparkle: 'sparkle', ice: 'ice', candy: 'candy' }
+
+/** Everything that flavours this gun's shots: its type, rolled / legend options and parts. */
+export function gunTraits(gun: ItemInstance | undefined): Set<Trait> {
+  const out = new Set<Trait>()
+  if (!gun) return out
+  // The gun's own flavour counts too: 별똥 점사총 throws stars, 방울 샷건 puffs clouds (GUN_JUICE).
+  const kind = ITEMS[gun.defId]?.gun
+  if (kind === 'star') out.add('star')
+  if (kind === 'bubble') out.add('cloud')
+  for (const a of [...gun.affixes, ...gunMods(gun).flatMap((m) => m.affixes)]) {
+    const t = TRAIT_OF[a.stat]
+    if (t && a.value > 0) out.add(t)
+  }
+  return out
+}
+
+/** The 조합 this gun has on. */
+export function gunCombos(gun: ItemInstance | undefined): ComboSpec[] {
+  const t = gunTraits(gun)
+  return COMBOS.filter((c) => t.has(c.needs[0]) && t.has(c.needs[1]))
 }
 
 export interface ModResult {
@@ -90,16 +135,16 @@ export function fitCost(mod: ItemInstance): number {
   return 10 + 12 * RARITIES.indexOf(mod.rarity)
 }
 
-/** Fit a bag part into a gun. A part of the same kind swaps out back to the bag. */
+/** Fit a bag part into a gun. A part of the same kind (특수: same trick) swaps out back to the bag. */
 export function attachMod(save: SaveData, gunUid: string, modUid: string): ModResult {
   const gun = locateGun(save, gunUid)
   if (!gun) return { ok: false, reason: '총을 찾을 수 없어.' }
   const mod = findItem(save, modUid)
   if (!mod || !isMod(mod) || isEquipped(save, modUid)) return { ok: false, reason: '가방에 그 부품이 없어.' }
   const mods = gunMods(gun)
-  const kind = modKind(mod)
-  const same = mods.findIndex((m) => modKind(m) === kind)
-  if (same < 0 && mods.length >= modSlots(gun)) return { ok: false, reason: `빈 개조 칸이 없어. (${mods.length}/${modSlots(gun)})` }
+  const same = swapIndex(mods, mod)
+  const block = fitBlock(gun, mod)
+  if (block) return { ok: false, reason: block }
   const cost = fitCost(mod)
   if (save.gold < cost) return { ok: false, reason: `골드가 모자라. ${cost} 필요해.` }
   save.gold -= cost
@@ -182,6 +227,9 @@ export function bagMods(save: SaveData): ItemInstance[] {
   return bagItems(save).filter(isMod)
 }
 
+/** Charm colour per 특수 부품. */
+export const TRICK_TINT: Record<TrickId, number> = { star: 0xffe066, cloud: 0xffb3dc, pierce: 0xc9b8ff, sip: 0xff6f9a }
+
 /** Lens / drum colour per part rarity. */
 const PART_TONE: Record<Rarity, number> = { common: 0xdfe8ff, uncommon: 0x9be7c7, rare: 0x8fc8ff, epic: 0xc79bff, legendary: 0xffc65a }
 
@@ -204,6 +252,9 @@ export function gunLookWithMods(base: GunLook, gun: ItemInstance | undefined): G
         look.tank = CHIP_TINT[el]
         look.tracer = CHIP_TINT[el]
       }
+    } else if (kind === 'trick') {
+      const t = modSpec(m)?.trick
+      if (t) look.tricks = [...(look.tricks ?? []), TRICK_TINT[t]]
     }
   }
   return look

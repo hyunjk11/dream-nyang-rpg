@@ -31,16 +31,19 @@ function run(j: Juice, world: JuiceWorld, seconds: number) {
 }
 
 describe('팡팡 총 맛: 별 도탄과 솜사탕 구름', () => {
-  it('별 도탄은 옵션이 없어도 7발마다 한 번, 옵션이 있으면 확률로 더 나온다', () => {
-    const plain = Array.from({ length: 70 }, (_, i) => rollStar(i + 1, 0, 0.99)).filter(Boolean).length
+  it('별 도탄은 도탄 확률이 없으면 안 나오고, 있으면 7발마다 한 번 + 확률로 더 나온다', () => {
+    const none = Array.from({ length: 70 }, (_, i) => rollStar(i + 1, 0, 0.99)).filter(Boolean).length
+    expect(none).toBe(0)
+    const plain = Array.from({ length: 70 }, (_, i) => rollStar(i + 1, 0.01, 0.99)).filter(Boolean).length
     expect(plain).toBe(10)
     expect(rollStar(3, 0.1, 0.05)).toBe(true)
     expect(rollStar(3, 0.1, 0.5)).toBe(false)
   })
 
-  it('솜사탕 구름은 치명타일 때 훨씬 잘 피어나고, 옵션 확률이 더해진다', () => {
-    expect(rollCloud(false, 0, JUICE.cloudBase + 0.01)).toBe(false)
-    expect(rollCloud(true, 0, JUICE.cloudBase + 0.01)).toBe(true)
+  it('솜사탕 구름은 뭉게 확률이 있어야 피고, 치명타일 때 훨씬 잘 피어나며 옵션 확률이 더해진다', () => {
+    expect(rollCloud(true, 0, 0)).toBe(false)
+    expect(rollCloud(false, 0.01, JUICE.cloudBase + 0.02)).toBe(false)
+    expect(rollCloud(true, 0.01, JUICE.cloudBase + 0.02)).toBe(true)
     expect(rollCloud(false, 0.1, JUICE.cloudBase + 0.05)).toBe(true)
   })
 
@@ -119,7 +122,8 @@ describe('팡팡 총 맛: 별 도탄과 솜사탕 구름', () => {
     expect(ids).toContain('starShot')
     expect(ids).toContain('cloud')
     const save = freshSave()
-    expect(computeStats(save).starShot).toBe(0)
+    // 시작 물총은 도탄 부품 덕에 별이 튄다.
+    expect(computeStats(save).starShot).toBeGreaterThan(0)
     const star = makeItem('gun_star', 'common', () => 0.2, 1)
     addItem(save, star, true)
     save.equipment.weapon = star.uid

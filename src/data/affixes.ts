@@ -17,6 +17,8 @@ export interface AffixSpec {
   flat?: boolean
   /** Only one element per item. */
   element?: boolean
+  /** 특수 부품 now (fix/mod-parts): never rolled on new gear or by 재굴림; old items keep it until migrated. */
+  part?: boolean
 }
 
 /** 3D affixes (values at item level 1; item level and rarity scale them up). Gear (not guns) rolls them ×GEAR_AFFIX. */
@@ -26,7 +28,7 @@ export const AFFIXES: AffixSpec[] = [
   { id: 'keen', suffix: '예리함의', name: '날카로운', stat: 'critChance', min: 0.02, max: 0.05 },
   { id: 'fierce', suffix: '분노의', name: '맹렬한', stat: 'critDamage', min: 0.12, max: 0.35 },
   { id: 'sip', suffix: '단맛의', name: '쪽쪽', stat: 'lifesteal', min: 0.01, max: 0.025 },
-  { id: 'pierce', suffix: '관통의', name: '꿰뚫는', stat: 'pierce', min: 1, max: 1, weaponOnly: true, flat: true },
+  { id: 'pierce', suffix: '관통의', name: '꿰뚫는', stat: 'pierce', min: 1, max: 1, weaponOnly: true, flat: true, part: true },
   { id: 'light', suffix: '깃털의', name: '가벼운', stat: 'moveSpeed', min: 0.03, max: 0.07, gearOnly: true },
   { id: 'vital', suffix: '생명의', name: '튼튼한', stat: 'hp', min: 10, max: 28, gearOnly: true },
   { id: 'guard', suffix: '수호의', name: '단단한', stat: 'armor', min: 0.02, max: 0.05, gearOnly: true },
@@ -34,8 +36,8 @@ export const AFFIXES: AffixSpec[] = [
   { id: 'sparkle', suffix: '별빛의', name: '반짝이는', stat: 'sparkle', min: 0.08, max: 0.16, weaponOnly: true, element: true },
   { id: 'ice', suffix: '서리의', name: '서늘한', stat: 'ice', min: 0.1, max: 0.2, weaponOnly: true, element: true },
   { id: 'candy', suffix: '사탕의', name: '끈적한', stat: 'candy', min: 0.1, max: 0.2, weaponOnly: true, element: true },
-  { id: 'ricochet', suffix: '별도탄의', name: '통통 튀는', stat: 'starShot', min: 0.05, max: 0.1, weaponOnly: true },
-  { id: 'fluff', suffix: '솜사탕의', name: '몽실몽실', stat: 'cloud', min: 0.05, max: 0.1, weaponOnly: true },
+  { id: 'ricochet', suffix: '별도탄의', name: '통통 튀는', stat: 'starShot', min: 0.05, max: 0.1, weaponOnly: true, part: true },
+  { id: 'fluff', suffix: '솜사탕의', name: '몽실몽실', stat: 'cloud', min: 0.05, max: 0.1, weaponOnly: true, part: true },
 ]
 
 /** Gear affixes are this much bigger than gun affixes, so a new hat or ring reads at a glance. */

@@ -29,8 +29,8 @@ function wornGun(save: SaveData, rarity: ItemInstance['rarity'] = 'rare', ilv = 
 }
 
 describe('총 개조: 부품과 칸', () => {
-  it('부품 여섯 종은 장착 칸이 없는 아이템이고, 아이콘이 있다', () => {
-    expect(MOD_IDS.length).toBe(6)
+  it('부품 열 종(특수 부품 넷 포함)은 장착 칸이 없는 아이템이고, 아이콘이 있다', () => {
+    expect(MOD_IDS.length).toBe(10)
     for (const id of MOD_IDS) {
       expect(ITEMS[id].mod).toBe(true)
       expect(ITEMS[id].slot).toBeUndefined()
@@ -196,10 +196,12 @@ describe('총 개조: 드롭', () => {
     expect(secret).toBeGreaterThan(0.5)
   })
 
-  it('옛 세이브의 총(개조 없음)은 그대로 동작한다', () => {
+  it('옛 세이브의 총(개조 없음)은 그대로 동작하고, 새 시작 총에는 도탄 부품이 끼워져 있다', () => {
     const save = freshSave()
     const gun = save.items.find((i) => ITEMS[i.defId]?.slot === 'weapon')
     expect(gun).toBeDefined()
+    expect(gunMods(gun!).map((m) => m.defId)).toEqual(['mod_trick_star'])
+    delete gun!.mods
     expect(gunMods(gun!)).toEqual([])
     expect(bagItems(save).every((i) => !i.mods)).toBe(true)
     expect(computeStats(save).shotDamage).toBeGreaterThan(0)

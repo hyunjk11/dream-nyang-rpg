@@ -38,6 +38,8 @@ export class GameState {
   save: SaveData
   /** Set by load(): a trip a reload interrupted, its gold now banked (main.ts toasts it). */
   banked: OpenRun | null = null
+  /** Set by load(): 특수 부품 migration (main.ts toasts it). */
+  parts: { converted: number; gifted: number } | null = null
   constructor(save: SaveData = freshSave()) {
     this.save = save
   }
@@ -112,9 +114,10 @@ export class GameState {
     try {
       const save = JSON.parse(raw) as SaveData
       if (!save || save.version !== 1 || !save.quests || !Array.isArray(save.items)) return null
-      const { banked } = migrateSave(save)
+      const { banked, parts } = migrateSave(save)
       const state = new GameState(save)
       state.banked = banked
+      state.parts = parts
       return state
     } catch {
       return null

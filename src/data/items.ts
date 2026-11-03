@@ -45,6 +45,10 @@ export const ITEMS: Record<string, ItemDef> = {
   mod_chip_sparkle: D({ id: 'mod_chip_sparkle', name: '별빛 칩', description: '총에 꽂는 별빛 속성 칩. 총이 노랗게 빛난다.', price: 70, icon: 'mod_chip', mod: true }),
   mod_chip_ice: D({ id: 'mod_chip_ice', name: '서리 칩', description: '총에 꽂는 서리 속성 칩. 총이 하늘색으로 빛난다.', price: 70, icon: 'mod_chip_ice', mod: true }),
   mod_chip_candy: D({ id: 'mod_chip_candy', name: '사탕 칩', description: '총에 꽂는 사탕 속성 칩. 총이 분홍색으로 빛난다.', price: 70, icon: 'mod_chip_candy', mod: true }),
+  mod_trick_star: D({ id: 'mod_trick_star', name: '별튕김 스프링', description: '특수 부품 · 도탄. 물방울 사이로 별이 튀어나가 몹 사이를 통통 튕긴다.', price: 90, icon: 'mod_trick_star', mod: true }),
+  mod_trick_cloud: D({ id: 'mod_trick_cloud', name: '뭉게뭉게 분무기', description: '특수 부품 · 뭉게뭉게. 맞힌 자리에 솜사탕 구름이 몽실 피어난다.', price: 90, icon: 'mod_trick_cloud', mod: true }),
+  mod_trick_pierce: D({ id: 'mod_trick_pierce', name: '꿰뚫기 바늘', description: '특수 부품 · 관통. 물방울이 괴물을 하나 더 꿰뚫는다 (영웅 이상 둘).', price: 90, icon: 'mod_trick_pierce', mod: true }),
+  mod_trick_sip: D({ id: 'mod_trick_sip', name: '쪽쪽 빨대', description: '특수 부품 · 쪽쪽 흡혈. 맞힐 때마다 조금씩 회복한다.', price: 90, icon: 'mod_trick_sip', mod: true }),
 }
 
 const GUN_ICON = { water: 'gun', bubble: 'shotgun', star: 'rifle', dart: 'dart' } as const

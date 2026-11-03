@@ -1,3 +1,6 @@
+import { TRICK_PART } from '../data/mods'
+import { makeMod } from './mods'
+import { PARTS_GIFT_FLAG } from './migrate-parts'
 import { stripMods } from './mods'
 import { ITEMS, SHOP } from '../data/items'
 import { SKILLS } from '../data/skills'
@@ -50,6 +53,9 @@ export function freshSave(settings = DEFAULT_SETTINGS): SaveData {
     build: { points: 1, ranks: {} },
   }
   const gun = makeItem('gun_water', 'common', () => 0.2, 1)
+  // 특수 부품 첫 맛: the starter gun comes with a 도탄 part fitted (stars every 7th droplet, as it always felt).
+  gun.mods = [makeMod(TRICK_PART.star, 'common', 1)]
+  save.flags[PARTS_GIFT_FLAG] = true
   addItem(save, gun, true)
   save.equipment.weapon = gun.uid
   save.hp = computeStats(save).maxHp

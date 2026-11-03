@@ -76,7 +76,7 @@ export function levelScale(itemLevel: number): number {
 export function rollAffixes(slot: EquipSlot, rarity: Rarity, rng: () => number, itemLevel = 1): Affix[] {
   const count = AFFIX_COUNT[rarity] ?? 0
   const gun = slot === 'weapon'
-  const bag = AFFIXES.filter((spec) => (gun ? !spec.gearOnly : !spec.weaponOnly))
+  const bag = AFFIXES.filter((spec) => !spec.part && (gun ? !spec.gearOnly : !spec.weaponOnly))
   const scale = levelScale(itemLevel) * RARITY_POWER[rarity] * (gun ? 1 : GEAR_AFFIX)
   const out: Affix[] = []
   for (let i = 0; i < count && bag.length; i += 1) {
