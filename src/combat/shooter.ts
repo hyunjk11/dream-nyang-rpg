@@ -16,7 +16,7 @@ import {
   type AimTarget, type RayFn, type TpsView,
 } from '../core/tps'
 import { Gun, hitStopFor, rollDamage, spreadDir } from './gunfeel'
-import { GUN_PROFILES, type GunProfile } from '../data/guns'
+import { GUN_PROFILES, falloffAt, type GunProfile } from '../data/guns'
 import { GunFx } from './gunfx'
 import { HudFx } from '../ui/hudfx'
 import type { GunCue } from '../audio/gunsound'
@@ -176,6 +176,8 @@ export interface ShotProcs {
   ice?: boolean
   /** 끈적: sticky candy that hurts over time. */
   candy?: boolean
+  /** Shove scale for this droplet (gun identity: shotgun big, 연사 small). */
+  knock?: number
 }
 
 export interface ShotWorld extends AimWorld {
@@ -263,6 +265,8 @@ export class Shooter {
   private readonly end = new Vector3()
   private readonly tracers: InstancedMesh
   private readonly tracerLife: number[] = []
+  private readonly tracerW: number[] = []
+  private readonly tracerMax: number[] = []
   private readonly tracerFrom: Vector3[] = []
   private readonly tracerTo: Vector3[] = []
   private readonly dummy = new Object3D()
@@ -341,6 +345,7 @@ export class Shooter {
       const reach = world.solid(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, 60)
       const roll = rollDamage(Math.random(), l.damage, l.critChance + (gun.overdrive > 0 ? this.overdriveCrit : 0), l.critMul)
       const procs: ShotProcs = {
+        knock: p.knock,
         sparkle: l.sparkle > 0 && Math.random() < l.sparkle,
         ice: l.ice > 0 && Math.random() < l.ice,
         candy: l.candy > 0 && Math.random() < l.candy,
@@ -352,13 +357,20 @@ export class Shooter {
       let hit: ShotHit | null = null
       let first: ShotHit | null = null
       for (let pass = 0; pass <= l.pierce; pass += 1) {
-        hit = world.strike(from, dir, reach - travelled, pass ? Math.round(roll.amount * 0.8) : roll.amount, procs)
+        // The shotgun's bubbles lose punch with range (falloffAt is 1 for the other guns).
+        const far = falloffAt(p, travelled)
+        const shot = { amount: Math.max(1, Math.round(roll.amount * far)), crit: roll.crit }
+        hit = world.strike(from, dir, reach - travelled, pass ? Math.round(shot.amount * 0.8) : shot.amount, procs)
         if (!hit) break
+        if (far < 1) {
+          const nearHit = falloffAt(p, travelled + hit.t)
+          shot.amount = Math.max(1, Math.round(roll.amount * nearHit))
+        }
         first ??= hit
         anyHit = true
         end = this.end.copy(from).addScaledVector(dir, hit.t)
-        this.landedHit(end, hit, roll, pass > 0, sfx)
-        stolen += roll.amount * l.lifesteal
+        this.landedHit(end, hit, shot, pass > 0, sfx, k === 0 && pass === 0)
+        stolen += shot.amount * l.lifesteal
         const step = hit.t + 1.1
         travelled += step
         from = from.addScaledVector(dir, step)
@@ -373,7 +385,7 @@ export class Shooter {
       } else if (l.pierce > 0 && hit === null) {
         end = this.end.copy(tip).addScaledVector(dir, Math.min(reach, travelled + 4))
       }
-      this.tracer(tip, end)
+      this.tracer(tip, end, p.tracerW, p.tracerLife)
       lastEnd = end.clone()
     }
     if (stolen > 0) this.host.heal?.(stolen)
@@ -385,23 +397,22 @@ export class Shooter {
     if (anyHit) this.landed += 1
     this.gunFx.shot(tip, firstDir, camera, gun.shots)
     hero.recoil()
-    const heavy = p.pellets > 1 || p.gap > 0.3
+    // Each gun kicks its own way: the 연사 gun barely twitches, the sniper throws the view up.
     kick(this.rig.view, p.kickUp * (1 + gun.bloom * 0.6), (Math.random() - 0.5) * 2 * p.kickSide)
-    this.rig.fovKick = Math.min(heavy ? 2.4 : 1.4, this.rig.fovKick + (heavy ? 1.1 : 0.3))
-    this.rig.shake = Math.min(heavy ? 0.04 : 0.02, this.rig.shake + (heavy ? 0.02 : 0.005))
-    if (sfx) {
-      sfx('shot', heavy ? 1.3 : 1, heavy ? -0.35 : p.kind === 'star' ? 0.12 + gun.heat * 0.1 : gun.heat * 0.1)
-      // A bright snap on top of the thump: the 팡 in 팡팡.
-      sfx('snap', heavy ? 0.9 : 0.6, (Math.random() - 0.5) * 0.25)
-      if (heavy) sfx('thunk', 0.6)
-      else if (gun.shots % 4 === 0) sfx('tail', 0.9)
-    } else this.host.sfx('shoot_water', 0.8)
+    const feel = fireFeel(p)
+    this.rig.fovKick = Math.min(feel.fovCap, this.rig.fovKick + p.fovKick)
+    this.rig.shake = Math.min(feel.shakeCap, this.rig.shake + p.fireShake)
+    if (sfx) for (const [cue, gain, pitch] of gunVoice(p.voice, gun.heat, gun.shots, Math.random())) sfx(cue, gain, pitch)
+    else this.host.sfx('shoot_water', 0.8)
+    // 탕! — the sniper's shot word pops over the muzzle.
+    if (p.voice === 'crack') this.hudFx.word('탕!', tip)
   }
 
   /** One candy cloud per trigger pull at most (shotgun pellets would carpet the room). */
   private puffed = false
 
-  private landedHit(end: Vector3, hit: ShotHit, roll: { amount: number; crit: boolean }, pierced: boolean, sfx: ShooterHost['gun']): void {
+  private landedHit(end: Vector3, hit: ShotHit, roll: { amount: number; crit: boolean }, pierced: boolean, sfx: ShooterHost['gun'], lead = true): void {
+    const p = this.loadout.profile
     this.host.vfx.hit(end, hit.color, roll.crit || (hit.kill && hit.tone !== 'n'))
     // Hit spark burst: a little crown of sparks on every landed droplet, bigger on crits.
     this.host.vfx.burst(end, roll.crit ? 0xffe27a : 0xffffff, { count: roll.crit ? 10 : 4, speed: roll.crit ? 5 : 3.4, up: 1.4, life: 0.22, size: roll.crit ? 0.16 : 0.09, shape: 1, gravity: 4, drag: 3, additive: true })
@@ -411,7 +422,7 @@ export class Shooter {
     }
     this.hudFx.hit(hit.kill, roll.crit)
     const shown = pierced ? Math.round(roll.amount * 0.8) : roll.amount
-    this.hudFx.number(shown, end, roll.crit ? 'crit' : hit.tone)
+    this.hudFx.number(shown, end, p.bigNumbers && !pierced ? 'snipe' : roll.crit ? 'crit' : hit.tone)
     this.hudFx.tally(shown, end, hit.ref ?? null, hit.kill)
     if (hit.kill && hit.tone !== 'boss') {
       this.host.vfx.poof(end, hit.tone === 'elite' ? 0xffe08a : 0xffb7e0, hit.tone === 'elite' ? 1.6 : 1)
@@ -422,17 +433,26 @@ export class Shooter {
     // A light lens shake on the big ones (crits, elite kills); chip hits stay steady for aiming.
     const big = bigHitShake({ crit: roll.crit, kill: hit.kill, elite: hit.tone === 'elite', boss: hit.tone === 'boss' })
     if (big > 0) this.rig.shake = Math.max(this.rig.shake, big)
-    const stop = hitStopFor({ boss: hit.tone === 'boss', elite: hit.tone === 'elite', kill: hit.kill, crit: roll.crit })
+    if (lead && p.voice === 'crack') {
+      sfx?.('thunk', 1.1, -0.4)
+      this.host.vfx.burst(end, 0xe2d6ff, { count: 16, speed: 6, up: 1.6, life: 0.32, size: 0.2, shape: 1, gravity: 3, drag: 3, additive: true })
+    }
+    // Gun identity: a heavy shot freezes the world a beat longer (sniper 탕!, shotgun 펑).
+    const stop = Math.max(hitStopFor({ boss: hit.tone === 'boss', elite: hit.tone === 'elite', kill: hit.kill, crit: roll.crit }), lead ? p.stop : 0)
     if (stop > 0) this.host.hitStop?.(stop)
   }
 
-  private tracer(from: Vector3, to: Vector3): void {
+  private tracer(from: Vector3, to: Vector3, w = 1, life = 1): void {
     if (this.tracerLife.length >= 40) {
       this.tracerLife.shift()
       this.tracerFrom.shift()
       this.tracerTo.shift()
+      this.tracerW.shift()
+      this.tracerMax.shift()
     }
-    this.tracerLife.push(TRACER_LIFE)
+    this.tracerW.push(w)
+    this.tracerMax.push(TRACER_LIFE * life)
+    this.tracerLife.push(TRACER_LIFE * life)
     this.tracerFrom.push(from.clone())
     this.tracerTo.push(to.clone())
   }
@@ -445,6 +465,8 @@ export class Shooter {
         this.tracerLife.splice(i, 1)
         this.tracerFrom.splice(i, 1)
         this.tracerTo.splice(i, 1)
+        this.tracerW.splice(i, 1)
+        this.tracerMax.splice(i, 1)
       }
     }
     for (let i = 0; i < this.tracerLife.length; i += 1) {
@@ -454,7 +476,7 @@ export class Shooter {
       this.dummy.position.copy(a)
       this.dummy.lookAt(b)
       // Fat and bright as it leaves, thinning out as it fades.
-      const w = 0.025 + 0.05 * Math.max(0, this.tracerLife[i] / TRACER_LIFE)
+      const w = (0.025 + 0.05 * Math.max(0, this.tracerLife[i] / this.tracerMax[i])) * this.tracerW[i]
       this.dummy.scale.set(w, w, len)
       this.dummy.updateMatrix()
       this.tracers.setMatrixAt(n, this.dummy.matrix)
@@ -467,6 +489,8 @@ export class Shooter {
   /** Clear the in-flight bits (switching worlds). */
   reset(): void {
     this.tracerLife.length = 0
+    this.tracerW.length = 0
+    this.tracerMax.length = 0
     this.tracerFrom.length = 0
     this.tracerTo.length = 0
     this.tracers.count = 0
@@ -484,6 +508,24 @@ export class Shooter {
     ;(this.tracers.material as MeshBasicMaterial).dispose()
     this.gunFx.group.removeFromParent()
   }
+}
+
+/** Caps on the per-shot camera punch: heavy guns may kick harder (comfort stays capped). */
+export function fireFeel(p: Pick<GunProfile, 'voice'>): { fovCap: number; shakeCap: number } {
+  if (p.voice === 'crack') return { fovCap: 3.4, shakeCap: 0.08 }
+  if (p.voice === 'boom') return { fovCap: 2.6, shakeCap: 0.06 }
+  if (p.voice === 'burst') return { fovCap: 1.6, shakeCap: 0.025 }
+  return { fovCap: 1.2, shakeCap: 0.014 }
+}
+
+/** The sounds one shot makes: [cue, gain, pitch] — each gun has its own voice. */
+export function gunVoice(voice: GunProfile['voice'], heat: number, shots: number, r: number): [GunCue, number, number][] {
+  const j = (r - 0.5) * 0.25
+  if (voice === 'crack') return [['shot', 1.6, -0.55], ['snap', 1.3, -0.15 + j * 0.3], ['thunk', 1, -0.5], ['tail', 1.2, -0.3]]
+  if (voice === 'boom') return [['shot', 1.4, -0.4], ['thunk', 0.9, -0.2], ['puff', 0.8, j]]
+  if (voice === 'burst') return [['shot', 1, 0.12 + heat * 0.1], ['snap', 0.75, 0.1 + j], ...(shots % 3 === 0 ? [['tail', 0.8, 0] as [GunCue, number, number]] : [])]
+  // 두두두: light and high, a tail every few drops.
+  return [['shot', 0.8, 0.18 + heat * 0.1 + j * 0.4], ['snap', 0.45, 0.2 + j], ...(shots % 5 === 0 ? [['tail', 0.7, 0.1] as [GunCue, number, number]] : [])]
 }
 
 /** Seconds a tracer streak stays on screen. */

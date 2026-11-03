@@ -1,7 +1,7 @@
 import { gunCombos, gunMods, modLabel, modSlots, rollMod } from './mods'
 import { COMBOS, MOD_SPECS, TRICK_KO, TRICK_TEXT } from '../data/mods'
 import { AFFIX_COUNT, AFFIXES, GEAR_AFFIX, PERCENT_STATS } from '../data/affixes'
-import { GUN_PROFILES, gunDps } from '../data/guns'
+import { GUN_KO, GUN_PROFILES, gunDps, gunStatLine } from '../data/guns'
 import { GEAR_IDS, ITEMS, WEAPON_IDS } from '../data/items'
 import { LEGEND_BY_ID } from '../data/legends'
 import type { EnemyDef } from '../data/enemies'
@@ -321,6 +321,10 @@ export function itemLines(item: ItemInstance): string[] {
     lines.push(`효과: ${TRICK_TEXT[trick]}`)
     const pairs = COMBOS.filter((c) => c.needs.includes(trick)).map((c) => `${c.name}(+${traitKo(c.needs[0] === trick ? c.needs[1] : c.needs[0])})`)
     if (pairs.length) lines.push(`조합: ${pairs.join(' · ')}`)
+  }
+  if (def?.slot === 'weapon' && def.gun) {
+    const gp = GUN_PROFILES[def.gun]
+    lines.push(`${GUN_KO[def.gun]} · ${gp.blurb}`, gunStatLine(gp, gp.damage * gunLevelScale(item.itemLevel) * GUN_RARITY[item.rarity] * upgradeMul(plusOf(item))))
   }
   if (def?.slot === 'weapon') {
     const mods = gunMods(item)

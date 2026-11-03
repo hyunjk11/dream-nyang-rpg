@@ -135,6 +135,7 @@ function bodies(n: number, log: { id: string; amount: number; slow: number }[]):
     z: 0,
     r: 0.5,
     tone: 'n' as const,
+    maxHp: 100,
     hit: (amount: number, _dx: number, _dz: number, _k: number, slow: number) => {
       log.push({ id: `f${i}`, amount, slow })
       return false

@@ -4,13 +4,13 @@ import { VoicePool, synth } from '../src/audio/gunsound'
 import { TILE, generateMaze, tileCentre, Tile } from '../src/world/dungeon/maze'
 
 describe('두두두 연사 손맛', () => {
-  it('방아쇠를 1초 당기면 초당 약 15발이 나가고 프레임이 느려도 연사 속도가 유지된다', () => {
+  it('방아쇠를 1초 당기면 초당 약 18발이 나가고 프레임이 느려도 연사 속도가 유지된다', () => {
     for (const dt of [1 / 60, 1 / 20]) {
       const g = new Gun()
       let shots = 0
       for (let t = 0; t < 1 - 1e-9; t += dt) shots += g.update(dt, true)
-      expect(shots).toBeGreaterThanOrEqual(14)
-      expect(shots).toBeLessThanOrEqual(16)
+      expect(shots).toBeGreaterThanOrEqual(17)
+      expect(shots).toBeLessThanOrEqual(19)
     }
   })
 
@@ -57,7 +57,7 @@ describe('두두두 연사 손맛', () => {
 
   it('치명타는 가끔 크게 들어가고, 히트스톱은 처치·치명타에만 짧게(잔타 없음)', () => {
     expect(rollDamage(0.05)).toEqual({ amount: Math.round(GUN.damage * GUN.critMul), crit: true })
-    expect(rollDamage(0.5)).toEqual({ amount: GUN.damage, crit: false })
+    expect(rollDamage(0.5)).toEqual({ amount: Math.round(GUN.damage), crit: false })
     expect(hitStopFor({})).toBe(0)
     expect(hitStopFor({ kill: true })).toBeGreaterThan(0)
     expect(hitStopFor({ kill: true })).toBeLessThan(0.03)

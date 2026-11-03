@@ -5,28 +5,29 @@
 import { CEILING, TILE, Tile, type Maze } from '../world/dungeon/maze'
 
 export const GUN = {
-  /** Seconds between shots (~15 per second). */
-  gap: 0.066,
+  /** Seconds between shots (~18 per second: 두두두두, fix/gun-identity). */
+  gap: 0.055,
   /** Bloom 0..1: each shot adds, it bleeds off once the trigger rests. */
   bloomPerShot: 0.085,
   bloomHold: 0.07,
   bloomDecay: 2.8,
   /** Cone half-angle (rad) at no bloom and full bloom. */
   spreadMin: 0.0035,
-  spreadMax: 0.03,
+  spreadMax: 0.042,
   /** Camera kick per shot (rad up, ± rad sideways). */
-  kickUp: 0.0062,
+  kickUp: 0.0048,
   kickSide: 0.0042,
   /** Heat 0..1: full auto for ~6 s before the tank boils over. */
-  heatPerShot: 0.011,
+  heatPerShot: 0.0095,
   coolDelay: 0.22,
   coolRate: 0.55,
   /** Overheated: locked until heat falls back to this, cooling faster. */
   resumeAt: 0.3,
   ventRate: 0.85,
-  damage: 9,
-  critChance: 0.12,
-  critMul: 1.8,
+  /** Light droplets (8.6 × 18/s): the 연사 gun wins on volume, not on any one hit. */
+  damage: 8.6,
+  critChance: 0.1,
+  critMul: 1.7,
   /** Crosshair tick gap in px at no bloom; full bloom adds spreadPx. */
   gapPx: 7,
   spreadPx: 15,

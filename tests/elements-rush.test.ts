@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { applyProcs, chill, ELEMENTS, freshElements, speedMul, tickElements } from '../src/combat/elements'
 import { rushLock, type SkillBody } from '../src/combat/skills'
 
-const body = (id: string, x: number, z: number): SkillBody => ({ id, x, z, r: 0.5, tone: 'n', hit: () => false })
+const body = (id: string, x: number, z: number): SkillBody => ({ id, x, z, r: 0.5, tone: 'n', maxHp: 100, hit: () => false })
 
 describe('원소 효과 (마을·하수도 공통)', () => {
   it('서늘 속성은 적을 느리게 하고 시간이 지나면 풀린다', () => {

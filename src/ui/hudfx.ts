@@ -135,13 +135,30 @@ export class HudFx {
     n.at.copy(at)
     n.at.x += (Math.random() - 0.5) * 0.35
     n.at.y += Math.random() * 0.2
-    n.life = NUM_LIFE * (kind === 'crit' ? 1.25 : 1)
+    n.life = NUM_LIFE * (kind === 'snipe' ? 1.6 : kind === 'crit' || kind === 'skill' ? 1.25 : 1)
     n.live = true
     n.vx = (Math.random() - 0.5) * 1.4
     n.punch = numberPunch(kind)
     n.tilt = kind === 'crit' ? (Math.random() - 0.5) * 16 : (Math.random() - 0.5) * 6
-    n.el.textContent = kind === 'crit' ? `${amount}!` : String(amount)
+    n.el.textContent = kind === 'crit' || kind === 'snipe' || kind === 'skill' ? `${amount}!` : String(amount)
     n.el.className = `dmg ${kind}`
+    n.el.style.display = 'block'
+  }
+
+  /** A shot word (탕!) floating up from `at`, drawn like a damage number. */
+  word(text: string, at: Vector3): void {
+    if (!this.nums.length) return
+    const n = this.nums[this.next]
+    this.next = (this.next + 1) % this.nums.length
+    n.at.copy(at)
+    n.at.y += 0.25
+    n.life = NUM_LIFE * 0.9
+    n.live = true
+    n.vx = 0
+    n.punch = numberPunch('word')
+    n.tilt = -8
+    n.el.textContent = text
+    n.el.className = 'dmg word'
     n.el.style.display = 'block'
   }
 
@@ -222,8 +239,12 @@ export class HudFx {
 
 /** How hard a damage number pops in: crits slam, elite/boss hits thump, chip damage ticks. */
 /** Damage number looks: normal, crit, elite, boss, ricochet star, candy cloud tick. */
-export type NumberKind = 'n' | 'crit' | 'elite' | 'boss' | 'star' | 'candy'
+/** snipe: the sniper's huge number; skill: a skill hit (big, own colour); word: a shot word like 탕!. */
+export type NumberKind = 'n' | 'crit' | 'elite' | 'boss' | 'star' | 'candy' | 'snipe' | 'skill' | 'word'
 
 export function numberPunch(kind: NumberKind): number {
+  if (kind === 'snipe') return 1.7
+  if (kind === 'word') return 1.4
+  if (kind === 'skill') return 1.35
   return kind === 'crit' ? 1.25 : kind === 'elite' || kind === 'boss' || kind === 'star' ? 0.9 : kind === 'candy' ? 0.45 : 0.6
 }

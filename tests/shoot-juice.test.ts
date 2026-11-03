@@ -14,7 +14,7 @@ import { numberPunch } from '../src/ui/hudfx'
 const vfx = { burst: () => {}, ring: () => {}, hit: () => {} } as unknown as Vfx
 
 function body(id: string, x: number, z: number, log: { id: string; amount: number }[]): SkillBody {
-  return { id, x, z, r: 0.5, tone: 'n', hit: (amount) => (log.push({ id, amount }), false) }
+  return { id, x, z, r: 0.5, tone: 'n', maxHp: 100, hit: (amount) => (log.push({ id, amount }), false) }
 }
 
 function juice(lowPower = false) {

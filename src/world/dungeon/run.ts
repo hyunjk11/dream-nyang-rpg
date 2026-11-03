@@ -30,7 +30,7 @@ import { Portal } from './portal'
 import { Sewer } from './sewer'
 import { TPS, type AimTarget, type RayFn, type TpsView } from '../../core/tps'
 import { Shooter, type ShotProcs, type ShotWorld } from '../../combat/shooter'
-import { blast, SKILL_POWER, type SkillBody, type SkillWorld } from '../../combat/skills'
+import { blast, SKILL_POWER, SKILL_REF_MUL, type SkillBody, type SkillWorld } from '../../combat/skills'
 import { applyProcs, chill, ELEMENTS, procBursts } from '../../combat/elements'
 import { RARITY_COLOR } from '../../sim/types'
 import { collideCircle, rayHit } from './walls'
@@ -399,7 +399,7 @@ export class DungeonRun {
         this.addSpot({ id: t.id, x: t.x, z: t.z, r: t.id === 'gate' ? 1.6 : 2.2, hint: t.hint, name: t.name, tagY: t.id === 'board' ? 2.8 : t.id === 'gate' ? 3.4 : 2.1 })
       }
     }
-    this.skillWorld = { solid: this.ray, bodies: () => this.bodies(), power: SKILL_POWER * this.horde.scale.hp }
+    this.skillWorld = { solid: this.ray, bodies: () => this.bodies(), power: SKILL_POWER * this.horde.scale.hp, refMul: SKILL_REF_MUL[Math.min(3, this.plan.depth)] ?? SKILL_REF_MUL[3] }
     this.hordeView = new HordeView()
     this.sewer.group.add(this.hordeView.group)
     this.loot = new LootView((x, z) => collideCircle(maze, x, z, 0.2))
@@ -1255,6 +1255,7 @@ export class DungeonRun {
         z: f.z,
         r: f.radius,
         tone: f.elite ? 'elite' : 'n',
+        maxHp: f.maxHp,
         hit: (amount, dx, dz, knock, slow) => {
           chill(f, slow)
           return this.horde.damage(f, amount * this.might, dx * (1 + knock), dz * (1 + knock))
@@ -1269,6 +1270,7 @@ export class DungeonRun {
         z: boss.z,
         r: boss.capsule().r,
         tone: 'boss',
+        maxHp: boss.maxHp,
         hit: (amount) => {
           const kill = boss.damage(amount)
           if (kill) this.bossDown()
@@ -1284,6 +1286,7 @@ export class DungeonRun {
         z: n.z,
         r: 0.7,
         tone: 'elite',
+        maxHp: n.maxHp,
         hit: (amount) => {
           n.hp -= amount * this.might
           n.hurt = 1
@@ -1339,7 +1342,8 @@ export class DungeonRun {
     }
     if (!foe) return null
     const f = foe.foe
-    const kill = this.horde.damage(f, amount, dir.x, dir.z)
+    const k = procs?.knock ?? 1
+    const kill = this.horde.damage(f, amount, dir.x * k, dir.z * k)
     this.procs(tip.clone().addScaledVector(dir, foe.t), amount, procs, kill ? null : f)
     return { t: foe.t, kill, tone: f.elite ? ('elite' as const) : ('n' as const), color: 0xffc6e8, floor: new Vector3(f.x, 0, f.z), ref: f }
   }
