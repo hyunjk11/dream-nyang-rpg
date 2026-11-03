@@ -11,24 +11,28 @@ export const FIELD = {
   /** Field size in tiles (odd). */
   size: 35,
   /** Live foes the field keeps topped up to (desktop, mobile). */
-  /** Was 18/13: field foes are ~8× tankier since 2026-11, so fewer at once. */
-  alive: [12, 9] as const,
+  /**
+   * Was 18/13, then 12/9 (tankier foes); 2026-11 dense pass: the field is ~12 000 m² and 12 foes read
+   * as empty (one foe per ~1 000 m²), so ~2.8× (one per ~370 m², the maze floors sit near 100 m²).
+   */
+  alive: [34, 26] as const,
   /** Foes per pack. */
-  pack: [2, 4] as const,
+  pack: [3, 5] as const,
   /** New packs walk in this far from her (m). */
   near: 15,
   far: 34,
-  /** Seconds between top-ups. */
-  every: 2.4,
+  /** Seconds between top-ups (the respawn trickle: one pack per tick while the field is short). */
+  every: 2,
   /** Share of packs led by an elite. */
   eliteShare: 0.12,
-  /** Sleeping packs farther than this (m) are recycled into fresh ones nearer her. */
-  recycle: 52,
+  /** Sleeping packs farther than this (m) are recycled into fresh ones nearer her (was 52: the first fill now spreads over the whole field). */
+  recycle: 78,
   /** Wake range and leash (m). */
   aggro: 14,
   leash: 22,
   leashTime: 6,
-  chaseCap: 5,
+  /** Was 5: more packs out, a few more may chase (melee turn-taking: SWING_CAP in horde.ts). */
+  chaseCap: 7,
   /** Foe hp on the field, on top of DIFFICULTY.horde.hp × the plan scale. */
   hp: 1.3,
   /** Safe radius round the arrival portal (tiles). */
@@ -167,15 +171,17 @@ export class FieldDirector {
       }
     }
     // The first tick fills the whole field at once (she arrives to a field already full of packs).
-    const rounds = this.packs === 0 ? 8 : 1
-    for (let r = 0; r < rounds; r += 1) this.topUp(px, pz, out)
+    // The first fill spreads packs over the whole field (not only round her).
+    const first = this.packs === 0
+    const rounds = first ? 16 : 1
+    for (let r = 0; r < rounds; r += 1) this.topUp(px, pz, out, first)
     return out
   }
 
-  private topUp(px: number, pz: number, out: FieldDirectorEvent[]): void {
+  private topUp(px: number, pz: number, out: FieldDirectorEvent[], wide = false): void {
     const missing = this.target - this.horde.alive
     if (missing >= FIELD.pack[0]) {
-      const at = this.spot(px, pz)
+      const at = wide ? this.spot(px, pz, FIELD.near - 2, FIELD.recycle - 4) : this.spot(px, pz)
       if (at) {
         const size = Math.min(missing, FIELD.pack[0] + Math.floor(this.rand() * (FIELD.pack[1] - FIELD.pack[0] + 1)))
         const elite = this.rand() < FIELD.eliteShare

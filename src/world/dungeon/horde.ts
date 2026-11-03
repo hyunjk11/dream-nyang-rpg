@@ -221,6 +221,12 @@ export interface HordeTarget {
 /** Hard cap: the view's instance buffers are sized from it. */
 export const HORDE_CAP = 220
 
+/**
+ * Most foes winding up a melee swing at her at once (2026-11 denser fields): a crowd round her
+ * takes turns instead of landing six hits in one beat. Others in reach wait a short, staggered beat.
+ */
+export const SWING_CAP = 3
+
 /** Elite hp multiplier: ×ELITE.hp for a slime-sized foe, compressed for big kinds (a knight elite is not 2.3× a slime elite). */
 export function eliteHpMul(kind: HordeKind): number {
   return ELITE.hp * (HORDE.slime.hp / HORDE[kind].hp) ** (1 - DIFFICULTY.elite.hpKindPow)
@@ -304,6 +310,10 @@ export class Horde {
   }
 
   /** Foes after her right now. */
+  /** Melee wind-ups running this frame (see SWING_CAP). */
+  private winding = 0
+  swingCap = SWING_CAP
+
   get chasing(): number {
     let n = 0
     for (const f of this.foes) if (f.dying <= 0 && f.mode === 'chase') n += 1
@@ -398,6 +408,8 @@ export class Horde {
     const t = worldToTile(m, target.x, target.z)
     this.flow.aim(t.x, t.y)
     this.rebuildHash()
+    this.winding = 0
+    for (const f of this.foes) if (f.dying <= 0 && f.windup > 0) this.winding += 1
     for (let i = this.foes.length - 1; i >= 0; i -= 1) {
       const f = this.foes[i]
       f.hurt = Math.max(0, f.hurt - dt * 5)
@@ -684,12 +696,21 @@ export class Horde {
       f.windup -= dt
       if (f.windup <= 0) {
         f.windup = 0
+        this.winding = Math.max(0, this.winding - 1)
         f.cooldown = swingRest(f)
         if (d < reach + 0.35 && target.alive) strike(f.damage, f.x, f.z)
       }
       return
     }
-    if (f.cooldown <= 0 && d < reach && target.alive && f.age >= SPAWN_TIME) f.windup = DIFFICULTY.horde.windup
+    if (f.cooldown <= 0 && d < reach && target.alive && f.age >= SPAWN_TIME) {
+      if (this.winding >= this.swingCap) {
+        // Her turn-taking: wait a short beat (different per foe) and try again.
+        f.cooldown = 0.12 + 0.2 * ((f.beat + f.id * 0.37) % 1)
+        return
+      }
+      this.winding += 1
+      f.windup = DIFFICULTY.horde.windup
+    }
   }
 
   private rebuildHash(): void {

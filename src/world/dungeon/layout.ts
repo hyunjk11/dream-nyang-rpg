@@ -17,7 +17,8 @@ import { fieldMaze } from './field'
 export const EXPLORE = {
   /** Packs on a depth-1 floor, and the growth per extra depth. */
   /** Was 11-15 packs of 4-6: foes are ~10× tankier now (2026-11), so fewer and smaller packs keep a floor ~6-8 min. */
-  packs: [5, 8] as const,
+  /** 2026-11 dense pass: ~100 m² of floor per foe read as sparse; 7-10 packs (~1.4×), melee takes turns (SWING_CAP). */
+  packs: [7, 10] as const,
   packGrowth: 0.2,
   /** Foes in an ordinary pack: small near the start, bigger further in. */
   packSize: [2, 4] as const,
