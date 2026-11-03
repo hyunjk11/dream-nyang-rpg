@@ -3,14 +3,15 @@
 // keys for walking and skills 1–4, xdotool for mouse look when HEADED=1 (pointer lock).
 // On a dev build (window.__slice) it also scans the scene for NaN transforms / particle attributes
 // and for big objects hugging the camera. Works on the deployed site too (detector only).
-// Usage: PLAYWRIGHT=… BASE=http://localhost:5196/dream-nyang-rpg/ OUT=dir [SCENES=village,mongsil,field,maze,sewer,boss]
+// Usage: PLAYWRIGHT=… BASE=http://localhost:5196/dream-nyang-rpg/ OUT=dir [SCENES=village,sewer,boss,maze,mongsil,field]
+//        (dev only: SCENES=inject / inject-nan puts a 2 cm quad writing Inf / NaN in front of the camera)
 //        [SECS=14] [HEADED=1 → run under xvfb-run] node tools/qa/qa-glitch.cjs
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright')
 const fs = require('fs')
 const { execSync } = require('child_process')
 const BASE = process.env.BASE || 'http://localhost:5196/dream-nyang-rpg/'
 const OUT = process.env.OUT || 'qa-glitch-out'
-const SCENES = (process.env.SCENES || 'village,mongsil,field,maze,sewer,boss').split(',')
+const SCENES = (process.env.SCENES || 'village,sewer,boss,maze,mongsil,field').split(',')
 const SECS = +(process.env.SECS || 14)
 const SAVE = process.env.SAVE ? fs.readFileSync(process.env.SAVE, 'utf8') : null
 fs.mkdirSync(OUT, { recursive: true })
@@ -84,6 +85,15 @@ function scan() {
   const b = await chromium.launch({ headless: !process.env.HEADED, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] })
   const ctx = await b.newContext({ viewport: { width: 1024, height: 576 } })
   await ctx.addInitScript(detector)
+  // Software GL is treated as a phone (no bloom composer). Hide the GPU name so the desktop path
+  // (HalfFloat target → bloom → OutputPass) is the one under test, as on the player's real GPU. DESKTOP=0 skips.
+  if (process.env.DESKTOP !== '0') await ctx.addInitScript(() => {
+    for (const C of [window.WebGL2RenderingContext, window.WebGLRenderingContext]) {
+      if (!C) continue
+      const get = C.prototype.getExtension
+      C.prototype.getExtension = function (name) { return name === 'WEBGL_debug_renderer_info' ? null : get.call(this, name) }
+    }
+  })
   if (SAVE) await ctx.addInitScript((save) => { if (!sessionStorage.getItem('seeded')) { localStorage.clear(); localStorage.setItem('dream-nyang-rpg-3d-save-v1', save); sessionStorage.setItem('seeded', '1') } }, SAVE)
   const p = await ctx.newPage()
   const errs = []; p.on('pageerror', (e) => errs.push(String(e)))
@@ -94,6 +104,8 @@ function scan() {
   for (let i = 0; i < 12 && await p.evaluate(() => document.body.classList.contains('talking')); i++) { await p.keyboard.press('Enter'); await p.waitForTimeout(300) }
   const dev = await p.evaluate(() => !!window.__slice)
   if (dev) await p.evaluate(() => { const s = window.__slice; for (let i = 0; i < 40 && s.game.save.level < 13; i++) s.giveXp(200); for (const id of ['bubble_bomb', 'overdrive', 'mochi_rush', 'candy_aura']) s.game.save.build.ranks[id] = 3; s.applyBuild?.() })
+  // A real GPU at 100 FPS keeps the top tier (bloom on); software GL would drop to a no-bloom tier and hide the bug.
+  if (dev) await p.evaluate(() => window.__slice.quality.setEnabled(false))
   const box = await p.locator('canvas').first().boundingBox()
   const look = (dx, dy) => { if (process.env.HEADED) try { execSync(`xdotool mousemove_relative -- ${dx} ${dy}`) } catch {} }
   const rows = []
@@ -103,11 +115,12 @@ function scan() {
         const s = window.__slice, c = s.chapters
         const wait = (ms) => new Promise((ok) => setTimeout(ok, ms))
         const settle = async () => { for (let i = 0; i < 400 && s.travelling; i++) await wait(100); await wait(1500) }
-        if (s.run && where !== 'mongsil') { s.leaveSewer?.('recall'); await settle() }
+        const inTown = () => s.run?.plan?.objective === 'town'
+        if (s.run && !(where === 'field' || where === 'mongsil' || where.startsWith('inject'))) { if (inTown()) s.mongsilToIsland?.(); else s.leaveSewer?.('recall'); await settle() }
         c.guide.done = true; if (!c.cleared.includes(1)) c.cleared.push(1); c.current = Math.max(c.current, 2); c.card = 0
         if (where === 'village') { if (s.game.zone !== 'village') s.enterZone('village', { x: 0, z: 0 }) }
         else if (where === 'mongsil') { s.dream.maze.passed = true; s.enterMongsil(true) }
-        else if (where === 'field') s.enterField()
+        else if (where === 'field') { if (!inTown()) { s.dream.maze.passed = true; s.enterMongsil(true); await settle() } s.enterField() }
         else if (where === 'maze') s.enterArea('maze')
         else if (where === 'sewer') s.enterSewer(1, 1)
         else if (where === 'boss') s.enterSewer(1, 4)
