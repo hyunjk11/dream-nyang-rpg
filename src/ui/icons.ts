@@ -48,6 +48,11 @@ const BODY: Record<string, string> = {
   mod_chip: `<rect x="7" y="7" width="18" height="18" rx="3" fill="#ffe27a" ${S}/><path d="M10 4v3M16 4v3M22 4v3M10 25v3M16 25v3M22 25v3" ${S}/><path d="M16 10.5l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6-2.6-2.5 3.6-.5z" fill="#fff" ${S}/>`,
   mod_chip_ice: `<rect x="7" y="7" width="18" height="18" rx="3" fill="#9fe6ff" ${S}/><path d="M10 4v3M16 4v3M22 4v3M10 25v3M16 25v3M22 25v3" ${S}/><path d="M16 10v12M10.8 13l10.4 6M21.2 13l-10.4 6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>`,
   mod_chip_candy: `<rect x="7" y="7" width="18" height="18" rx="3" fill="#ff9fd6" ${S}/><path d="M10 4v3M16 4v3M22 4v3M10 25v3M16 25v3M22 25v3" ${S}/><circle cx="16" cy="16" r="4.5" fill="#fff" ${S}/><path d="M13.5 16a2.5 2.5 0 0 1 5 0" fill="none" stroke="#ff6fae" stroke-width="1.4"/>`,
+  // 특수 부품: a spring with a star, a cloud sprayer, a needle, a candy straw.
+  mod_trick_star: `<path d="M8 25c3-2 6 2 9 0s6 2 9 0M8 20c3-2 6 2 9 0s6 2 9 0" fill="none" stroke="#7a6aa8" stroke-width="2" stroke-linecap="round"/><path d="M17 3l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L9.8 8.3l5-.7z" fill="#ffe066" ${S}/>${shine(15, 7, 1)}`,
+  mod_trick_cloud: `<rect x="4" y="18" width="10" height="9" rx="2.5" fill="#c9b8ff" ${S}/><path d="M14 21h4" ${S}/><circle cx="20" cy="13" r="5" fill="#ffc6e5" ${S}/><circle cx="25.5" cy="15" r="4" fill="#bfe9ff" ${S}/><circle cx="16" cy="15.5" r="3.6" fill="#fff" ${S}/>${shine(19, 11, 1)}`,
+  mod_trick_pierce: `<path d="M4 26L24 6" stroke="#7a6aa8" stroke-width="3" stroke-linecap="round"/><path d="M4 26L24 6" stroke="#dfe8ff" stroke-width="1.4" stroke-linecap="round"/><path d="M22 4l6 2-2 6z" fill="#ffe066" ${S}/><circle cx="11" cy="19" r="3.4" fill="none" stroke="#ff9fd6" stroke-width="2"/><circle cx="17" cy="13" r="3.4" fill="none" stroke="#9fe6ff" stroke-width="2"/>`,
+  mod_trick_sip: `<path d="M20 3l-4 12" stroke="#ff6fae" stroke-width="3" stroke-linecap="round"/><path d="M8 14h16l-2 13H10z" fill="#fff1d6" ${S}/><path d="M9 18h14" stroke="#ff9fd6" stroke-width="3"/><path d="M16 24c-2-1.5-3-2.6-3-3.6a1.5 1.5 0 0 1 3-.4 1.5 1.5 0 0 1 3 .4c0 1-1 2.1-3 3.6z" fill="#ff6fae"/>`,
 }
 
 /** Old icon keys (saves, other callers) → the new art. */

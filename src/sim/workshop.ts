@@ -84,7 +84,7 @@ export function rerollChoices(item: ItemInstance, index: number): AffixSpec[] {
   const others = item.affixes.filter((_, i) => i !== index)
   const taken = new Set(others.map((a) => a.id))
   const hasElement = others.some((a) => specOf(a.id)?.element)
-  return AFFIXES.filter((s) => (gun ? !s.gearOnly : !s.weaponOnly) && !taken.has(s.id) && !(hasElement && s.element) && s.id !== item.affixes[index]?.id)
+  return AFFIXES.filter((s) => !s.part && (gun ? !s.gearOnly : !s.weaponOnly) && !taken.has(s.id) && !(hasElement && s.element) && s.id !== item.affixes[index]?.id)
 }
 
 function rollValue(spec: AffixSpec, item: ItemInstance, rng: () => number): number {

@@ -19,6 +19,8 @@ export interface GunLook {
   scope?: number
   mag?: number
   chip?: number
+  /** 특수 부품: a little glowing charm per trick on the left side (star yellow, cloud pink…). */
+  tricks?: number[]
 }
 
 export const WATER_LOOK: GunLook = { body: 0xffa9cd, tank: 0x8fd0ff, barrel: 0x7ec8ff, tracer: 0xbfeaff, barrelLen: 1, size: 1 }
@@ -132,6 +134,12 @@ export function buildToyGun(gun: Group, muzzle: Object3D, kind: WeaponKind = 'wa
     chip.position.set(0.034, 0.06, 0.05)
     chip.userData.noOutline = true
     chip.name = 'mod-chip'
+  }
+  for (const [i, c] of (look.tricks ?? []).entries()) {
+    const charm = add(new Mesh(new SphereGeometry(0.011, 8, 6), toon(c, c, 1.1)))
+    charm.position.set(-0.034, 0.075 - i * 0.026, 0.06)
+    charm.userData.noOutline = true
+    charm.name = 'mod-trick'
   }
   const nose = add(new Mesh(new SphereGeometry(kind === 'bubble' ? 0.012 : 0.022, 10, 8), toon(0xe8f8ff, 0xffffff, 0.5)))
   nose.position.set(0, 0.06, tip - 0.025)

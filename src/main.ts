@@ -1,4 +1,4 @@
-import { gunLookWithMods, makeMod } from './sim/mods'
+import { gunCombos, gunLookWithMods, makeMod } from './sim/mods'
 import { codexRows, isLegend, legendOf, legendsOf, makeLegend, recordLegend, rollLegend, syncCodex, type LegendEvent } from './sim/legends'
 import { GunSound, type GunCue } from './audio/gunsound'
 import '@fontsource/jua/400.css'
@@ -491,6 +491,7 @@ function applyBuild(): void {
     candy: stats.candy,
     starShot: stats.starShot,
     cloud: stats.cloud,
+    combos: gunCombos(gunItem).map((c) => c.id),
     fireRate: stats.fireRate,
     tint: gem && gunItem && (gunItem.rarity === 'epic' || gunItem.rarity === 'legendary') ? gem : look.tracer,
   })
@@ -1329,6 +1330,12 @@ function resumeGame(): void {
   const banked = game.banked
   if (banked && banked.gold > 0) window.setTimeout(() => toast(`지난번 탐험(깊이 ${banked.depth}·${banked.floor}층)의 골드 ${banked.gold}을 챙겨 왔어!`, 'reward'), 900)
   game.banked = null
+  const parts = game.parts
+  if (parts && parts.converted + parts.gifted > 0) {
+    const what = [parts.converted ? `옵션 ${parts.converted}개가 특수 부품으로` : '', parts.gifted ? '도탄·뭉게뭉게 부품 선물이 가방에' : ''].filter(Boolean).join(', ')
+    window.setTimeout(() => toast(`총 개조가 깊어졌어! ${what} · 볼트 공방에서 끼워 봐`, 'reward'), 1600)
+  }
+  game.parts = null
 }
 
 function beginPlay(): void {

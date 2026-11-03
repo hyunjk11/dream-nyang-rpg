@@ -10,12 +10,15 @@ import { EQUIP_SLOTS, type EquipSlot, type SaveData } from './types'
 import { fallbackItemLevel, migrateItem } from './migrate-item'
 import { townOf } from './town'
 import { LEVEL_CAP } from '../data/tree'
+import { migrateParts, type PartsMigration } from './migrate-parts'
 
 export { migrateItem }
 
 export interface Migration {
   /** A trip a reload interrupted, whose gold was just banked (null = none). */
   banked: OpenRun | null
+  /** 특수 부품: old options turned into parts, and the one-time gift. */
+  parts: PartsMigration
 }
 
 export function migrateSave(save: SaveData): Migration {
@@ -35,8 +38,9 @@ export function migrateSave(save: SaveData): Migration {
   buildOf(save)
   delveOf(save)
   townOf(save)
+  const parts = migrateParts(save)
   const banked = settleOpenRun(save)
   const max = computeStats(save).maxHp
   save.hp = Math.max(1, Math.min(max, Number.isFinite(save.hp) ? save.hp : max))
-  return { banked }
+  return { banked, parts }
 }

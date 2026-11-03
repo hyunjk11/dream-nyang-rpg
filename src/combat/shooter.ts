@@ -7,6 +7,7 @@
  * 1. place the camera at her (`place`), 2. cast the crosshair ray from the camera centre through
  * walls AND foes (`aimFrom`), 3. fire from the muzzle toward that point (`Shooter.update`).
  */
+import type { ComboId } from '../data/mods'
 import { AdditiveBlending, BoxGeometry, Color, InstancedMesh, MeshBasicMaterial, Object3D, Vector3, type PerspectiveCamera } from 'three'
 import type { Hero } from '../actors/hero'
 import type { Vfx } from '../core/vfx'
@@ -219,6 +220,8 @@ export interface Loadout {
   cloud?: number
   /** Tracer / splash colour. */
   tint: number
+  /** 부품 조합 on this gun (see data/mods COMBOS). */
+  combos?: ComboId[]
 }
 
 export function defaultLoadout(): Loadout {
@@ -273,6 +276,7 @@ export class Shooter {
       lowPower: !!host.lowPower,
       number: (n, at, tone) => this.hudFx.number(n, at, tone),
       sound: (cue, gain, pitch) => host.gun?.(cue, gain, pitch),
+      heal: (n) => host.heal?.(n),
     })
     this.tracers = new InstancedMesh(
       new BoxGeometry(1, 1, 1).translate(0, 0, 0.5),
@@ -292,6 +296,7 @@ export class Shooter {
   setLoadout(l: Loadout): void {
     this.loadout = l
     this.gun.setFeel(l.profile, l.fireRate)
+    this.juice.combos = new Set(l.combos ?? [])
     ;(this.tracers.material as MeshBasicMaterial).color.set(l.tint).multiplyScalar(2.4)
   }
 
@@ -372,7 +377,7 @@ export class Shooter {
       lastEnd = end.clone()
     }
     if (stolen > 0) this.host.heal?.(stolen)
-    // 두두두 사이사이 별 도탄: every few droplets (more with the affix) a star flies out and bounces around.
+    // 두두두 사이사이 별 도탄 (도탄 부품 · 별 옵션 · 별똥 점사총): every few droplets a star flies out and bounces around.
     if (rollStar(this.fired + 1, l.starShot ?? 0, Math.random())) this.juice.star(tip, firstDir, l.damage * JUICE.starShare)
     const ndc = lastEnd.clone().project(camera)
     this.last = { from: tip.clone(), to: lastEnd.clone(), aim: this.rig.aim.clone(), hit: anyHit, ndcX: ndc.x, ndcY: ndc.y }

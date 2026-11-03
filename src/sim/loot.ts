@@ -1,4 +1,5 @@
-import { gunMods, modLabel, modSlots, rollMod } from './mods'
+import { gunCombos, gunMods, modLabel, modSlots, rollMod } from './mods'
+import { COMBOS, MOD_SPECS, TRICK_KO, TRICK_TEXT } from '../data/mods'
 import { AFFIX_COUNT, AFFIXES, GEAR_AFFIX, PERCENT_STATS } from '../data/affixes'
 import { GUN_PROFILES, gunDps } from '../data/guns'
 import { GEAR_IDS, ITEMS, WEAPON_IDS } from '../data/items'
@@ -76,7 +77,7 @@ export function levelScale(itemLevel: number): number {
 export function rollAffixes(slot: EquipSlot, rarity: Rarity, rng: () => number, itemLevel = 1): Affix[] {
   const count = AFFIX_COUNT[rarity] ?? 0
   const gun = slot === 'weapon'
-  const bag = AFFIXES.filter((spec) => (gun ? !spec.gearOnly : !spec.weaponOnly))
+  const bag = AFFIXES.filter((spec) => !spec.part && (gun ? !spec.gearOnly : !spec.weaponOnly))
   const scale = levelScale(itemLevel) * RARITY_POWER[rarity] * (gun ? 1 : GEAR_AFFIX)
   const out: Affix[] = []
   for (let i = 0; i < count && bag.length; i += 1) {
@@ -299,6 +300,12 @@ export function modYield(rarity: Rarity): Record<string, number> {
   return { toy_part: 1 }
 }
 
+/** "뭉게뭉게" / "서리 칩" for a combo partner. */
+function traitKo(t: string): string {
+  if (t in TRICK_KO) return TRICK_KO[t as keyof typeof TRICK_KO]
+  return ({ sparkle: '별빛 칩', ice: '서리 칩', candy: '사탕 칩' } as Record<string, string>)[t] ?? t
+}
+
 export function itemLines(item: ItemInstance): string[] {
   const def = ITEMS[item.defId]
   const lines: string[] = []
@@ -309,10 +316,17 @@ export function itemLines(item: ItemInstance): string[] {
   if (legend) lines.push(`★ 고정 전설 · ${legend.signature}`, `출처: ${legend.where}`)
   for (const [key, value] of Object.entries(implicitStats(item)) as [StatKey, number][]) lines.push(formatStat(key, value))
   for (const affix of item.affixes) lines.push(formatAffix(affix))
+  const trick = def?.mod ? MOD_SPECS[item.defId]?.trick : undefined
+  if (trick) {
+    lines.push(`효과: ${TRICK_TEXT[trick]}`)
+    const pairs = COMBOS.filter((c) => c.needs.includes(trick)).map((c) => `${c.name}(+${traitKo(c.needs[0] === trick ? c.needs[1] : c.needs[0])})`)
+    if (pairs.length) lines.push(`조합: ${pairs.join(' · ')}`)
+  }
   if (def?.slot === 'weapon') {
     const mods = gunMods(item)
     lines.push(`개조 칸 ${mods.length}/${modSlots(item)}`)
     for (const m of mods) lines.push(`· ${modLabel(m)}: ${m.affixes.map(formatAffix).join(', ')}`)
+    for (const c of gunCombos(item)) lines.push(`✦ 조합 ${c.name}: ${c.text}`)
   }
   lines.push(`판매 ${sellValue(item)} 골드`)
   return lines
