@@ -30,6 +30,7 @@ async function oneClick (p, label, slow = false) {
   if (SAVE) await ctx.addInitScript((save) => { if (!sessionStorage.getItem('seeded')) { localStorage.clear(); localStorage.setItem('dream-nyang-rpg-3d-save-v1', save); sessionStorage.setItem('seeded', '1') } }, SAVE)
   // Report a real GPU name (software GL takes the phone path), like the player's machine.
   await ctx.addInitScript(() => { for (const C of [WebGLRenderingContext, WebGL2RenderingContext]) { const o = C.prototype.getParameter; C.prototype.getParameter = function (k) { if (k === 0x9246) return 'ANGLE (NVIDIA GeForce RTX 3060)'; return o.call(this, k) } } })
+  await ctx.addInitScript(() => { window.__pl = []; const t0 = performance.now(); for (const e of ['pointerlockchange', 'pointerlockerror']) document.addEventListener(e, () => window.__pl.push(`${e.slice(11)}:${!!document.pointerLockElement}@${Math.round(performance.now() - t0)}`)) })
   const p = await ctx.newPage()
   p.on('pageerror', (e) => console.log('PAGEERROR', e.message))
   await p.goto(BASE)
@@ -89,7 +90,7 @@ async function oneClick (p, label, slow = false) {
   const cb = await (await p.$('#btn-continue')).boundingBox()
   await p.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2); await p.waitForTimeout(1200)
   s = await st(p); await p.screenshot({ path: `${OUT}/continue-after.png` })
-  check('이어하기: 한 번 클릭으로 시점까지 잠긴다', real ? s.locked && !s.relock : !s.relock, JSON.stringify(s))
+  check('이어하기: 한 번 클릭으로 시점까지 잠긴다', real ? s.locked && !s.relock : !s.relock, JSON.stringify({ ...s, events: await p.evaluate(() => window.__pl) }))
   const fails = res.filter((r) => !r.ok).length
   console.log(fails ? `RELOCK_FAIL ${fails}` : `RELOCK_OK ${res.length}`, JSON.stringify({ real, dev }))
   await b.close(); process.exit(fails ? 1 : 0)
