@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { freshSave } from '../src/sim/mutate'
-import { chaptersOf, claimQuest, skipGuide, takeQuest, CHAPTER2 } from '../src/sim/chapters'
+import { chaptersOf, claimQuest, skipGuide, CHAPTER2 } from '../src/sim/chapters'
 import { BOSS_FLOOR, Delve, floorScale } from '../src/sim/delve'
 import { floorStateLabel } from '../src/sim/floorsnap'
 import {

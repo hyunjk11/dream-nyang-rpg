@@ -439,8 +439,8 @@ function rimDistance(ox: number, oz: number, dx: number, dz: number, r: number, 
   return Math.max(0, Math.min(max, t / l))
 }
 const townSkillWorld: SkillWorld = {
-  // Town foes have TOWN.hp (11) against the sewer's 9 (fix/boss-floor skill rescale).
-  power: SKILL_POWER * (DIFFICULTY.town.hp / DIFFICULTY.horde.hp),
+  // Skills keep their old island numbers (town hp 11 vs the sewer's 9) while the tutorial foes got softer.
+  power: SKILL_POWER * (DIFFICULTY.town.skillHp / DIFFICULTY.horde.hp),
   // Landmarks and the island's rim both stop skills: Mochi's rush no longer runs off into the sea.
   solid: (ox, oy, oz, dx, dy, dz, max) => Math.min(townRay(ox, oy, oz, dx, dy, dz, max), rimDistance(ox, oz, dx, dz, WALK_RADIUS - 0.4, max)),
   bodies: () => {

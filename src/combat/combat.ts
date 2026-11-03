@@ -23,6 +23,11 @@ import { freshElements, speedMul, tickElements } from './elements'
 import { rayCapsule, type AimTarget } from '../core/tps'
 
 const TOWN = DIFFICULTY.town
+
+/** A 챕터 1 island foe's max HP (pure; the tutorial tuning lives in DIFFICULTY.town). */
+export function townFoeHp(kind: FoeKind, elite: boolean): number {
+  return Math.round(FOE_SPECS[kind].hp * TOWN.hp * (kind === 'bloom' ? TOWN.bossHp : 1) * (elite ? TOWN.elite : 1))
+}
 const townDamage = (raw: number) => Math.max(1, Math.round(raw * TOWN.damage))
 
 export interface Foe {
@@ -239,7 +244,7 @@ export class Combat {
 
   private spawn(kind: FoeKind, x: number, z: number, tags: string[] = [], elite?: string, once = false): void {
     const spec = FOE_SPECS[kind]
-    const hp = Math.round(spec.hp * TOWN.hp * (kind === 'bloom' ? TOWN.bossHp : 1) * (elite ? 3.5 : 1))
+    const hp = townFoeHp(kind, !!elite)
     const object = new Group()
     const body = makeFoeBody(kind)
     object.add(body.rig)
