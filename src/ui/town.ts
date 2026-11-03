@@ -17,13 +17,27 @@ import { CHAPTER2, CHAPTER_TITLE, chapter2Open, chapterProgress, chaptersOf, cla
 import { BAG_CAP, type MutationResult, type Element, type ItemInstance, type SaveData } from '../sim/types'
 import { compareEquip } from './inventory'
 import { iconSvg } from './icons'
-import { MOD_KO } from '../data/mods'
-import { attachMod, bagMods, detachMod, fitCost, gunMods, isMod, MAX_MOD_SLOTS, MOD_SLOT_ILV, modKind, modSlots, modUpgradeCost, upgradeMod } from '../sim/mods'
+import { COMBOS, MAX_TRICKS, TRICK_KO, type ComboSpec } from '../data/mods'
+import { attachMod, bagMods, detachMod, fitBlock, fitCost, gunCombos, gunMods, gunTraits, isMod, MAX_MOD_SLOTS, MOD_SLOT_ILV, modKind, modLabel, modSlots, modUpgradeCost, swapIndex, upgradeMod, type Trait } from '../sim/mods'
 import { RARITY_COLOR, RARITY_KO } from '../sim/types'
 import type { LegendSource } from '../data/legends'
 import { codexRows, legendAffixes, legendChance } from '../sim/legends'
 
 export type TownPanel = 'shop' | 'workshop' | 'board' | 'stash' | 'codex'
+
+/** 조합 partner name: a trick or a chip. */
+function traitName(t: Trait): string {
+  return t in TRICK_KO ? TRICK_KO[t as keyof typeof TRICK_KO] : ({ sparkle: '별빛', ice: '서리', candy: '사탕' } as Record<string, string>)[t] + ' 속성'
+}
+
+/** Combos this part would switch on if fitted (swapping a same-kind part out). */
+function newCombos(gun: ItemInstance, part: ItemInstance): ComboSpec[] {
+  const now = new Set(gunCombos(gun).map((c) => c.id))
+  const mods = gunMods(gun)
+  const i = swapIndex(mods, part)
+  const next = i >= 0 ? mods.map((m, k) => (k === i ? part : m)) : [...mods, part]
+  return gunCombos({ ...gun, mods: next }).filter((c) => !now.has(c.id))
+}
 
 export type TownSuccess = 'buy' | 'sell' | 'upgrade' | 'reroll' | 'element' | 'take' | 'claim' | 'stash' | 'mod'
 
@@ -384,7 +398,9 @@ export class TownUI {
       .map((id) => findItem(save, id))
       .filter((i): i is ItemInstance => Boolean(i))
     const gunsFirst = (a: ItemInstance, b: ItemInstance) => Number(ITEMS[b.defId]?.slot === 'weapon') - Number(ITEMS[a.defId]?.slot === 'weapon')
-    return [...worn.sort(gunsFirst), ...bagItems(save).filter((i) => !isMod(i)).sort(gunsFirst)]
+    // 보관함 총도 맡길 수 있어 (강화 · 개조 · 재굴림 모두 보관함 안에서 된다).
+    const stash = townOf(save).stash.filter((i) => !isMod(i) && ITEMS[i.defId])
+    return [...worn.sort(gunsFirst), ...bagItems(save).filter((i) => !isMod(i)).sort(gunsFirst), ...stash.sort(gunsFirst)]
   }
 
   private renderWorkshop(save: SaveData, body: HTMLElement): void {
@@ -392,7 +408,7 @@ export class TownUI {
     const right = el('section', 'town-col town-side')
     body.append(left, right)
     const items = this.workItems(save)
-    left.append(el('h3', '', '맡길 물건 (착용 중 → 가방)'))
+    left.append(el('h3', '', '맡길 물건 (착용 중 → 가방 → 보관함)'))
     left.append(this.grid(items, 'work'))
     left.append(el('p', 'inv-empty', '강화: 총만 · 옵션 재굴림: 모든 장비 · 속성 변경: 속성 옵션이 붙은 총'))
     const item = this.picked?.from === 'work' ? items.find((i) => i.uid === this.picked?.key) : undefined
@@ -458,7 +474,7 @@ export class TownUI {
     const mods = gunMods(gun)
     const slots = modSlots(gun)
     box.append(el('h4', '', `총 개조 ${mods.length}/${slots}칸`))
-    box.append(el('small', '', '부품을 눌러 끼우거나 칸으로 끌어다 놔 · Alt+클릭으로 빼기 · 같은 종류는 서로 바뀌어'))
+    box.append(el('small', '', `부품을 눌러 끼우거나 칸으로 끌어다 놔 · Alt+클릭으로 빼기 · 같은 종류는 서로 바뀌어 · 특수 부품은 서로 다른 것 ${MAX_TRICKS}개까지`))
     const row = el('div', 'mod-slots')
     const fit = (uid: string) => {
       const part = findItem(save, uid)
@@ -471,15 +487,16 @@ export class TownUI {
       if (m) {
         cell.style.setProperty('--rar', RARITY_COLOR[m.rarity])
         cell.innerHTML = iconSvg(ITEMS[m.defId]?.icon, 26)
-        cell.append(el('b', '', MOD_KO[modKind(m) ?? 'chip']), el('small', '', `${RARITY_KO[m.rarity]} · ${m.affixes.map(formatAffix).join(' · ')}`))
-        cell.title = `${itemName(m)} (Alt+클릭: 빼기)`
+        if (modKind(m) === 'trick') cell.classList.add('trick')
+        cell.append(el('b', '', modLabel(m)), el('small', '', `${RARITY_KO[m.rarity]} · ${m.affixes.map(formatAffix).join(' · ')}`))
+        cell.title = `${itemLines(m).join('\n')}\n(Alt+클릭: 빼기)`
         cell.addEventListener('click', (e) => {
           if (e.altKey) this.run(detachMod(save, gun.uid, m.uid), `${itemName(m)}을(를) 뺐어.`, 'mod', gun)
         })
         const acts = el('div', 'mod-acts')
         acts.append(this.button('빼기', () => this.run(detachMod(save, gun.uid, m.uid), `${itemName(m)}을(를) 뺐어.`, 'mod', gun), { id: `work-mod-out-${i}` }))
         const up = modUpgradeCost(m)
-        if (up) acts.append(this.button(`강화 ${costText(up)}`, () => this.run(upgradeMod(save, m.uid), `${MOD_KO[modKind(m) ?? 'chip']} 부품이 ${RARITY_KO[m.rarity]}(으)로!`, 'upgrade', gun), { disabled: !canPay(save, up), id: `work-mod-up-${i}` }))
+        if (up) acts.append(this.button(`강화 ${costText(up)}`, () => this.run(upgradeMod(save, m.uid), `${modLabel(m)} 부품이 ${RARITY_KO[m.rarity]}(으)로!`, 'upgrade', gun), { disabled: !canPay(save, up), id: `work-mod-up-${i}` }))
         cell.append(acts)
       } else if (i < slots) cell.append(el('small', '', '빈 칸'))
       else cell.append(el('small', '', i < 4 && gun.itemLevel < MOD_SLOT_ILV ? `더 높은 등급 · iLv ${MOD_SLOT_ILV}` : '더 높은 등급'))
@@ -498,28 +515,50 @@ export class TownUI {
       row.append(cell)
     }
     box.append(row)
+    box.append(this.comboBox(gun))
     const parts = bagMods(save)
     box.append(el('h4', '', `가방 속 부품 ${parts.length}개`))
     if (!parts.length) box.append(el('small', '', '부품은 던전 몹·보물 상자·보스에게서 나와. (보스와 비밀 상자가 잘 줘)'))
     const list = el('div', 'mod-parts')
     parts.forEach((p, i) => {
-      const kind = modKind(p)
-      const swap = mods.some((m) => modKind(m) === kind)
-      const b = el('button', 'mod-part')
+      const swap = swapIndex(mods, p) >= 0
+      const block = fitBlock(gun, p)
+      const gain = newCombos(gun, p)
+      const b = el('button', `mod-part${modKind(p) === 'trick' ? ' trick' : ''}${gain.length ? ' combo' : ''}`)
       b.type = 'button'
       b.id = `work-mod-part-${i}`
       b.draggable = true
       b.dataset.uid = p.uid
       b.style.setProperty('--rar', RARITY_COLOR[p.rarity])
       b.innerHTML = iconSvg(ITEMS[p.defId]?.icon, 22)
-      b.append(el('span', '', `${ITEMS[p.defId]?.name ?? p.defId} · ${RARITY_KO[p.rarity]}`), el('small', '', `${swap ? '바꾸기' : '끼우기'} ${fitCost(p)}골드`))
+      b.append(
+        el('span', '', `${ITEMS[p.defId]?.name ?? p.defId} · ${RARITY_KO[p.rarity]}`),
+        el('small', '', `${modLabel(p)} · ${p.affixes.map(formatAffix).join(' · ')}`),
+        el('small', gain.length ? 'mod-gain' : '', gain.length ? `✦ ${gain.map((c) => c.name).join(' · ')} · ${swap ? '바꾸기' : '끼우기'} ${fitCost(p)}골드` : block ? block : `${swap ? '바꾸기' : '끼우기'} ${fitCost(p)}골드`),
+      )
       b.title = itemLines(p).join('\n')
-      b.disabled = (!swap && mods.length >= slots) || save.gold < fitCost(p)
+      b.disabled = !!block || save.gold < fitCost(p)
       b.addEventListener('dragstart', (e) => e.dataTransfer?.setData('text/plain', p.uid))
       b.addEventListener('click', () => fit(p.uid))
       list.append(b)
     })
     box.append(list)
+    return box
+  }
+
+  /** 부품 조합: what this gun has on, and the pairs still open to it. */
+  private comboBox(gun: ItemInstance): HTMLElement {
+    const box = el('div', 'mod-combos')
+    box.id = 'work-combos'
+    const on = new Set(gunCombos(gun).map((c) => c.id))
+    const traits = gunTraits(gun)
+    box.append(el('b', '', `부품 조합 ${on.size}/${COMBOS.length}`))
+    for (const c of COMBOS) {
+      const have = c.needs.filter((t) => traits.has(t)).length
+      const row = el('div', `mod-combo${on.has(c.id) ? ' on' : have ? ' near' : ''}`)
+      row.append(el('span', '', `${on.has(c.id) ? '✦' : '◇'} ${c.name}`), el('small', '', `${c.needs.map(traitName).join(' + ')} · ${c.text}`))
+      box.append(row)
+    }
     return box
   }
 
