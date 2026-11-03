@@ -67,6 +67,14 @@ const fs = require('fs')
         s.shooter.view.yaw = by
         return best
       },
+      watchNums() {
+        window.__dmgs = []
+        window.__dobs?.disconnect()
+        // DOM damage numbers (what the player reads): every new .dmg element's text and kind class.
+        // (hudfx pools its .dmg elements: watch their text being replaced, read the class a tick later.)
+        window.__dobs = new MutationObserver((ms) => { for (const m of ms) { const el = m.target; if (m.type !== 'childList' || el.nodeType !== 1 || !el.classList.contains('dmg') || el.classList.contains('tally')) continue; queueMicrotask(() => window.__dmgs.push((el.className.replace('dmg', '').trim() || 'hit') + ':' + el.textContent.trim())) } })
+        window.__dobs.observe(document.getElementById('hud') || document.body, { childList: true, subtree: true })
+      },
       // Park every foe far off so a test sees only what it places.
       parkAll() { const s = window.__slice, p = s.hero.object.position; for (const f of this.foes()) f.set(p.x + 400, p.z + 400) },
     }
@@ -122,12 +130,7 @@ const fs = require('fs')
     }
     pick.forEach((f, i) => { const a = (i / want) * Math.PI * 2; const rr = want > 1 ? 0.9 : 0; f.set(at.x + Math.cos(a) * rr, at.z + Math.sin(a) * rr) })
     window.__tgt = pick
-    window.__dmgs = []
-    window.__dobs?.disconnect()
-    // DOM damage numbers (what the player reads): every new .dmg element's text and kind class.
-    // (hudfx pools its .dmg elements: watch their text being replaced, read the class a tick later.)
-    window.__dobs = new MutationObserver((ms) => { for (const m of ms) { const el = m.target; if (m.type !== 'childList' || el.nodeType !== 1 || !el.classList.contains('dmg') || el.classList.contains('tally')) continue; queueMicrotask(() => window.__dmgs.push((el.className.replace('dmg', '').trim() || 'hit') + ':' + el.textContent.trim())) } })
-    window.__dobs.observe(document.getElementById('hud') || document.body, { childList: true, subtree: true })
+    window.__rp.watchNums()
     const s0 = s.hero; s0.hp = s0.maxHp
     return pick.map((f) => ({ hp: Math.round(f.hp), max: f.maxHp }))
   }, { what, d })
@@ -144,6 +147,7 @@ const fs = require('fs')
       if (!b.awake || far > 7) { const at = r.fwd(Math.max(4.4, d)); b.x = at.x; b.z = at.z }
       b.awake = true; b.hp = b.maxHp
       window.__tgt = [{ f: b, maxHp: b.maxHp }]
+      r.watchNums()
       s.hero.hp = s.hero.maxHp
       return true
     }, d)
