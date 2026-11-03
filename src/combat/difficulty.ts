@@ -1,8 +1,8 @@
 /**
  * Every difficulty knob in one place. The first playtest said "too hard" (the wave hordes), the
- * explore floors that replaced them then read "too easy", so these defaults (보통) sit between:
+ * explore floors that replaced them then read "too easy", so these defaults sit between:
  * fuller packs that hit harder and swing sooner, slower regen, fewer heart candies, elites that
- * enrage and charge, and a steeper climb per floor and per depth. 쉬움/어려움 scale on top (DIFF_MODES).
+ * enrage and charge, and a steeper climb per floor and per depth.
  * Multipliers are on the raw tables (HORDE, FOE_SPECS, BOSS); 1 = the old value.
  */
 export const DIFFICULTY = {
@@ -114,37 +114,15 @@ export function waveSize(n: number): number {
   return Math.max(4, Math.min(w.max, Math.round((w.base + w.step * k + w.curve * k * k) * ease)))
 }
 
-/** Selectable difficulty (title screen). 보통 is the default tuning above. */
-export type DiffMode = 'easy' | 'normal' | 'hard'
-export const DIFF_MODES: Record<DiffMode, { label: string; foeHp: number; foeDamage: number; regen: number; potion: number }> = {
-  easy: { label: '쉬움', foeHp: 0.75, foeDamage: 0.6, regen: 1.6, potion: 1.6 },
-  normal: { label: '보통', foeHp: 1, foeDamage: 1, regen: 1, potion: 1 },
-  hard: { label: '어려움', foeHp: 1.3, foeDamage: 1.3, regen: 0.7, potion: 0.7 },
-}
-export const DIFF_KEY = 'dnr3d.difficulty'
-let mode: DiffMode = 'normal'
-try {
-  const raw = globalThis.localStorage?.getItem(DIFF_KEY)
-  if (raw === 'easy' || raw === 'normal' || raw === 'hard') mode = raw
-} catch {
-  // storage blocked: keep 보통
-}
-
-export function diffMode(): DiffMode {
-  return mode
-}
-
-/** Multipliers for the current mode. */
-export function diff(): (typeof DIFF_MODES)[DiffMode] {
-  return DIFF_MODES[mode]
-}
-
-export function setDiffMode(m: DiffMode): DiffMode {
-  mode = m
+/**
+ * There is no difficulty setting any more (fix/real-play): one tuned baseline for everyone. The old
+ * title-card pick (쉬움/보통/어려움) lived in localStorage under this key; it is dropped on load.
+ */
+export const OLD_DIFF_KEY = 'dnr3d.difficulty'
+export function dropOldDifficulty(store: { removeItem(k: string): void } | null | undefined = globalThis.localStorage): void {
   try {
-    globalThis.localStorage?.setItem(DIFF_KEY, m)
+    store?.removeItem(OLD_DIFF_KEY)
   } catch {
-    // ignore
+    // storage blocked: nothing to drop
   }
-  return mode
 }

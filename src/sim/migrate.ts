@@ -35,6 +35,15 @@ export function migrateSave(save: SaveData): Migration {
   // Mochi's old collar slot stays as it was (not part of Byeolha's stats panel).
   if (save.equipment?.collar) eq.collar = save.equipment.collar
   save.equipment = eq
+  // No difficulty setting any more: an old 'difficulty' / 'diff' field in the save or its settings goes.
+  const loose = save as unknown as Record<string, unknown>
+  delete loose.difficulty
+  delete loose.diff
+  if (save.settings && typeof save.settings === 'object') {
+    const st = save.settings as unknown as Record<string, unknown>
+    delete st.difficulty
+    delete st.diff
+  }
   buildOf(save)
   delveOf(save)
   townOf(save)

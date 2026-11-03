@@ -8,7 +8,7 @@
  * Crowding: a uniform spatial hash pushes overlapping bodies apart; walls via collideCircle.
  */
 import { ELEMENTS, speedMul, tickElements } from '../../combat/elements'
-import { DIFFICULTY, diff } from '../../combat/difficulty'
+import { DIFFICULTY } from '../../combat/difficulty'
 import { TILE, tileCentre, walkable, worldToTile, type Maze } from './maze'
 import { collideCircle } from './walls'
 import { rayCapsule, type AimTarget } from '../../core/tps'
@@ -99,6 +99,8 @@ export interface HordeFoe {
   windup: number
   cooldown: number
   phase: number
+  /** Swing rhythm (0..1): each foe rests a different time between swings. */
+  beat: number
   /** Simulated this frame (far foes tick every other frame). */
   far: boolean
   /** Seconds of chill left (서늘: slowed). */
@@ -225,8 +227,17 @@ export function eliteHpMul(kind: HordeKind): number {
 }
 
 /** A sewer foe's hp: kind × horde tuning × 쉬움/보통/어려움 × floor scale (× elite). */
-export function hordeHp(kind: HordeKind, scaleHp: number, elite = false, foeHp = diff().foeHp): number {
-  return Math.round(HORDE[kind].hp * DIFFICULTY.horde.hp * foeHp * scaleHp * (elite ? eliteHpMul(kind) : 1))
+/**
+ * Rest after a swing, different per foe and per swing (fix/real-play): a pack that started together
+ * kept swinging on the same frame, and her i-frames ate all but the first hit. ±35% of the cooldown.
+ */
+export function swingRest(f: Pick<HordeFoe, 'beat'>): number {
+  f.beat = (f.beat + 0.618034) % 1
+  return DIFFICULTY.horde.cooldown * (0.65 + 0.7 * f.beat)
+}
+
+export function hordeHp(kind: HordeKind, scaleHp: number, elite = false): number {
+  return Math.round(HORDE[kind].hp * DIFFICULTY.horde.hp * scaleHp * (elite ? eliteHpMul(kind) : 1))
 }
 
 const CELL = 1.2
@@ -327,8 +338,7 @@ export class Horde {
   spawn(kind: HordeKind, x: number, z: number, elite = false, dx = 0, dz = 0): HordeFoe | null {
     if (this.foes.length >= HORDE_CAP) return null
     const s = HORDE[kind]
-    const mode = diff()
-    const hp = hordeHp(kind, this.scale.hp, elite, mode.foeHp)
+    const hp = hordeHp(kind, this.scale.hp, elite)
     const foe: HordeFoe = {
       id: this.nextId++,
       kind,
@@ -342,12 +352,14 @@ export class Horde {
       maxHp: hp,
       radius: s.radius * (elite ? ELITE.scale : 1),
       speed: s.speed * DIFFICULTY.horde.speed * (elite ? ELITE.speed : 1) * (0.88 + ((this.nextId * 0.618) % 1) * 0.24),
-      damage: Math.max(1, Math.round(s.damage * DIFFICULTY.horde.damage * mode.foeDamage * this.scale.damage * (elite ? ELITE.damage : 1))),
+      damage: Math.max(1, Math.round(s.damage * DIFFICULTY.horde.damage * this.scale.damage * (elite ? ELITE.damage : 1))),
       age: 0,
       dying: 0,
       hurt: 0,
       windup: 0,
-      cooldown: 0.6,
+      // First swing staggered too (a pack that arrives together must not swing as one).
+      cooldown: 0.3 + ((this.nextId * 0.618) % 1) * 0.9,
+      beat: (this.nextId * 0.381) % 1,
       phase: (this.nextId * 0.381) % 1,
       far: false,
       chill: 0,
@@ -632,7 +644,7 @@ export class Horde {
       if (d < f.radius + 0.8 && target.alive) {
         strike(f.damage, f.x, f.z)
         f.chargeRun = 0
-        f.cooldown = DIFFICULTY.horde.cooldown
+        f.cooldown = swingRest(f)
       }
       if (f.chargeRun <= 0) f.chargeCd = e.chargeEvery
       return true
@@ -666,7 +678,7 @@ export class Horde {
       f.windup -= dt
       if (f.windup <= 0) {
         f.windup = 0
-        f.cooldown = DIFFICULTY.horde.cooldown
+        f.cooldown = swingRest(f)
         if (d < reach + 0.35 && target.alive) strike(f.damage, f.x, f.z)
       }
       return

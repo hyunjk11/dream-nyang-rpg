@@ -11,7 +11,7 @@ import { GUN_PROFILES } from '../src/data/guns'
 import { REF_DPS } from '../tools/sim-ttk-ref'
 
 const ttk = (kind: Parameters<typeof hordeHp>[0], d: number, f: number, elite = false) =>
-  hordeHp(kind, floorPlan(d, f).scale.hp * EXPLORE.hp, elite, 1) / REF_DPS[`d${d}f${f}`][0]
+  hordeHp(kind, floorPlan(d, f).scale.hp * EXPLORE.hp, elite) / REF_DPS[`d${d}f${f}`][0]
 
 describe('몹 체력 재조정 (실측 DPS 기준 처치 시간)', () => {
   it('보통 장비로 일반 몹은 1~3.5초, 기사는 3~7.5초 걸린다 (깊이 1~3)', () => {

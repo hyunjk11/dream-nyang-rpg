@@ -4,7 +4,7 @@ import { Horde, type HordeFoe } from '../src/world/dungeon/horde'
 import { EXPLORE, floorMaze, planLayout } from '../src/world/dungeon/layout'
 import { ExploreDirector } from '../src/world/dungeon/explore'
 import { floorPlan } from '../src/sim/delve'
-import { DIFFICULTY, setDiffMode, type DiffMode } from '../src/combat/difficulty'
+import { DIFFICULTY } from '../src/combat/difficulty'
 import { rng } from '../src/world/dungeon/maze'
 
 type Behaviour = 'thorough' | 'rusher'
@@ -156,15 +156,13 @@ export function simulate(o: Opts) {
 import { HORDE, hordeHp } from '../src/world/dungeon/horde'
 import { REF_DPS } from './sim-ttk-ref'
 import { BOSS } from '../src/world/dungeon/boss'
-import { DIFF_MODES } from '../src/combat/difficulty'
 {
   // Hits to kill with the starter water gun (9 per droplet, no crits), 보통, explore floors.
   const g = 9
-  const hp = (kind: keyof typeof HORDE, d: number, f: number, elite: boolean, mode: keyof typeof DIFF_MODES = 'normal') =>
-    hordeHp(kind, floorPlan(d, f).scale.hp * EXPLORE.hp, elite, DIFF_MODES[mode].foeHp)
-  console.log('## 시작 물총(9) 처치 타수 — 보통, 탐험 층 (괄호: 쉬움/어려움)')
+  const hp = (kind: keyof typeof HORDE, d: number, f: number, elite: boolean) => hordeHp(kind, floorPlan(d, f).scale.hp * EXPLORE.hp, elite)
+  console.log('## 시작 물총(9) 처치 타수 — 탐험 층')
   for (const [d, f] of [[1, 1], [1, 3], [2, 1], [3, 1]]) {
-    const row = (['slime', 'bat', 'bug', 'skeleton', 'knight', 'golem'] as const).map((k) => `${k} ${Math.ceil(hp(k, d, f, false) / g)} (${Math.ceil(hp(k, d, f, false, 'easy') / g)}/${Math.ceil(hp(k, d, f, false, 'hard') / g)})`)
+    const row = (['slime', 'bat', 'bug', 'skeleton', 'knight', 'golem'] as const).map((k) => `${k} ${Math.ceil(hp(k, d, f, false) / g)}`)
     console.log(`d${d}f${f} 일반: ${row.join(' · ')} | 정예 슬라임 ${Math.ceil(hp('slime', d, f, true) / g)} · 정예 기사 ${Math.ceil(hp('knight', d, f, true) / g)}`)
   }
   for (const d of [1, 2, 3]) {
@@ -198,8 +196,6 @@ if (process.env.KNOBS) {
 }
 // WHO=숙련 runs just that player.
 const who = process.env.WHO ?? null
-// MODE=hard / easy runs the floors in that difficulty (default 보통).
-if (process.env.MODE) setDiffMode(process.env.MODE as DiffMode)
 const only = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null
 const med = (v: number[]) => (v.length ? v[Math.floor(v.length / 2)] : NaN)
 for (const [d, f, whoName, b, extra] of rows) {

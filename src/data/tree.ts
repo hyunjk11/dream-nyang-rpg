@@ -84,7 +84,7 @@ export const SKILL_BITE: Record<SkillKind, { n: number; elite: number; boss: num
   bomb: { n: 1.05, elite: 0.33, boss: 0.18, rank: 0.015 },
   wave: { n: 1.05, elite: 0.32, boss: 0.17, rank: 0.03 },
   rush: { n: 1.05, elite: 0.34, boss: 0.18, rank: 0.03 },
-  aura: { n: 3, elite: 0.3, boss: 0.16, rank: 0.03 },
+  aura: { n: 3, elite: 0.32, boss: 0.16, rank: 0.03 },
   chain: { n: 0.6, elite: 0.05, boss: 0.015, rank: 0 },
 }
 

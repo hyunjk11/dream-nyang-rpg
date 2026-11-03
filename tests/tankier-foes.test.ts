@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DIFFICULTY, DIFF_MODES } from '../src/combat/difficulty'
+import { DIFFICULTY } from '../src/combat/difficulty'
 import { HORDE, hordeHp } from '../src/world/dungeon/horde'
 import { BOSS } from '../src/world/dungeon/boss'
 import { EXPLORE } from '../src/world/dungeon/layout'
@@ -15,14 +15,14 @@ const exploreHp = (d: number, f: number) => floorPlan(d, f).scale.hp * EXPLORE.h
 describe('몬스터가 단단해짐 (한 방에 죽지 않음)', () => {
   it('깊이 1 1층 일반 몬스터는 시작 물총(실측 137 DPS)으로 2~4초 걸린다', () => {
     for (const kind of ['slime', 'bat', 'bug', 'skeleton'] as const) {
-      const s = hordeHp(kind, exploreHp(1, 1), false, 1) / 137
+      const s = hordeHp(kind, exploreHp(1, 1), false) / 137
       expect(s, kind).toBeGreaterThanOrEqual(2)
       expect(s, kind).toBeLessThanOrEqual(4.5)
     }
   })
 
   it('정예는 시작 물총으로 30방 이상이다', () => {
-    for (const kind of ['slime', 'bat', 'bug'] as const) expect(hits(hordeHp(kind, exploreHp(1, 1), true, 1)), kind).toBeGreaterThanOrEqual(30)
+    for (const kind of ['slime', 'bat', 'bug'] as const) expect(hits(hordeHp(kind, exploreHp(1, 1), true)), kind).toBeGreaterThanOrEqual(30)
   })
 
   it('보스는 긴 싸움이다 (시작 물총 250방 이상)', () => {
@@ -31,7 +31,7 @@ describe('몬스터가 단단해짐 (한 방에 죽지 않음)', () => {
 
   it('예전 슬라임(4방)보다 확실히 단단하다', () => {
     const before = Math.round(HORDE.slime.hp * 0.78 * exploreHp(1, 1))
-    expect(hordeHp('slime', exploreHp(1, 1), false, 1)).toBeGreaterThan(before * 1.5)
+    expect(hordeHp('slime', exploreHp(1, 1), false)).toBeGreaterThan(before * 1.5)
   })
 
   it('단단해진 만큼 한 대의 피해는 줄어 공정하다', () => {
@@ -44,12 +44,6 @@ describe('몬스터가 단단해짐 (한 방에 죽지 않음)', () => {
     expect(hits(FOE_SPECS.slime.hp * DIFFICULTY.town.hp)).toBeGreaterThanOrEqual(5)
   })
 
-  it('쉬움/보통/어려움 선택이 그대로 체력에 반영된다', () => {
-    const at = (m: keyof typeof DIFF_MODES) => hordeHp('slime', 1, false, DIFF_MODES[m].foeHp)
-    expect(at('easy')).toBeLessThan(at('normal'))
-    expect(at('normal')).toBeLessThan(at('hard'))
-    expect(Object.values(DIFF_MODES).map((m) => m.label)).toEqual(['쉬움', '보통', '어려움'])
-  })
 })
 
 describe('데미지 숫자 누적', () => {

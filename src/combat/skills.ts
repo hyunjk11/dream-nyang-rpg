@@ -59,7 +59,13 @@ export type { SkillKind }
  */
 export { SKILL_BITE }
 /** Gear nudge on elites and the boss: her damage multiplier against the depth's usual, clamped. */
-export const SKILL_GEAR = { min: 0.8, max: 1.2 }
+export const SKILL_GEAR = { min: 1, max: 1.15 }
+/**
+ * Hard ceiling on one cast's share (fix/real-play): the gear nudge used to drop a fresh or average
+ * kit to ×0.8 (elite ~26%, boss ~14%: under the 30–40% / 15–25% promise). Now gear only ever
+ * helps, and never past these.
+ */
+export const SKILL_CAP = { elite: 0.4, boss: 0.25 }
 export function skillGear(damageMul: number, refMul = 1): number {
   return Math.max(SKILL_GEAR.min, Math.min(SKILL_GEAR.max, damageMul / Math.max(0.1, refMul)))
 }
@@ -71,7 +77,8 @@ export function skillBite(b: Pick<SkillBody, 'tone' | 'maxHp'>, kind: SkillKind,
   const t = SKILL_BITE[kind]
   if (b.tone === 'n') return Math.ceil(b.maxHp * t.n * share)
   const base = (b.tone === 'elite' ? t.elite : t.boss) + t.rank * Math.max(0, rank - 1)
-  return Math.max(1, Math.round(b.maxHp * base * gear * share))
+  const cut = Math.min(SKILL_CAP[b.tone], base * Math.max(SKILL_GEAR.min, gear))
+  return Math.max(1, Math.round(b.maxHp * cut * share))
 }
 
 export interface SkillHost {

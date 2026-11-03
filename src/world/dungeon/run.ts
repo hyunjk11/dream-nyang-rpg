@@ -65,6 +65,24 @@ export const BOSS_LIVE = 8
  * raise it; foe damage did not follow, so a Lv 9 hero never dropped).
  */
 export const BOSS_ROOM_HIT = { adds: 4, boss: 2 }
+/**
+ * Every other floor (fix/real-play, "미로에서 피가 안 빠져"): #46 scaled only the boss room. Out on a
+ * maze / sewer / field floor a slime still hit for 5 × 0.15 = 1 HP of 150 and a pack swung in
+ * step, so one i-frame window ate the other four: 2% in 10 s in the browser. Now normal floors hit
+ * FOE_HIT × harder (a slime 4–5, a knight 6–7) and, like the boss room, follow her max HP.
+ */
+export const FOE_HIT = 6
+export function foeHit(maxHp: number): number {
+  return FOE_HIT * Math.max(1, maxHp / DIFFICULTY.hero.maxHp)
+}
+/** The horde's hp / damage scale for a floor, exactly as the run sets it (tests use this too). */
+export function runFoeScale(plan: Pick<FloorPlan, 'scale' | 'objective'>, isBoss: boolean, maxHp: number): { hp: number; damage: number } {
+  const scale = { hp: plan.scale.hp, damage: plan.scale.damage }
+  // 몽실 마을 (objective 'town') has no foes; every fighting floor hits for real.
+  if (isBoss) scale.damage *= bossRoomHit(maxHp, 'adds')
+  else if (plan.objective !== 'town') scale.damage *= foeHit(maxHp)
+  return scale
+}
 /** Damage factor for the boss room, given her max HP (150 at Lv 1). */
 export function bossRoomHit(maxHp: number, who: 'adds' | 'boss'): number {
   return BOSS_ROOM_HIT[who] * Math.max(1, maxHp / DIFFICULTY.hero.maxHp)
@@ -356,8 +374,7 @@ export class DungeonRun {
       normal: (end, d) => hitNormal(maze, end.x, end.y, end.z, d.x, d.z),
     }
     this.horde = new Horde(this.maze)
-    this.horde.scale = { hp: this.plan.scale.hp, damage: this.plan.scale.damage }
-    if (isBoss) this.horde.scale.damage *= bossRoomHit(host.hero.maxHp, 'adds')
+    this.horde.scale = runFoeScale(this.plan, isBoss, host.hero.maxHp)
     this.horde.onKill = (f) => this.foeDown(f)
     this.horde.onRage = (f) => {
       const at = new Vector3(f.x, 1, f.z)
