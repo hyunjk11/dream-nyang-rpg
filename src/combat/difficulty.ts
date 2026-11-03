@@ -108,7 +108,7 @@ export const DIFFICULTY = {
    * elites (×elite) 4.6-5.4 s, the altar's bloom (×bossHp) ~25 s. skillHp keeps the skills' town
    * numbers where they were. The sewer, its boss floors and the 꿈 미로 use DIFFICULTY.horde, not this.
    */
-  town: { hp: 2.7, elite: 6.8, bossHp: 4.9, skillHp: 11, damage: 0.32, speed: 0.9, windup: 1.3 },
+  town: { hp: 3, elite: 6.8, bossHp: 4.9, skillHp: 11, damage: 0.32, speed: 0.9, windup: 1.3 },
 } as const
 
 /** Sewer wave size for wave n (1-based). */

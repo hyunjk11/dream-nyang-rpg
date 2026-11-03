@@ -57,7 +57,7 @@ async function oneClick (p, label, slow = false) {
   await p.mouse.click(640, 400); await p.waitForTimeout(800)
   s = await st(p); if (s.relock) s = await oneClick(p, 'enter')
   const real = s.locked
-  console.log('real lock', real, JSON.stringify(await p.evaluate(() => { const e = document.elementFromPoint(640, 400); return { at: e && (e.id || e.tagName + '.' + e.className), body: document.body.className, cfree: window.__slice && window.__slice.cursor.free, focus: document.hasFocus() } })))
+  console.log('real lock', real)
   // 2) Pause by Esc (browser drops the lock), then click right away inside Chrome's re-lock cooldown, repeat a few times.
   for (let i = 0; i < 3; i++) {
     await p.keyboard.press('Escape'); await p.waitForTimeout(100)

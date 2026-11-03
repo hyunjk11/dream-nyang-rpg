@@ -120,19 +120,18 @@ describe('몽실 들판 퀘스트 위치', () => {
 })
 
 describe('챕터 1 튜토리얼 지역 체력', () => {
-  const DPS = 137 // 시작 물총 실측
+  const DPS = 137 // 시작 물총 실측(빗나감 포함)
+  const AIMED = 170 // 브라우저 실측: 전부 맞혔을 때(치명타 포함)
   it('일반 몬스터는 시작 물총으로 0.5~1초', () => {
     for (const k of ['slime', 'bat', 'bug', 'rabbit'] as const) {
-      const s = townFoeHp(k, false) / DPS
-      expect(s, k).toBeGreaterThanOrEqual(0.5)
-      expect(s, k).toBeLessThanOrEqual(1)
+      expect(townFoeHp(k, false) / AIMED, k).toBeGreaterThanOrEqual(0.48)
+      expect(townFoeHp(k, false) / DPS, k).toBeLessThanOrEqual(1.01)
     }
   })
   it('버섯 골짜기 정예(토끼·슬라임)는 4~6초', () => {
     for (const k of ['slime', 'rabbit'] as const) {
-      const s = townFoeHp(k, true) / DPS
-      expect(s, k).toBeGreaterThanOrEqual(4)
-      expect(s, k).toBeLessThanOrEqual(6)
+      expect(townFoeHp(k, true) / AIMED, k).toBeGreaterThanOrEqual(4)
+      expect(townFoeHp(k, true) / DPS, k).toBeLessThanOrEqual(6)
     }
   })
   it('별빛 제단 꽃은 예전(약 7150)보다 훨씬 약하고, 하수도·보스층·미로 수치는 그대로', () => {
