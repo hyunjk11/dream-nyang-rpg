@@ -121,13 +121,24 @@ describe('웨이브와 보스', () => {
     expect(dir.update(1, { nestDistance: nests, alive: 0, inBoss: true })).toHaveLength(0)
   })
 
+  it('잠든 보스도 문 밖에서 맞으면 피해가 들어가고 깨어난다 (예전: 0 피해로 사라짐)', () => {
+    const boss = new Boss(maze)
+    expect(boss.awake).toBe(false)
+    expect(boss.raycast(boss.x - 5, BOSS.chest, boss.z, 1, 0, 0, 20)).toBeGreaterThan(0)
+    expect(boss.damage(100)).toBe(false)
+    expect(boss.hp).toBe(BOSS.hp - 100)
+    expect(boss.awake).toBe(true)
+    // 'wake' once (boss bar, music), even though she was hit rather than walked up to.
+    const ev = boss.update(0.1, start.x, start.z, true, () => {})
+    expect(ev.filter((e) => e === 'wake')).toHaveLength(1)
+    expect(boss.update(0.1, start.x, start.z, true, () => {}).filter((e) => e === 'wake')).toHaveLength(0)
+  })
+
   it('보스는 방에 들어오면 깨어나 고리 탄을 쏘고, 체력 2/3·1/3에서 무리를 부르며, 쓰러진다', () => {
     const boss = new Boss(maze)
     const b = maze.bossRoom
     const far = tileCentre(maze, b.x + 2, b.y + 4)
     expect(boss.update(0.1, start.x, start.z, true, () => {})).toEqual([])
-    expect(boss.damage(100)).toBe(false)
-    expect(boss.hp).toBe(BOSS.hp)
     const events: string[] = []
     for (let i = 0; i < 30 * 6; i += 1) events.push(...boss.update(1 / 30, far.x, far.z, true, () => {}))
     expect(events).toContain('wake')

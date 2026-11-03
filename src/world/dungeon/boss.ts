@@ -59,6 +59,8 @@ export class Boss {
   yaw = 0
   readonly orbs: Orb[] = []
   private ringClock = 2
+  /** Woken by a hit (not by walking in): `update` still reports 'wake' once. */
+  private woken = false
   private contactCd = 0
   private summoned = 0
   private spin = 0
@@ -99,10 +101,13 @@ export class Boss {
       this.dying += dt
       return ev
     }
+    if (this.woken) {
+      this.woken = false
+      ev.push('wake')
+    }
     if (!this.awake) {
       if (this.inRoom(hx, hz)) {
-        this.awake = true
-        this.ringClock = 1.6
+        this.wake()
         ev.push('wake')
       }
       return ev
@@ -145,13 +150,23 @@ export class Boss {
 
   /** Hurt; returns true on the killing blow. */
   damage(amount: number): boolean {
-    if (!this.alive || !this.awake) return false
+    if (!this.alive) return false
+    // A hit from the doorway counts (fix/skill-hit-proof): it used to vanish (0) until she walked in.
+    if (!this.awake) {
+      this.wake()
+      this.woken = true
+    }
     this.hp = Math.max(0, this.hp - amount)
     this.hurt = 1
     if (this.hp > 0) return false
     this.dying = 1e-4
     this.orbs.length = 0
     return true
+  }
+
+  private wake(): void {
+    this.awake = true
+    this.ringClock = 1.6
   }
 
   /** Ray (unit direction) against the body sphere; distance or -1. */
@@ -161,7 +176,7 @@ export class Boss {
   }
 
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, max: number): number {
-    if (!this.alive || !this.awake) return -1
+    if (!this.alive) return -1
     return rayCapsule(ox, oy, oz, dx, dy, dz, this.capsule(), max)
   }
 
