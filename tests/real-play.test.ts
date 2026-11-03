@@ -8,7 +8,7 @@ import { BOSS } from '../src/world/dungeon/boss'
 import { floorPlan, fieldPlan } from '../src/sim/delve'
 import { DIFFICULTY } from '../src/combat/difficulty'
 import { Hero } from '../src/actors/hero'
-import { AURA_PULSE, AURA_TIME, SKILL_BITE, SKILL_CAP, SKILL_SHOTS, auraShare, skillBite, skillBlast, skillGear, SKILL_REF_MUL, type SkillBody } from '../src/combat/skills'
+import { AURA_BURN, AURA_PULSE, AURA_TIME, SKILL_BITE, SKILL_CAP, SKILL_SHOTS, auraShare, skillBite, skillBlast, skillGear, SKILL_REF_MUL, type SkillBody } from '../src/combat/skills'
 import { migrateSave } from '../src/sim/migrate'
 import { freshSave } from '../src/sim/mutate'
 
@@ -140,6 +140,21 @@ describe('실제 플레이: 스킬 한 번 = 무리 정리 · 정예 30–40% ·
       }
     })
   }
+  it('사탕 오라는 4.4–5.6 m 거리를 지키는 보스에게도 닿는다 (브라우저 추적: 예전 3.2 m 고리는 보스 −5%)', () => {
+    const boss = body('boss', 28000)
+    boss.r = 1.0 // BOSS.radius 1.25: 조금 작게 잡아도 닿아야 한다
+    boss.x = 5.6
+    let p = 0
+    for (let i = 0; i < AURA_TIME / AURA_PULSE; i++) {
+      if (i > 0) boss.x = 4.6
+      const hit = skillBlast([boss], 0, 0, i === 0 ? AURA_BURN.burst : AURA_BURN.radius, { kind: 'aura', rank: 1, gear: 1, share: auraShare(i === 0) })
+      expect(hit, `펄스 ${i}`).toBe(1)
+    }
+    p = 1 - boss.hp / boss.maxHp
+    expect(p).toBeGreaterThanOrEqual(0.15)
+    expect(p).toBeLessThanOrEqual(0.25)
+  })
+
   it('사탕 오라는 첫 펄스에 절반이 한 번에 들어가 큰 숫자로 보이고, 전체 합은 그대로다', () => {
     const pulses = AURA_TIME / AURA_PULSE
     let sum = auraShare(true)

@@ -135,7 +135,7 @@ const fs = require('fs')
     const s = window.__slice, r = window.__rp, b = s.run?.boss
     if (!b) return null
     r.parkAll()
-    const at = r.fwd(d); b.awake = true; b.x = at.x; b.z = at.z
+    const at = r.fwd(d); b.awake = true; b.hp = b.maxHp; b.x = at.x; b.z = at.z
     window.__tgt = [{ f: b, maxHp: b.maxHp }]
     s.hero.hp = s.hero.maxHp
     return [{ hp: Math.round(b.hp), max: b.maxHp, awake: b.awake }]
@@ -174,7 +174,10 @@ const fs = require('fs')
         const used0 = await p.evaluate(() => ({ ...window.__slice.skills.used }))
         await p.keyboard.press(key)
         // keep the aura's targets inside its ring while it burns
-        await waitGame(k === 'aura' ? 6.5 : 1.2)
+        if (k === 'aura' && tone === 'boss') {
+          t.auraTrace = []
+          for (let i = 0; i < 7; i++) { t.auraTrace.push(await p.evaluate(() => { const b = window.__tgt[0].f, h = window.__slice.hero.object.position; return [Math.round(b.hp), +Math.hypot(b.x - h.x, b.z - h.z).toFixed(1), +window.__slice.skills.aura.toFixed(1), b.mode ?? b.state ?? ''] })); await waitGame(1) }
+        } else await waitGame(k === 'aura' ? 6.5 : 1.2)
         const used1 = await p.evaluate(() => ({ ...window.__slice.skills.used }))
         const after = await readTargets()
         const fr = frac(before, after)

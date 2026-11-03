@@ -46,8 +46,12 @@ export interface SkillWorld {
 export const SKILL_POWER = 2.9
 /** 과열 폭주's opening shockwave radius (was 3.2: now it clears the ring around her). */
 export const OVERDRIVE_WAVE = { radius: 5 }
-/** 사탕 오라 pulses every AURA_PULSE s inside this radius. */
-export const AURA_BURN = { radius: 3.2 }
+/**
+ * 사탕 오라 pulses every AURA_PULSE s inside `radius`; the first pulse (the burst) reaches `burst`.
+ * Browser trace (fix/real-play): the boss keeps 4.4–5.6 m from her, so the old 3.2 m ring missed the
+ * burst and most pulses (boss −5% instead of 15–25%).
+ */
+export const AURA_BURN = { radius: 4.2, burst: 6.5 }
 export const AURA_PULSE = 0.5
 /**
  * Share of the whole aura cast that lands on the first pulse (fix/real-play): split evenly over
@@ -353,7 +357,7 @@ export class SkillRunner {
     this.auraBurn = 0
     this.auraFirst = true
     vfx.poof(hero.object.position.clone().setY(1.2), 0xff9fd2, 2.2)
-    vfx.ring(hero.object.position.clone().setY(0.06), 0xff9fd2, 0.3, AURA_BURN.radius * 1.2, 0.5)
+    vfx.ring(hero.object.position.clone().setY(0.06), 0xff9fd2, 0.3, AURA_BURN.burst, 0.5)
     vfx.burst(hero.object.position.clone().setY(1), 0xffb7d8, { count: 30, speed: 4, up: 2.5, life: 0.7, size: 0.22, gravity: 1, drag: 2, additive: true })
     this.host.sfx('heal', 1.2)
     this.host.feel?.(0.05, 0.08)
@@ -460,7 +464,7 @@ export class SkillRunner {
         this.auraBurn = AURA_PULSE
         const p = hero.object.position
         const r = this.host.rank('candy_aura')
-        skillBlast(world.bodies(), p.x, p.z, AURA_BURN.radius, { kind: 'aura', rank: r, gear: this.gear(world), floor: this.shotFloor(), share: auraShare(this.auraFirst) }, this.auraFirst ? 1.2 : 0.3, 0, this.numbers)
+        skillBlast(world.bodies(), p.x, p.z, this.auraFirst ? AURA_BURN.burst : AURA_BURN.radius, { kind: 'aura', rank: r, gear: this.gear(world), floor: this.shotFloor(), share: auraShare(this.auraFirst) }, this.auraFirst ? 1.2 : 0.3, 0, this.numbers)
         this.auraFirst = false
       }
     } else hero.guard = guard
