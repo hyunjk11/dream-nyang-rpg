@@ -516,7 +516,6 @@ export class TownUI {
       row.append(cell)
     }
     box.append(row)
-    box.append(this.comboBox(gun))
     const parts = bagMods(save)
     box.append(el('h4', '', `가방 속 부품 ${parts.length}개`))
     if (!parts.length) box.append(el('small', '', '부품은 던전 몹·보물 상자·보스에게서 나와. (보스와 비밀 상자가 잘 줘)'))
@@ -535,7 +534,7 @@ export class TownUI {
       b.append(
         el('span', '', `${ITEMS[p.defId]?.name ?? p.defId} · ${RARITY_KO[p.rarity]}`),
         el('small', '', `${modLabel(p)} · ${p.affixes.map(formatAffix).join(' · ')}`),
-        el('small', gain.length ? 'mod-gain' : '', gain.length ? `✦ ${gain.map((c) => c.name).join(' · ')} · ${swap ? '바꾸기' : '끼우기'} ${fitCost(p)}골드` : block ? block : `${swap ? '바꾸기' : '끼우기'} ${fitCost(p)}골드`),
+        el('small', gain.length && !block ? 'mod-gain' : '', block ?? (gain.length ? `✦ ${gain.map((c) => c.name).join(' · ')} · ` : '') + `${swap ? '바꾸기' : '끼우기'} ${fitCost(p)}골드`),
       )
       b.title = itemLines(p).join('\n')
       b.disabled = !!block || save.gold < fitCost(p)
@@ -544,6 +543,7 @@ export class TownUI {
       list.append(b)
     })
     box.append(list)
+    box.append(this.comboBox(gun))
     return box
   }
 

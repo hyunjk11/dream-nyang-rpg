@@ -64,10 +64,10 @@ const VPS = (process.env.VPS || '1280x720,390x844').split(',').map((v) => v.spli
     await p.evaluate(() => { window.__slice.townUI.close(); window.__slice.enterSewer(1, 1, 3) })
     await p.waitForTimeout(2500)
     const vfx = await p.evaluate(async () => {
-      const s = window.__slice, h = s.hero.root.position, j = s.shooter.juice
-      const yaw = s.rig.yaw ?? 0
-      const fx = -Math.sin(yaw), fz = -Math.cos(yaw)
+      const s = window.__slice, h = s.hero.object.position, j = s.shooter.juice
       const V = h.constructor
+      const d = new V(); s.stage.camera.getWorldDirection(d); d.y = 0; d.normalize()
+      const fx = d.x, fz = d.z
       for (let i = 0; i < 3; i++) j.cloud(new V(h.x + fx * (4 + i * 1.5) + (i - 1) * 1.4, 1, h.z + fz * (4 + i * 1.5)), 30)
       for (let i = 0; i < 4; i++) j.star(new V(h.x + fx, 1.2, h.z + fz), new V(fx + (i - 1.5) * 0.25, 0.05, fz), 20)
       await new Promise((r) => setTimeout(r, 350))
