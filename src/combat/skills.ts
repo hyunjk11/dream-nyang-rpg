@@ -10,7 +10,7 @@ import type { Vfx } from '../core/vfx'
 import type { RayFn } from '../core/tps'
 import type { GunCue } from '../audio/gunsound'
 import type { Shooter } from './shooter'
-import { TREE_BY_ID, auraHeal, bombDamage, bombRadius, rushDamage, type ActiveId } from '../data/tree'
+import { SKILL_BITE, TREE_BY_ID, auraHeal, bombRadius, type ActiveId, type SkillKind } from '../data/tree'
 
 /** Something a skill can hurt (a horde foe, the boss, a nest pipe, a town foe). */
 export interface SkillBody {
@@ -20,6 +20,8 @@ export interface SkillBody {
   z: number
   r: number
   tone: 'n' | 'elite' | 'boss'
+  /** Full health: skills bite a share of it (fix/gun-identity). */
+  maxHp: number
   /** Land `amount`, pushed along (dx, dz) × knock; slow for `slow` seconds where supported. */
   hit: (amount: number, dx: number, dz: number, knock: number, slow: number) => boolean
 }
@@ -33,21 +35,43 @@ export interface SkillWorld {
    * SKILL_POWER × its floor HP scale (depth, explore floors); the town its own foe HP ratio.
    */
   power?: number
+  /**
+   * The damage multiplier a player at this depth usually has (fix/gun-identity): skills bite a
+   * share of max HP, nudged by her damage multiplier against this (better gear, bigger bite).
+   */
+  refMul?: number
 }
 
-/** Skill base numbers × this × the world's HP scale ≈ a rank-1 bomb taking ~60% off a normal foe. */
+/** Legacy world power (fix/boss-floor); skills now bite a share of max HP instead (SKILL_BITE). */
 export const SKILL_POWER = 2.9
-/** Elites and the boss have 6.5× / 20×+ HP; skills hit them harder so they visibly dent. */
-export const SKILL_TONE: Record<SkillBody['tone'], number> = { n: 1, elite: 2, boss: 4 }
-/** 과열 폭주's opening shockwave (base, per rank) and radius. */
-export const OVERDRIVE_WAVE = { base: 30, rank: 12, radius: 3.2 }
-/** 사탕 오라 pulses (every AURA_PULSE s): base, per rank, radius. */
-export const AURA_BURN = { base: 6, rank: 3, radius: 2.4 }
+/** 과열 폭주's opening shockwave radius (was 3.2: now it clears the ring around her). */
+export const OVERDRIVE_WAVE = { radius: 5 }
+/** 사탕 오라 pulses every AURA_PULSE s inside this radius. */
+export const AURA_BURN = { radius: 3.2 }
 export const AURA_PULSE = 0.5
 
-/** What one skill hit lands on a body: base × the gun/level multiplier × world power × tone. */
-export function skillAmount(base: number, damageMul: number, power: number, tone: SkillBody['tone']): number {
-  return Math.round(base * damageMul * power * SKILL_TONE[tone])
+export type { SkillKind }
+/**
+ * fix/gun-identity: skills are the big moments. One cast wipes a normal pack (normals take
+ * `n` × their max HP: 1+ means dead), takes 30–40% off an elite and 15–25% off the boss at
+ * matching gear. `rank` adds per rank above 1 to elites and the boss. 사탕 오라's numbers are the
+ * whole cast (split over its pulses); 톡톡 연쇄 is the small chain pop. Cooldowns keep it fair.
+ */
+export { SKILL_BITE }
+/** Gear nudge on elites and the boss: her damage multiplier against the depth's usual, clamped. */
+export const SKILL_GEAR = { min: 0.8, max: 1.2 }
+export function skillGear(damageMul: number, refMul = 1): number {
+  return Math.max(SKILL_GEAR.min, Math.min(SKILL_GEAR.max, damageMul / Math.max(0.1, refMul)))
+}
+/** Usual damage multiplier by depth (kits from tools/ttk-kit.ts); the town uses depth 0. */
+export const SKILL_REF_MUL: Record<number, number> = { 0: 1.1, 1: 1.5, 2: 2.1, 3: 2.4 }
+
+/** One skill hit on a body: a share of its max HP (normals: a pack wipe). `share` splits a cast (aura pulses). */
+export function skillBite(b: Pick<SkillBody, 'tone' | 'maxHp'>, kind: SkillKind, rank: number, gear: number, share = 1): number {
+  const t = SKILL_BITE[kind]
+  if (b.tone === 'n') return Math.ceil(b.maxHp * t.n * share)
+  const base = (b.tone === 'elite' ? t.elite : t.boss) + t.rank * Math.max(0, rank - 1)
+  return Math.max(1, Math.round(b.maxHp * base * gear * share))
 }
 
 export interface SkillHost {
@@ -87,8 +111,8 @@ export function blast(bodies: SkillBody[], x: number, z: number, r: number, amou
   return n
 }
 
-/** A skill's area hit: like blast(), but tone-scaled and reported as skill numbers. Returns hits. */
-export function skillBlast(bodies: SkillBody[], x: number, z: number, r: number, base: number, power: number, knock = 0, slow = 0, numbers?: (amount: number, at: Vector3, tone: SkillBody['tone']) => void): number {
+/** A skill's area hit: like blast(), but each body takes its skillBite and it reports skill numbers. Returns hits. */
+export function skillBlast(bodies: SkillBody[], x: number, z: number, r: number, bite: { kind: SkillKind; rank: number; gear: number; share?: number }, knock = 0, slow = 0, numbers?: (amount: number, at: Vector3, tone: SkillBody['tone']) => void): number {
   let n = 0
   for (const b of bodies) {
     const dx = b.x - x
@@ -96,7 +120,7 @@ export function skillBlast(bodies: SkillBody[], x: number, z: number, r: number,
     const d = Math.hypot(dx, dz)
     if (d > r + b.r) continue
     const l = d || 1
-    const amount = Math.round(base * power * SKILL_TONE[b.tone])
+    const amount = skillBite(b, bite.kind, bite.rank, bite.gear, bite.share)
     b.hit(amount, dx / l, dz / l, knock, slow)
     numbers?.(amount, new Vector3(b.x, 1.1, b.z), b.tone)
     n += 1
@@ -111,7 +135,7 @@ interface Bomb {
   t: number
   dur: number
   r: number
-  amount: number
+  rank: number
   slow: number
 }
 
@@ -121,11 +145,15 @@ interface Rush {
   len: number
   t: number
   dur: number
-  amount: number
+  rank: number
+  /** Mochi gear bonus (모찌 돌진 +%): widens the bite on elites and the boss. */
+  mul: number
   hit: Set<string>
 }
 
-export const SKILL_RANGE = { bomb: 16, rush: 6.5 }
+export const SKILL_RANGE = { bomb: 16, rush: 8 }
+/** How wide Mochi's rush sweeps (m either side of her path). */
+export const RUSH_WIDTH = 1.7
 
 /** Half-angle of the rush's aim-assist cone (radians, about 22°). */
 export const RUSH_CONE = 0.38
@@ -241,7 +269,7 @@ export class SkillRunner {
       t: 0,
       dur: 0.32 + Math.min(0.3, dist * 0.025),
       r: bombRadius(this.host.rank('big_bubble')),
-      amount: bombDamage(r) * this.host.damageMul(),
+      rank: r,
       slow: sticky > 0 ? 2 : 0,
     })
     this.host.sfx('shoot_bubble', 1)
@@ -255,14 +283,17 @@ export class SkillRunner {
     shooter.gun.overheated = false
     shooter.overdriveCrit = 0.1
     const at = hero.object.position.clone().setY(1)
-    vfx.ring(at.clone().setY(0.06), 0xff8f5c, 0.3, OVERDRIVE_WAVE.radius, 0.45)
-    vfx.ring(at.clone().setY(0.1), 0xffd08a, 0.2, OVERDRIVE_WAVE.radius * 0.7, 0.3)
-    vfx.burst(at, 0xffb36b, { count: 26, speed: 4.5, up: 2.4, life: 0.55, size: 0.18, gravity: 3, drag: 2, additive: true })
-    // The heat bursts out: a shockwave knocks the ring of foes back as the barrel lights.
-    const hits = skillBlast(world.bodies(), at.x, at.z, OVERDRIVE_WAVE.radius, (OVERDRIVE_WAVE.base + OVERDRIVE_WAVE.rank * r) * this.host.damageMul(), world.power ?? 1, 1.6, 0, this.numbers)
-    this.host.feel?.(hits > 0 ? 0.08 : 0.04, 0.09)
-    this.host.sfx('windup', 0.8)
-    this.host.gun?.('thunk', 1, 0.3)
+    vfx.ring(at.clone().setY(0.06), 0xff8f5c, 0.3, OVERDRIVE_WAVE.radius, 0.5)
+    vfx.ring(at.clone().setY(0.1), 0xffd08a, 0.2, OVERDRIVE_WAVE.radius * 0.7, 0.35)
+    vfx.ring(at.clone().setY(0.14), 0xffffff, 0.1, OVERDRIVE_WAVE.radius * 1.1, 0.25)
+    vfx.burst(at, 0xffb36b, { count: 44, speed: 7, up: 3, life: 0.6, size: 0.22, gravity: 3, drag: 2, additive: true })
+    vfx.burst(at, 0xfff0c0, { count: 18, speed: 10, up: 0.6, life: 0.35, size: 0.16, shape: 1, gravity: 0, drag: 3, additive: true })
+    // The heat bursts out: a shockwave blows the ring of foes away as the barrel lights.
+    const hits = skillBlast(world.bodies(), at.x, at.z, OVERDRIVE_WAVE.radius, { kind: 'wave', rank: r, gear: this.gear(world) }, 2.2, 0, this.numbers)
+    this.host.feel?.(hits > 0 ? 0.14 : 0.05, hits > 0 ? 0.2 : 0.1)
+    this.host.sfx('windup', 1)
+    this.host.gun?.('thunk', 1.3, 0.1)
+    this.host.gun?.('pop', 1.2, -0.5)
   }
 
   private startRush(r: number, world: SkillWorld): void {
@@ -284,9 +315,10 @@ export class SkillRunner {
     }
     const wall = world.solid(from.x, 0.4, from.z, dir.x, 0, dir.z, SKILL_RANGE.rush)
     const len = Math.max(Math.min(1.2, wall), Math.min(reach, wall - 0.45))
-    this.rush = { from, dir, len, t: 0, dur: 0.34, amount: rushDamage(r) * this.host.damageMul() * (this.host.mochiMul?.() ?? 1), hit: new Set() }
-    this.host.sfx('dash', 1)
-    vfx.ring(from.clone().setY(0.05), 0xffd36b, 0.2, 1.6, 0.35)
+    this.rush = { from, dir, len, t: 0, dur: 0.36, rank: r, mul: this.host.mochiMul?.() ?? 1, hit: new Set() }
+    this.host.sfx('dash', 1.2)
+    vfx.ring(from.clone().setY(0.05), 0xffd36b, 0.2, 2.4, 0.4)
+    vfx.burst(from.clone().setY(0.4), 0xffe3a0, { count: 16, speed: 4, up: 1.2, life: 0.4, size: 0.2, gravity: 2, drag: 2, additive: true })
   }
 
   private startAura(): void {
@@ -294,8 +326,16 @@ export class SkillRunner {
     this.aura = AURA_TIME
     this.auraRing = 0
     this.auraBurn = 0
-    vfx.poof(hero.object.position.clone().setY(1.2), 0xff9fd2, 1.6)
-    this.host.sfx('heal', 1)
+    vfx.poof(hero.object.position.clone().setY(1.2), 0xff9fd2, 2.2)
+    vfx.ring(hero.object.position.clone().setY(0.06), 0xff9fd2, 0.3, AURA_BURN.radius * 1.2, 0.5)
+    vfx.burst(hero.object.position.clone().setY(1), 0xffb7d8, { count: 30, speed: 4, up: 2.5, life: 0.7, size: 0.22, gravity: 1, drag: 2, additive: true })
+    this.host.sfx('heal', 1.2)
+    this.host.feel?.(0.05, 0.08)
+  }
+
+  /** Her gear against the depth's usual (elites and the boss bite a little more or less). */
+  private gear(world: SkillWorld): number {
+    return skillGear(this.host.damageMul(), world.refMul ?? SKILL_REF_MUL[0])
   }
 
   /** A foe died at (x, z): 톡톡 연쇄 may pop a little bubble there. */
@@ -307,11 +347,11 @@ export class SkillRunner {
     this.host.vfx.ring(at.clone().setY(0.06), 0xbfe9ff, 0.2, 1.8, 0.3)
     this.host.gun?.('pop', 0.8, 0.4)
     // Deferred a tick so a chain can't recurse inside the killing blow.
-    queueMicrotask(() => skillBlast(world.bodies(), x, z, 1.8, bombDamage(1) * 0.45 * this.host.damageMul(), world.power ?? 1, 0, 0, this.numbers))
+    queueMicrotask(() => skillBlast(world.bodies(), x, z, 1.8, { kind: 'chain', rank: 1, gear: this.gear(world) }, 0, 0, this.numbers))
   }
 
   /** Skill hits read big: normals as crit-sized numbers, elites/boss in their own colour. */
-  private readonly numbers = (amount: number, at: Vector3, tone: SkillBody['tone']) => this.host.shooter.hudFx.number(amount, at, tone === 'n' ? 'crit' : tone)
+  private readonly numbers = (amount: number, at: Vector3, tone: SkillBody['tone']) => this.host.shooter.hudFx.number(amount, at, tone === 'n' ? 'skill' : tone)
 
   /** Advance cooldowns, bombs in flight, Mochi's rush and the aura. Call after the world update. */
   update(dt: number, world: SkillWorld | null): void {
@@ -329,15 +369,18 @@ export class SkillRunner {
       b.mesh.removeFromParent()
       this.bombs.splice(i, 1)
       const at = b.to.clone().setY(0.6)
-      vfx.poof(at, 0xbfe9ff, 1.8 + b.r * 0.4)
-      vfx.ring(b.to.clone().setY(0.06), 0x9fdcff, 0.3, b.r, 0.45)
-      vfx.ring(b.to.clone().setY(0.1), 0xffffff, 0.15, b.r * 0.75, 0.3)
-      vfx.burst(at, 0xffffff, { count: 24, speed: 5, up: 3, life: 0.5, size: 0.2, gravity: 5, drag: 2, additive: true })
-      vfx.burst(at, 0x9fdcff, { count: 12, speed: 2.5, up: 1.5, life: 0.7, size: 0.26, gravity: 2, drag: 2 })
-      this.host.sfx('splash', 1)
-      this.host.gun?.('pop', 1, -0.3)
-      const hits = world ? skillBlast(world.bodies(), b.to.x, b.to.z, b.r, b.amount, world.power ?? 1, 1.2, b.slow, this.numbers) : 0
-      this.host.feel?.(hits > 0 ? 0.09 : 0.03, hits > 0 ? 0.12 : 0.05)
+      // 펑!: a big soap blast — two rings, a white flash, a spray of suds.
+      vfx.poof(at, 0xbfe9ff, 2.6 + b.r * 0.5)
+      vfx.ring(b.to.clone().setY(0.06), 0x9fdcff, 0.3, b.r, 0.5)
+      vfx.ring(b.to.clone().setY(0.1), 0xffffff, 0.15, b.r * 0.75, 0.35)
+      vfx.ring(b.to.clone().setY(0.14), 0xd8f2ff, 0.1, b.r * 1.15, 0.28)
+      vfx.burst(at, 0xffffff, { count: 40, speed: 7, up: 4, life: 0.55, size: 0.24, gravity: 5, drag: 2, additive: true })
+      vfx.burst(at, 0x9fdcff, { count: 22, speed: 3.5, up: 2, life: 0.8, size: 0.32, gravity: 2, drag: 2 })
+      this.host.sfx('splash', 1.3)
+      this.host.gun?.('pop', 1.3, -0.45)
+      this.host.gun?.('thunk', 1, -0.3)
+      const hits = world ? skillBlast(world.bodies(), b.to.x, b.to.z, b.r, { kind: 'bomb', rank: b.rank, gear: this.gear(world) }, 1.8, b.slow, this.numbers) : 0
+      this.host.feel?.(hits > 0 ? 0.13 : 0.04, hits > 0 ? 0.2 : 0.07)
     }
     const rush = this.rush
     if (rush) {
@@ -350,13 +393,15 @@ export class SkillRunner {
         for (const b of world.bodies()) {
           const key = b.id
           if (rush.hit.has(key)) continue
-          if (Math.hypot(b.x - at.x, b.z - at.z) > b.r + 1.1) continue
+          if (Math.hypot(b.x - at.x, b.z - at.z) > b.r + RUSH_WIDTH) continue
           rush.hit.add(key)
-          const amount = Math.round(rush.amount * (world.power ?? 1) * SKILL_TONE[b.tone])
-          b.hit(amount, rush.dir.x, rush.dir.z, 2.6, 0)
+          const amount = skillBite(b, 'rush', rush.rank, this.gear(world) * rush.mul)
+          b.hit(amount, rush.dir.x, rush.dir.z, 3.2, 0)
           this.numbers(amount, new Vector3(b.x, 1.1, b.z), b.tone)
-          vfx.burst(new Vector3(b.x, 0.8, b.z), 0xffe3a0, { count: 10, speed: 3.5, up: 2, life: 0.35, size: 0.16, gravity: 4, drag: 2, additive: true })
-          this.host.feel?.(rush.hit.size === 1 ? 0.08 : 0.03, 0.08)
+          vfx.burst(new Vector3(b.x, 0.8, b.z), 0xffe3a0, { count: 18, speed: 5, up: 2.4, life: 0.4, size: 0.2, gravity: 4, drag: 2, additive: true })
+          vfx.ring(new Vector3(b.x, 0.08, b.z), 0xffd36b, 0.2, 1.4, 0.25)
+          this.host.gun?.('pop', 0.9, 0.2)
+          this.host.feel?.(rush.hit.size === 1 ? 0.12 : 0.04, rush.hit.size === 1 ? 0.14 : 0.08)
         }
       }
       if (k >= 1) {
@@ -374,7 +419,7 @@ export class SkillRunner {
       if (this.auraRing <= 0) {
         this.auraRing = 0.5
         const p = hero.object.position
-        vfx.ring(p.clone().setY(0.06), 0xff9fd2, 0.4, 2.2, 0.5, 0.6)
+        vfx.ring(p.clone().setY(0.06), 0xff9fd2, 0.4, AURA_BURN.radius, 0.5, 0.6)
         vfx.burst(p.clone().setY(1.4), 0xffb7d8, { count: 4, speed: 0.8, up: 1.6, life: 0.7, size: 0.18, gravity: -1, drag: 1.5 })
       }
       // The candy stings: foes inside the ring take a pulse every AURA_PULSE s.
@@ -383,7 +428,7 @@ export class SkillRunner {
         this.auraBurn = AURA_PULSE
         const p = hero.object.position
         const r = this.host.rank('candy_aura')
-        skillBlast(world.bodies(), p.x, p.z, AURA_BURN.radius, (AURA_BURN.base + AURA_BURN.rank * r) * this.host.damageMul(), world.power ?? 1, 0.3, 0, this.numbers)
+        skillBlast(world.bodies(), p.x, p.z, AURA_BURN.radius, { kind: 'aura', rank: r, gear: this.gear(world), share: AURA_PULSE / AURA_TIME }, 0.3, 0, this.numbers)
       }
     } else hero.guard = guard
   }

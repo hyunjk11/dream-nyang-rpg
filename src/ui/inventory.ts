@@ -4,7 +4,7 @@
  * Plain DOM over the canvas. Every change goes through sim/ (mutate, skilltree) and the host
  * re-applies the build to the live hero.
  */
-import { GUN_KO, gunDps } from '../data/guns'
+import { GUN_KO, GUN_PROFILES, gunDps, gunStatLine } from '../data/guns'
 import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { BRANCH_KO, TIER_LEVEL, TREE, type Branch, type TreeSkill } from '../data/tree'
 import { xpToNext } from '../sim/formulas'
@@ -374,7 +374,8 @@ export class InventoryUI {
     bar.append(fill)
     head.append(bar)
     box.append(head)
-    box.append(el('p', 'inv-gun', `${GUN_KO[s.weaponKind]}`))
+    box.append(el('p', 'inv-gun', `${GUN_KO[s.weaponKind]} · ${GUN_PROFILES[s.weaponKind].blurb}`))
+    box.append(el('p', 'inv-gun-stats', gunStatLine(GUN_PROFILES[s.weaponKind], s.shotDamage, s.fireRate)))
     const dl = el('dl')
     for (const row of STAT_ROWS) {
       const v = row.value(s)

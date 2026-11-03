@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Gun, OVERDRIVE_RATE } from '../src/combat/gunfeel'
-import { GUN_PROFILES, gunDps } from '../src/data/guns'
+import { GUN_PROFILES, gunDpsCrit } from '../src/data/guns'
 import { skillSlotFor } from '../src/core/input'
 import { ACTIVES, TREE_BY_ID } from '../src/data/tree'
 import { addItem } from '../src/sim/inventory'
@@ -51,10 +51,11 @@ describe('총 종류별 사격감', () => {
     expect(GUN_PROFILES.bubble.pellets).toBeGreaterThan(3)
     expect(GUN_PROFILES.dart.damage).toBeGreaterThan(GUN_PROFILES.water.damage * 3)
     // Every base lands in the same DPS ballpark (feel differs, power doesn't run away).
-    const base = gunDps(GUN_PROFILES.water)
-    // 별총은 기본 수치가 낮고(12) 별 발동·높은 치명으로 실측 물총의 약 1.25배가 된다.
-    for (const p of Object.values(GUN_PROFILES)) expect(gunDps(p) / base).toBeGreaterThan(p.kind === 'star' ? 0.45 : 0.7)
-    for (const p of Object.values(GUN_PROFILES)) expect(gunDps(p) / base).toBeLessThan(1.35)
+    // 치명타까지 넣은 기대 DPS로 비교 (저격총은 치명이 세서 한 발 수치만으론 낮아 보인다).
+    const base = gunDpsCrit(GUN_PROFILES.water)
+    // 별총은 기본 수치가 낮고 별 발동·높은 치명으로 실측 물총 근처가 된다.
+    for (const p of Object.values(GUN_PROFILES)) expect(gunDpsCrit(p) / base).toBeGreaterThan(p.kind === 'star' ? 0.45 : 0.8)
+    for (const p of Object.values(GUN_PROFILES)) expect(gunDpsCrit(p) / base).toBeLessThan(1.2)
   })
 })
 

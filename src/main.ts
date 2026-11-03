@@ -356,7 +356,7 @@ const townWorld: ShotWorld = {
   strike: (o, d, max, amount, procs) => {
     const hit = combat.raycast(o, d, max)
     if (!hit) return null
-    const kill = combat.strikeFoe(hit.foe, amount, d)
+    const kill = combat.strikeFoe(hit.foe, amount, d, procs?.knock ?? 1)
     // Same element rules as the sewer: ice chills, candy goos, sparkle pops everyone nearby.
     const at = o.clone().addScaledVector(d, hit.t)
     // The bloom, like the sewer's nightmare flower, only takes the sparkle pop.
@@ -450,6 +450,7 @@ const townSkillWorld: SkillWorld = {
         z: p.z,
         r: foe.kind === 'bloom' ? 1.4 : 0.55,
         tone: foe.kind === 'bloom' ? 'boss' : foe.elite ? 'elite' : 'n',
+        maxHp: foe.maxHp,
         hit: (amount, dx, dz, knock, slow) => {
           chill(foe, slow)
           return combat.strikeFoe(foe, amount, new Vector3(dx, 0, dz), 1 + knock)
