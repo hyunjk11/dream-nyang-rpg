@@ -161,7 +161,10 @@ const fs = require('fs')
     })
   }
   const frac = (before, after) => before.map((t, i) => +(((t.hp - (after[i]?.hp ?? 0)) / t.max) * 100).toFixed(1))
-  const shoot = async () => { const bx = await box(); await p.mouse.move(bx.x + bx.width / 2, bx.y + bx.height / 2); await p.mouse.down(); await p.waitForTimeout(60); await p.mouse.up(); await p.waitForTimeout(500) }
+  const shoot = async () => { const bx = await box(); await p.mouse.move(bx.x + bx.width / 2, bx.y + bx.height / 2)
+    // 잠기지 않은 첫 클릭은 포인터 잠금만 잡고 쏘지 않는다 (게임 규칙) → 먼저 잠그고 쏜다.
+    if (!(await p.evaluate(() => !!document.pointerLockElement))) { await p.mouse.down(); await p.mouse.up(); await p.waitForTimeout(300) }
+    await p.mouse.down(); await p.waitForTimeout(60); await p.mouse.up(); await p.waitForTimeout(500) }
   const KEYS = { bomb: 'Digit1', overdrive: 'Digit2', rush: 'Digit3', aura: 'Digit4' }
   const damageTests = async (where, tones) => {
     const learned = await p.evaluate(() => { const s = window.__slice, b = s.game.save.build; const before = { ...(b?.ranks || {}) }; return before })
