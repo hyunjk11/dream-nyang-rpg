@@ -14,11 +14,12 @@ import {
   Vector3,
 } from 'three'
 import { SwapPool } from './pool'
+import { POINT_GUARD, POINT_GUARD_FRAG } from './safeframe'
 
 /** Pure particle step so tests can hold the motion: drag, gravity, then fade by life. */
 export function stepParticle(p: { x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number; life: number; drag: number; gravity: number }, dt: number): boolean {
   p.age += dt
-  if (p.age >= p.life) return false
+  if (!(p.age < p.life)) return false
   const keep = Math.max(0, 1 - p.drag * dt)
   p.vx *= keep
   p.vz *= keep
@@ -26,6 +27,8 @@ export function stepParticle(p: { x: number; y: number; z: number; vx: number; v
   p.x += p.vx * dt
   p.y += p.vy * dt
   p.z += p.vz * dt
+  // A NaN anywhere (a bad spawn point or velocity) retires the particle instead of drawing it.
+  if (!Number.isFinite(p.x + p.y + p.z + p.vx + p.vy + p.vz)) return false
   if (p.y < 0.02) {
     p.y = 0.02
     p.vy = Math.abs(p.vy) * 0.3
@@ -35,6 +38,7 @@ export function stepParticle(p: { x: number; y: number; z: number; vx: number; v
 
 /** Alpha over a particle's life: a quick pop in, a long soft fade out. */
 export function particleAlpha(age: number, life: number): number {
+  if (!(life > 0) || !Number.isFinite(age)) return 0
   const t = Math.min(1, Math.max(0, age / life))
   return Math.min(1, t * 10) * (1 - t) * (1 - t)
 }
@@ -100,16 +104,19 @@ varying float vAlpha;
 varying float vShape;
 varying vec3 vColor;
 uniform float uScale;
+${POINT_GUARD}
 void main() {
   vAlpha = aAlpha;
   vShape = aShape;
   vColor = aColor;
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  gl_PointSize = aSize * uScale / -mv.z;
+  // Capped size and a near-camera fade: a spark at the lens is no longer a screen-sized square.
+  gl_PointSize = guardPoint(aSize * uScale, mv);
   gl_Position = projectionMatrix * mv;
 }`
 
 const FRAG = /* glsl */ `
+${POINT_GUARD_FRAG}
 varying float vAlpha;
 varying float vShape;
 varying vec3 vColor;
@@ -120,8 +127,10 @@ void main() {
   // Four-point star: thin cross plus a bright core.
   float star = max(smoothstep(0.22, 0.0, abs(p.x) * (0.4 + abs(p.y) * 3.0)), smoothstep(0.22, 0.0, abs(p.y) * (0.4 + abs(p.x) * 3.0)));
   star = max(star, smoothstep(0.45, 0.0, d));
-  float a = mix(dot, star, step(0.5, vShape)) * vAlpha;
-  if (a < 0.01) discard;
+  float a = mix(dot, star, step(0.5, vShape)) * vAlpha * vNearFade;
+  // NaN alpha fails every comparison: discard it too.
+  if (!(a >= 0.01)) discard;
+  a = min(a, 1.0);
   gl_FragColor = vec4(vColor * (1.0 + step(0.5, vShape) * 0.6), a);
 }`
 
@@ -190,6 +199,7 @@ export class Vfx {
   }
 
   burst(at: Vector3, color: number, o: BurstOptions = {}): void {
+    if (!Number.isFinite(at.x + at.y + at.z)) return
     const want = o.count ?? 10
     // Adaptive quality thins bursts but never drops one entirely.
     const count = this.density >= 1 ? want : Math.max(want > 0 ? 1 : 0, Math.round(want * this.density))
@@ -197,7 +207,7 @@ export class Vfx {
     const speed = o.speed ?? 2.6
     const spread = o.spread ?? 0
     const up = o.up ?? 1.6
-    const life = o.life ?? 0.45
+    const life = Math.max(0.05, o.life ?? 0.45)
     const size = o.size ?? 0.16
     for (let i = 0; i < count; i += 1) {
       const p = this.parts.spawn()
@@ -248,6 +258,11 @@ export class Vfx {
   }
 
   private ringAt(x: number, y: number, z: number, color: number, from: number, to: number, life: number, alpha = 0.85): void {
+    if (!Number.isFinite(x + y + z + from + to + life)) return
+    // Never a zero scale (a singular matrix) and never a zero life (0/0 opacity).
+    from = Math.max(0.01, from)
+    to = Math.max(0.01, to)
+    life = Math.max(0.05, life)
     let mesh: Mesh
     if (this.rings.length >= RING_CAP) {
       const old = this.rings.shift() as Ring
@@ -291,7 +306,7 @@ export class Vfx {
     }
     disc.visible = true
     disc.position.set(x, 0.035, z)
-    const p = Math.min(1, Math.max(0, progress))
+    const p = Number.isFinite(progress) ? Math.min(1, Math.max(0, progress)) : 0
     disc.scale.setScalar(radius * (0.25 + 0.75 * p))
     ;(disc.material as MeshBasicMaterial).opacity = 0.16 + 0.24 * p
     const edge = disc.children[0] as Mesh

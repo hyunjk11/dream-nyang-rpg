@@ -25,8 +25,8 @@ export function cursorWanted(alt: boolean, panelOpen: boolean): boolean {
 }
 
 /** Show the "클릭해서 계속" button: the view is armed, nothing wants the cursor, and the lock is gone. Pure. */
-export function needsRelock(s: { armed: boolean; touch: boolean; locked: boolean; free: boolean; hadLock: boolean; refused: boolean }): boolean {
-  return s.armed && !s.touch && !s.locked && !s.free && s.hadLock && !s.refused
+export function needsRelock(s: { armed: boolean; touch: boolean; locked: boolean; free: boolean; hadLock: boolean; refused: boolean; resumed?: boolean }): boolean {
+  return s.armed && !s.touch && !s.locked && !s.free && s.hadLock && !s.refused && !s.resumed
 }
 
 export function loadAltMode(): AltMode {

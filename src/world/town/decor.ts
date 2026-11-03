@@ -27,6 +27,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { ISLAND_RADIUS, PATH_WIDTH, islandBudget, islandPaths, mulberry32, rimRadius, scatterSpots, type Spot } from './island'
 import { nearFade, outlineInstanced, toon, toonGradient } from '../../core/materials'
 import { CAMERA_FADE_NEAR } from '../../core/camera'
+import { POINT_GUARD, POINT_GUARD_FRAG } from '../../core/safeframe'
 
 /**
  * Dreamy pastel toon island. Every decoration family is one InstancedMesh (or one Points),
@@ -532,13 +533,14 @@ function glowMotes(count: number, time: { value: number }): Points {
     blending: AdditiveBlending,
     uniforms: { uTime: time, uScale: { value: Math.min(window.devicePixelRatio || 1, 1.6) * 220 } },
     vertexShader: `attribute float seed; uniform float uTime; uniform float uScale; varying float vA; varying float vHue;
+      ${POINT_GUARD}
       void main(){ vec3 p = position; float t = uTime * 0.6 + seed;
         p.x += sin(t * 0.7) * 0.35; p.z += cos(t * 0.5) * 0.35; p.y += sin(t * 1.3) * 0.18;
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         vA = 0.55 + 0.45 * sin(uTime * 2.2 + seed * 3.0); vHue = fract(seed * 0.37);
-        gl_PointSize = uScale * (0.05 + 0.03 * vA) / -mv.z; gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: `varying float vA; varying float vHue;
-      void main(){ vec2 d = gl_PointCoord - 0.5; float r = length(d); float a = smoothstep(0.5, 0.0, r);
+        gl_PointSize = guardPoint(uScale * (0.05 + 0.03 * vA), mv); gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `varying float vA; varying float vHue; ${POINT_GUARD_FRAG}
+      void main(){ vec2 d = gl_PointCoord - 0.5; float r = length(d); float a = smoothstep(0.5, 0.0, r) * vNearFade; if (!(a >= 0.004)) discard;
         vec3 c = mix(vec3(1.0, 0.95, 0.7), vec3(1.0, 0.78, 0.92), vHue); gl_FragColor = vec4(c * a * vA, a * vA); }`,
   })
   const points = new Points(geo, mat)

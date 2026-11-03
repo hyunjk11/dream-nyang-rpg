@@ -19,6 +19,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
+import { SANITIZE_SHADER, allFinite } from './safeframe'
 import { LOOK } from './look'
 import { buildIsland } from '../world/town/decor'
 import { toon } from './materials'
@@ -105,6 +107,8 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     })
     composer = new EffectComposer(renderer, target)
     composer.addPass(new RenderPass(scene, camera))
+    // 화면 깨짐 방지: a NaN/Inf pixel (or a blown-out HDR one) never reaches the bloom mips.
+    composer.addPass(new ShaderPass(SANITIZE_SHADER))
     const bloom = new UnrealBloomPass(new Vector2(window.innerWidth, window.innerHeight), LOOK.bloom.strength, LOOK.bloom.radius, LOOK.bloom.threshold)
     composer.addPass(bloom)
     composer.addPass(new OutputPass())
@@ -113,6 +117,9 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   const basePr = renderer.getPixelRatio()
   let shadowEvery = 1
   let frameNo = 0
+  // Last camera pose with finite numbers: a NaN pose (a bad aim vector) blanks the whole frame.
+  const goodPos = camera.position.clone()
+  const goodQuat = camera.quaternion.clone()
 
   const resize = () => {
     const width = window.innerWidth
@@ -167,6 +174,15 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       island.tick(performance.now() / 1000)
       renderer.info.reset()
       if (shadowEvery > 1 && frameNo++ % shadowEvery === 0) renderer.shadowMap.needsUpdate = true
+      camera.updateMatrixWorld()
+      if (allFinite(camera.matrixWorld.elements)) {
+        goodPos.copy(camera.position)
+        goodQuat.copy(camera.quaternion)
+      } else {
+        camera.position.copy(goodPos)
+        camera.quaternion.copy(goodQuat)
+        camera.updateMatrixWorld()
+      }
       if (composer) composer.render()
       else renderer.render(scene, camera)
       calls = renderer.info.render.calls

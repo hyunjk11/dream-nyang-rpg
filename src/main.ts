@@ -15,7 +15,7 @@ import { Shooter, type ShotWorld } from './combat/shooter'
 import { TPS, loadSens, rayCapsule, setSens, SENS, type AimTarget } from './core/tps'
 import { WALK_RADIUS } from './world/town/island'
 import { Hero } from './actors/hero'
-import { autoRunOn, onAutoRun, setAutoRun, axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, installInput, pad, relockView, runningHeld, shoulder, syncCursor } from './core/input'
+import { autoRunOn, onAutoRun, setAutoRun, axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, gestureActive, installInput, pad, resumeView, runningHeld, shoulder, syncCursor } from './core/input'
 import { ALT_LABEL, cursor, installAlt, saveAltMode, setAlt } from './core/cursor'
 import { aimZone, hudArena, installLayout, placePocket } from './ui/layout'
 import { installTooltips } from './ui/tooltip'
@@ -1254,7 +1254,19 @@ altBtn?.addEventListener('click', () => {
   toast(cursor.mode === 'hold' ? 'Alt를 누르는 동안 마우스 커서가 나와.' : 'Alt를 한 번 누르면 커서가 나오고, 다시 누르면 들어가.', 'info')
 })
 const relockBtn = document.getElementById('relock')
-relockBtn?.addEventListener('click', () => relockView())
+// One press resumes: pointerdown (the bobbing button can slide out from under a slow click), and the
+// lock is asked for inside this same gesture. Keyboard activation (click with detail 0) works too.
+relockBtn?.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) return
+  event.preventDefault()
+  resumeView()
+  relockBtn.classList.add('hidden')
+})
+relockBtn?.addEventListener('click', (event) => {
+  if (event.detail !== 0) return
+  resumeView()
+  relockBtn.classList.add('hidden')
+})
 const shown = (id: string) => {
   const el = document.getElementById(id)
   return !!el && !el.classList.contains('hidden')
@@ -1403,6 +1415,8 @@ function resumeGame(): void {
 
 function beginPlay(): void {
   mode = 'play'
+  // 이어하기 / 눈을 뜬다 is the click: take the view lock with it, no extra click on the game.
+  if (gestureActive() && !stage.touch) resumeView()
   armTown()
   applyBuild()
   hero.hp = hero.maxHp
