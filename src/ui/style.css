@@ -808,3 +808,50 @@ body.compact .set-group { width: auto; }
 .inv-lines { list-style: none; padding-left: 0; display: flex; flex-wrap: wrap; gap: 3px 4px; line-height: 1.35; }
 .inv-lines li { flex: 1 1 100%; padding: 2px 8px; border-radius: 8px; background: rgba(243, 233, 246, 0.6); word-break: keep-all; }
 .inv-lines li:nth-child(-n + 2) { flex: 0 0 auto; padding: 1px 9px; border-radius: 999px; background: #efe4f2; font: 12px "Jua", sans-serif; color: #7a5a8a; }
+
+/* ---- 퀘스트 정리: one tracker (메인 on top, max 3 rows), the old island tracker and guide chip folded into it. */
+#tracker { display: none !important; }
+#guide-chip { display: none !important; }
+#contract-hud > div.q { display: grid; grid-template-columns: auto 1fr auto; column-gap: 6px; row-gap: 1px; align-items: baseline; padding: 6px 10px; border-left: 3px solid #d8c8ec; max-width: 270px; }
+#contract-hud > div.q b { grid-row: 1; margin: 0; font-size: 11px; padding: 0 6px; border-radius: 999px; background: #f1e6fb; color: #7b55d6; }
+#contract-hud > div.q .qt { grid-row: 1; font: 400 13px "Jua", sans-serif; color: #4a3358; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#contract-hud > div.q .ql { grid-column: 1 / 3; grid-row: 2; font-size: 12px; color: #6a5878; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#contract-hud > div.q em { grid-column: 3; grid-row: 1 / 3; align-self: center; font: 400 13px "Jua", sans-serif; font-style: normal; color: #b0609a; }
+#contract-hud > div.q.main { border-left-color: #ff8cc6; background: rgba(255, 244, 250, 0.95); box-shadow: 0 2px 0 rgba(58, 36, 72, 0.12); }
+#contract-hud > div.q.main b { background: #ff8cc6; color: #fff; }
+#contract-hud > div.q.main .qt { font-size: 14px; color: #8a3f78; }
+#contract-hud > div.q.story { border-left-color: #a98ff0; }
+#contract-hud > div.q.bounty { border-left-color: #f2b860; }
+#contract-hud > div.q.bounty b { background: #fff0d6; color: #a86a10; }
+#contract-hud > div.q.done { background: rgba(255, 240, 196, 0.96); }
+#contract-hud > div.q.done .ql { color: #8a5a00; font-weight: 600; }
+#contract-hud > div.q.pin .qt::before { content: "📌 "; font-size: 11px; }
+#contract-hud > div.q.more { display: block; padding: 3px 10px; font-size: 11px; color: #6a5878; background: rgba(255, 248, 252, 0.7); border-left: 0; text-align: right; }
+@media (max-width: 600px), (max-height: 520px) {
+  body.compact #contract-hud:not(.open) > #quest-main { display: grid; }
+  body.compact #contract-hud > div.q { max-width: min(210px, calc(100vw - 28px)); padding: 4px 8px; }
+  body.compact #contract-hud > div.q .qt { font-size: 12px; }
+  body.compact #contract-hud > div.q .ql { font-size: 11px; }
+}
+/* 퀘스트 수첩 */
+#quest-body .qtabs { display: flex; gap: 6px; margin-bottom: 10px; }
+#quest-body .qtab { flex: 1; padding: 7px 0; border-radius: 999px; border: 2px solid #ecd6f2; background: #fff; color: #8a4fb0; font: 400 15px "Jua", sans-serif; cursor: pointer; }
+#quest-body .qtab.on { background: #ff8cc6; border-color: #ff8cc6; color: #fff; }
+#quest-body .qtab i { font-style: normal; font-size: 12px; opacity: 0.8; }
+#quest-body .qlist { max-height: min(56vh, 460px); overflow-y: auto; }
+#quest-body article.q { border-left: 4px solid #d8c8ec; }
+#quest-body article.q.main { border-left-color: #ff8cc6; }
+#quest-body article.q.bounty { border-left-color: #f2b860; }
+#quest-body article.q.done { background: #fff3d2; }
+#quest-body h3 { align-items: center; gap: 8px; }
+#quest-body p { display: flex; justify-content: space-between; gap: 8px; }
+#quest-body p em { font-style: normal; color: #b0609a; font-weight: 700; white-space: nowrap; }
+#quest-body p em.qready { color: #a86a10; }
+#quest-body .qpin { flex: none; padding: 2px 8px; border-radius: 999px; border: 1px solid #e3cde9; background: #fff; color: #8a7898; font-size: 12px; cursor: pointer; }
+#quest-body .qpin.on { background: #fff0d6; border-color: #f2b860; color: #a86a10; }
+#quest-body .qturn { color: #a07ab8; }
+#quest-body .qempty { color: #8a7898; justify-content: center; padding: 12px 0; }
+#quest-body details.qdone { margin-top: 6px; border-radius: 12px; background: #f4f0f6; padding: 6px 10px; }
+#quest-body details.qdone summary { cursor: pointer; color: #8a7898; font-size: 13px; }
+#quest-body details.qdone div { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 12px; opacity: 0.75; }
+#quest-body .qfoot { display: block; margin-top: 8px; color: #a090b0; font-size: 11px; text-align: center; }

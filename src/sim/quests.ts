@@ -31,7 +31,7 @@ export function objectiveLine(save: SaveData, questId: string, objective: Object
   return `${objective.label} ${value}/${objective.count}`
 }
 
-function rewardText(rewards: QuestRewards): string {
+export function rewardText(rewards: QuestRewards): string {
   const bits: string[] = []
   if (rewards.gold) bits.push(`골드 ${rewards.gold}`)
   if (rewards.xp) bits.push(`경험치 ${rewards.xp}`)
