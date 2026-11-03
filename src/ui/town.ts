@@ -198,6 +198,7 @@ export class TownUI {
     }
     fillCell(b, item, this.host.save())
     b.dataset.from = from
+    b.dataset.uid = item.uid
     if (plusOf(item) > 0) b.append(el('small', 'plus', `+${plusOf(item)}`))
     if (price !== undefined) b.append(el('small', 'price', sold ? '팔림' : `${price}`))
     if (sold) b.classList.add('sold')
