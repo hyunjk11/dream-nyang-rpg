@@ -32,6 +32,7 @@ import {
 import { toonGradient } from '../../core/materials'
 import { CEILING, TILE, Tile, distances, tileCentre, walkable, type Maze } from './maze'
 import { wallFaces } from './walls'
+import { POINT_GUARD, POINT_GUARD_FRAG } from '../../core/safeframe'
 
 /**
  * The dream dressing of the sewer: glowing pastel water that flows toward the boss (the floor
@@ -225,6 +226,7 @@ attribute float seed;
 varying float vSeed;
 #include <common>
 #include <fog_pars_vertex>
+${POINT_GUARD}
 void main() {
   vSeed = seed;
   vec3 p = position;
@@ -234,13 +236,14 @@ void main() {
   p.z += cos(time * 1.1 + seed * 31.0) * 0.18;
   vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mvPosition;
-  gl_PointSize = scale * (0.07 + 0.09 * fract(seed * 13.1)) / -mvPosition.z * (1.0 - smoothstep(0.85, 1.0, rise));
+  gl_PointSize = guardPoint(scale * (0.07 + 0.09 * fract(seed * 13.1)) * (1.0 - smoothstep(0.85, 1.0, rise)), mvPosition);
   #include <fog_vertex>
 }
 `
 
 const BUBBLE_FRAG = /* glsl */ `
 varying float vSeed;
+${POINT_GUARD_FRAG}
 #include <common>
 #include <fog_pars_fragment>
 void main() {
@@ -250,7 +253,8 @@ void main() {
   float rim = smoothstep(0.32, 0.5, d) * (1.0 - smoothstep(0.47, 0.5, d));
   float glint = smoothstep(0.12, 0.0, length(c - vec2(-0.14, -0.14)));
   vec3 tint = mix(vec3(0.75, 0.95, 1.0), vec3(1.0, 0.78, 0.95), fract(vSeed * 5.3));
-  gl_FragColor = vec4(tint * 1.4 + glint, rim * 0.8 + glint + 0.06);
+  gl_FragColor = vec4(tint * 1.4 + glint, (rim * 0.8 + glint + 0.06) * vNearFade);
+  if (!(gl_FragColor.a >= 0.004)) discard;
   #include <colorspace_fragment>
   #include <fog_fragment>
 }

@@ -15,7 +15,7 @@ import { Shooter, type ShotWorld } from './combat/shooter'
 import { TPS, loadSens, rayCapsule, setSens, SENS, type AimTarget } from './core/tps'
 import { WALK_RADIUS } from './world/town/island'
 import { Hero } from './actors/hero'
-import { autoRunOn, onAutoRun, setAutoRun, axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, installInput, pad, relockView, runningHeld, shoulder, syncCursor } from './core/input'
+import { autoRunOn, onAutoRun, setAutoRun, axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, gestureActive, installInput, pad, resumeView, runningHeld, shoulder, syncCursor } from './core/input'
 import { ALT_LABEL, cursor, installAlt, saveAltMode, setAlt } from './core/cursor'
 import { aimZone, hudArena, installLayout, placePocket } from './ui/layout'
 import { installTooltips } from './ui/tooltip'
@@ -35,7 +35,7 @@ import { DETAIL, Quality } from './core/quality'
 import type { DungeonRun } from './world/dungeon/run'
 import { Portal } from './world/dungeon/portal'
 import { WaypointView } from './world/waypoint-view'
-import { WAYPOINT_REACH, distanceText, goalForContract, goalForQuest, trailDots, type Waypoint, type WaypointGoal } from './sim/waypoint'
+import { WAYPOINT_REACH, distanceText, fieldQuestWay, goalForContract, trailDots, type FieldLeg, type Waypoint, type WaypointGoal } from './sim/waypoint'
 import { Delve, delveOf, fieldPlan, itemLevelFor, portalChoices, type DelveEnd, type DelveSummary, type FloorPlan } from './sim/delve'
 import { floorStateLabel, type FloorState } from './sim/floorsnap'
 import { showSummary } from './ui/summary'
@@ -439,8 +439,8 @@ function rimDistance(ox: number, oz: number, dx: number, dz: number, r: number, 
   return Math.max(0, Math.min(max, t / l))
 }
 const townSkillWorld: SkillWorld = {
-  // Town foes have TOWN.hp (11) against the sewer's 9 (fix/boss-floor skill rescale).
-  power: SKILL_POWER * (DIFFICULTY.town.hp / DIFFICULTY.horde.hp),
+  // Skills keep their old island numbers (town hp 11 vs the sewer's 9) while the tutorial foes got softer.
+  power: SKILL_POWER * (DIFFICULTY.town.skillHp / DIFFICULTY.horde.hp),
   // Landmarks and the island's rim both stop skills: Mochi's rush no longer runs off into the sea.
   solid: (ox, oy, oz, dx, dy, dz, max) => Math.min(townRay(ox, oy, oz, dx, dy, dz, max), rimDistance(ox, oz, dx, dz, WALK_RADIUS - 0.4, max)),
   bodies: () => {
@@ -679,6 +679,8 @@ let wpGoal: { x: number; z: number } | null = null
 let wpLine: { x: number; z: number }[] = []
 let wpClock = 0
 let wpTile = ''
+/** Standing at a 별문 leg of the guide (its toast shown once). */
+let wpLeg = false
 
 /** Track (or untrack, on a second click) one tracker row. */
 function setWaypoint(next: Waypoint | null): void {
@@ -703,7 +705,10 @@ function waypointFor(id: string): Waypoint | null {
   const quest = CHAPTER2.find((d) => d.id === id)
   if (quest) {
     const row = questHud(game.save).find((q) => q.id === id)
-    return { id, label: quest.title, goal: goalForQuest(quest.kind, quest.target, !!row?.done, !!run) }
+    if (!row) return null
+    const leg: FieldLeg = !run ? 'island' : delve?.plan.objective === 'field' ? 'field' : inMongsil() ? 'mongsil' : 'elsewhere'
+    const way = fieldQuestWay(quest.kind, quest.target, row.done, leg, quest.title)
+    return { id, label: way.label, goal: way.goal }
   }
   const c = activeContracts(game.save).find((k) => k.id === id)
   if (!c) return null
@@ -731,7 +736,9 @@ function refreshWaypoint(force = false): void {
   }
   waypoint = fresh
   if (run) {
-    const g = waypoint.goal.kind === 'board' || waypoint.goal.kind === 'gate' || waypoint.goal.kind === 'return' ? ({ kind: 'exit' } as const) : waypoint.goal
+    // 몽실 마을 has its own board and 별문 (spots); other floors send her to the way out.
+    const k = waypoint.goal.kind
+    const g = (k === 'board' || k === 'gate' || k === 'return') && !run.spots.some((sp) => sp.id === k) ? ({ kind: 'exit' } as const) : waypoint.goal
     wpGoal = run.goalPoint(g, p.x, p.z)
     const tile = `${Math.round(p.x / 2)},${Math.round(p.z / 2)}`
     if (wpGoal && (force || tile !== wpTile || wpLine.length < 2)) {
@@ -776,10 +783,16 @@ function waypointFrame(dt: number): void {
   const p = hero.object.position
   if (wpLine.length >= 2) wpLine[0] = { x: p.x, z: p.z }
   if (wpGoal && Math.hypot(wpGoal.x - p.x, wpGoal.z - p.z) < WAYPOINT_REACH) {
-    toast(`도착! ${waypoint.label}`, 'quest')
-    setWaypoint(null)
-    return
-  }
+    // A 별문 / way-out leg is only a stop on the way: keep the guide on for the next area.
+    if (waypoint.goal.kind === 'gate' || waypoint.goal.kind === 'exit') {
+      if (!wpLeg) toast(`도착! ${waypoint.label.split(' · ').slice(1).join(' · ') || waypoint.label}`, 'quest')
+      wpLeg = true
+    } else {
+      toast(`도착! ${waypoint.label}`, 'quest')
+      setWaypoint(null)
+      return
+    }
+  } else wpLeg = false
   const time = performance.now() / 1000
   waypointView.show(wpGoal ? trailDots(wpLine, 1.4, 16, (time * 1.8) % 1.4) : [], wpGoal, time)
 }
@@ -1254,7 +1267,19 @@ altBtn?.addEventListener('click', () => {
   toast(cursor.mode === 'hold' ? 'Alt를 누르는 동안 마우스 커서가 나와.' : 'Alt를 한 번 누르면 커서가 나오고, 다시 누르면 들어가.', 'info')
 })
 const relockBtn = document.getElementById('relock')
-relockBtn?.addEventListener('click', () => relockView())
+// One press resumes: pointerdown (the bobbing button can slide out from under a slow click), and the
+// lock is asked for inside this same gesture. Keyboard activation (click with detail 0) works too.
+relockBtn?.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) return
+  event.preventDefault()
+  resumeView()
+  relockBtn.classList.add('hidden')
+})
+relockBtn?.addEventListener('click', (event) => {
+  if (event.detail !== 0) return
+  resumeView()
+  relockBtn.classList.add('hidden')
+})
 const shown = (id: string) => {
   const el = document.getElementById(id)
   return !!el && !el.classList.contains('hidden')
@@ -1403,6 +1428,8 @@ function resumeGame(): void {
 
 function beginPlay(): void {
   mode = 'play'
+  // 이어하기 / 눈을 뜬다 is the click: take the view lock with it, no extra click on the game.
+  if (gestureActive() && !stage.touch) resumeView()
   armTown()
   applyBuild()
   hero.hp = hero.maxHp

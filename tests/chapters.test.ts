@@ -26,6 +26,7 @@ import { Horde } from '../src/world/dungeon/horde'
 import { Tile, rng, tileCentre } from '../src/world/dungeon/maze'
 import { summaryLines } from '../src/ui/summary'
 import type { SaveData } from '../src/sim/types'
+import { dreamOf } from '../src/sim/dreamstory'
 
 const seeded = (n = 7) => rng(n)
 
@@ -172,6 +173,8 @@ describe('챕터 2 몽실 들판 퀘스트', () => {
   const open = () => {
     const save = freshSave()
     skipGuide(save)
+    // 몽실 들판's only door is 몽실 마을's 별문: past the 꿈 미로.
+    dreamOf(save).maze.passed = true
     return save
   }
 

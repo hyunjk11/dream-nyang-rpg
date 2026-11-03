@@ -70,6 +70,8 @@ export const shoulder = {
 let lockRefused = false
 /** Once a lock has worked, a later refusal (Chrome's re-lock cooldown after Esc) is temporary. */
 let everLocked = false
+/** "클릭해서 계속" was clicked: play goes on even if the browser turned the lock down this time. */
+let resumed = false
 let fireFinger = -1
 let lockedAt = 0
 const refuse = () => {
@@ -79,6 +81,8 @@ if (typeof document !== 'undefined') {
   document.addEventListener('pointerlockchange', () => {
     lockedAt = performance.now()
     if (document.pointerLockElement) everLocked = true
+    // Losing the lock (Esc, a tab switch) asks for a fresh "클릭해서 계속".
+    else resumed = false
   })
   document.addEventListener('pointerlockerror', refuse)
 }
@@ -108,9 +112,26 @@ function requestLock(canvas: HTMLCanvasElement): void {
   }
 }
 
-/** Take the view lock again (the "클릭해서 계속" button, the end of a free-cursor spell). */
+/** Take the view lock again (the end of a free-cursor spell). */
 export function relockView(): void {
   if (view && !lockRefused && !shoulder.locked) requestLock(view)
+}
+
+/**
+ * One click on "클릭해서 계속" (or the start buttons): play resumes right away and the lock is asked
+ * for in the same handler, so it rides this very gesture. If the browser says no (Chrome's re-lock
+ * cooldown right after Esc), play still resumes; the next click on the view takes the lock.
+ */
+export function resumeView(): void {
+  resumed = true
+  lockAsked = 0
+  relockView()
+}
+
+/** May the lock be asked for now? Only inside a user gesture; a refused first ask would mark the browser as lock-less. */
+export function gestureActive(): boolean {
+  const ua = typeof navigator === 'undefined' ? undefined : (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation
+  return !!ua?.isActive
 }
 
 let wasFree = false
@@ -125,12 +146,13 @@ export function syncCursor(armed: boolean, touch: boolean): boolean {
   const locked = shoulder.locked
   if (free && locked) document.exitPointerLock?.()
   if (free && fireFinger < 0) pad.fire = false
+  if (free && !wasFree) resumed = false
   if (wasFree && !free && armed && !touch && everLocked && !locked) relockView()
   wasFree = free
   const body = document.body.classList
   if (body.contains('cursor-free') === (touch || locked)) body.toggle('cursor-free', !touch && !locked)
   const pending = performance.now() - lockAsked < 400
-  return !pending && needsRelock({ armed, touch, locked, free, hadLock: everLocked, refused: lockRefused })
+  return !pending && needsRelock({ armed, touch, locked, free, hadLock: everLocked, refused: lockRefused, resumed })
 }
 
 let mapClick = false
@@ -180,8 +202,11 @@ export function installInput(canvas: HTMLCanvasElement): void {
         }
         return
       }
-      if (clickAction(shoulder.locked, lockRefused) === 'lock') requestLock(canvas)
-      else pad.fire = true
+      if (clickAction(shoulder.locked, lockRefused) === 'lock') {
+        // Same rule as the button: this click resumes, whatever the browser says about the lock.
+        resumed = true
+        requestLock(canvas)
+      } else pad.fire = true
       return
     }
     // Fingers: the right part of the screen is the look pad (the stick and buttons sit on top).

@@ -102,8 +102,13 @@ export const DIFFICULTY = {
     deathGoldLoss: 0.3,
   },
   /** Island town foes (multipliers on FOE_SPECS). */
-  /** hp was 1.8 (a slime in 0.4 s): now ~2.5 s with the starter gun; the bloom gets bossHp on top (~55-70 s). */
-  town: { hp: 11, bossHp: 2.5, damage: 0.32, speed: 0.9, windup: 1.3 },
+  /**
+   * 챕터 1 튜토리얼 지역 (몽환의 숲 · 버섯 골짜기 · 별빛 제단). hp 11 made a slime a 2.7 s chew and an
+   * elite ~10 s: far too much for the guide. Now, with the starter gun (137 DPS): normals 0.55-0.9 s,
+   * elites (×elite) 4.6-5.4 s, the altar's bloom (×bossHp) ~25 s. skillHp keeps the skills' town
+   * numbers where they were. The sewer, its boss floors and the 꿈 미로 use DIFFICULTY.horde, not this.
+   */
+  town: { hp: 3, elite: 6.8, bossHp: 4.9, skillHp: 11, damage: 0.32, speed: 0.9, windup: 1.3 },
 } as const
 
 /** Sewer wave size for wave n (1-based). */
