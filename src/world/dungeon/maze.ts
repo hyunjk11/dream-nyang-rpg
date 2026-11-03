@@ -15,6 +15,8 @@ export const Tile = {
   Chamber: 2,
   Start: 3,
   Boss: 4,
+  /** 몽실 들판's river: blocks walking (her and the horde) but not shots or sight over it. */
+  Water: 5,
 } as const
 export type Tile = (typeof Tile)[keyof typeof Tile]
 
@@ -44,6 +46,25 @@ export interface Maze {
   bossRoom: Rect
   chambers: Rect[]
   nests: Nest[]
+  /** 몽실 들판 only: the river's crossings (tiles that stay walkable over the water). */
+  river?: RiverInfo
+}
+
+export interface Crossing {
+  /** First tile (west end) of the crossing row, its length in tiles, rows = 2 (y, y + 1). */
+  x: number
+  y: number
+  len: number
+  kind: 'bridge' | 'stones'
+}
+
+export interface RiverInfo {
+  crossings: Crossing[]
+}
+
+/** Tiles nobody walks into: walls and water. */
+export function blocksWalk(t: number): boolean {
+  return t === Tile.Solid || t === Tile.Water
 }
 
 /** Small, fast seeded PRNG (mulberry32). */
@@ -156,7 +177,7 @@ export function generateMaze(seed: number, cellsW = 9, cellsH = 9, bossSize = 5,
 }
 
 export function walkable(maze: Maze, x: number, y: number): boolean {
-  return x >= 0 && y >= 0 && x < maze.w && y < maze.h && maze.tiles[y * maze.w + x] !== Tile.Solid
+  return x >= 0 && y >= 0 && x < maze.w && y < maze.h && !blocksWalk(maze.tiles[y * maze.w + x])
 }
 
 /** Tile centre in world metres; the maze is centred on the origin. */
@@ -185,7 +206,7 @@ export function distances(tiles: Uint8Array, w: number, h: number, sx: number, s
       const ny = y + dy
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
       const j = ny * w + nx
-      if (tiles[j] === Tile.Solid || dist[j] >= 0) continue
+      if (blocksWalk(tiles[j]) || dist[j] >= 0) continue
       dist[j] = dist[i] + 1
       queue[tail++] = j
     }

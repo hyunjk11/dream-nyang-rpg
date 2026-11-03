@@ -17,7 +17,7 @@ import { computeStats, type ComputedStats } from '../sim/stats'
 import { BAG_CAP, EQUIP_SLOTS, RARITY_KO, SLOT_KO, type EquipSlot, type ItemInstance, type SaveData } from '../sim/types'
 import { LEVEL_CAP } from '../data/tree'
 import { skillSvg } from './skillicons'
-import { bestUpgrades, junkIds, needsConfirm, sortBag } from '../sim/qol'
+import { bestUpgrades, junkIds, junkPartIds, junkToast, needsConfirm, sortBag } from '../sim/qol'
 
 export type InvTab = 'bag' | 'skills'
 
@@ -297,10 +297,10 @@ export class InventoryUI {
     add('inv-sort', '정렬', '가방 정렬\n부위 → 희귀도 → 파워 순으로', () => this.sortNow())
     const ups = bestUpgrades(save)
     add('inv-best', `좋은 장비 입기${ups.length ? ` (${ups.length})` : ''}`, '좋은 장비 입기\n▲ 표시된 것 중 부위마다 가장 센 걸 한 번에 장착 (총은 그대로)', () => this.wearBest(), !ups.length)
-    const junk = junkIds(save)
+    const junk = [...junkIds(save), ...junkPartIds(save)]
     const gold = junk.reduce((sum, id) => sum + sellValue(findItem(save, id)!), 0)
     const town = this.host.inTown()
-    add('inv-junk', town ? `잡동사니 판매${junk.length ? ` ${junk.length}개 +${gold}` : ''}` : '잡동사니 판매 (마을에서)', '잡동사니 판매\n일반·고급 장비 중 ▲가 아닌 것을 한 번에 팔아. 희귀 이상은 절대 안 팔아.', () => this.sellJunk(), !town || !junk.length)
+    add('inv-junk', town ? `잡동사니 판매${junk.length ? ` ${junk.length}개 +${gold}` : ''}` : '잡동사니 판매 (마을에서)', '잡동사니 판매\n일반·고급 장비 중 ▲가 아닌 것과, 총에 끼우지 않은 일반·고급 부품을 한 번에 팔아. 희귀 이상·전설·특수 부품·총에 낀 부품은 절대 안 팔아.', () => this.sellJunk(), !town || !junk.length)
   }
 
   /** Sort the bag (QA hook too). */
@@ -333,16 +333,21 @@ export class InventoryUI {
     const save = this.host.save()
     let gold = 0
     let n = 0
-    for (const id of junkIds(save)) {
+    let parts = 0
+    // The loose-part list is taken before any gear is sold: parts that were slotted in a sold junk gun
+    // drop back into the bag and are kept.
+    const loose = junkPartIds(save)
+    for (const id of [...junkIds(save), ...loose]) {
       const r = sellOwned(save, id)
       if (r.ok) {
         gold += r.gold ?? 0
         n += 1
+        if (loose.includes(id)) parts += 1
       }
     }
     if (!n) return
     if (this.picked && !findItem(save, this.picked)) this.picked = null
-    this.host.toast(`잡동사니 ${n}개 판매 · +${gold} 골드`)
+    this.host.toast(junkToast(n - parts, parts, gold))
     this.host.sfx('coin')
     this.host.changed()
     this.render()

@@ -213,9 +213,8 @@ function returnThrough(): void {
     combat.setRoster([])
     combat.places = []
     landmarks.group.visible = false
-    const theme = p.mod.themeOf(trip.plan)
     stage.setWorld('sewer', p.mod.planFog(trip.plan))
-    setMood({ fog: theme.fog, sky: theme.sky, clear: theme.fog })
+    setMood(p.mod.planMood(trip.plan))
     zonePlaces = []
     delve = trip
     delveUnlocked = -1
@@ -250,9 +249,8 @@ async function returnFromSave(kept: FloorState): Promise<void> {
     combat.setRoster([])
     combat.places = []
     landmarks.group.visible = false
-    const theme = mod.themeOf(trip.plan)
     stage.setWorld('sewer', mod.planFog(trip.plan))
-    setMood({ fog: theme.fog, sky: theme.sky, clear: theme.fog })
+    setMood(mod.planMood(trip.plan))
     zonePlaces = []
     delve = trip
     delveUnlocked = -1
@@ -1035,10 +1033,9 @@ function enterField(): void {
     combat.setRoster([])
     combat.places = []
     landmarks.group.visible = false
-    const theme = mod.themeFor(1)
-    // Open sky: the fog sits far back so the packs read across the field.
-    stage.setWorld('sewer', { ...mod.themeFog(1), near: 14, far: 62 })
-    setMood({ fog: theme.fog, sky: theme.sky, clear: theme.fog })
+    // Open day sky (2026-11): the fog sits far back so the packs and the tree line read across the field.
+    stage.setWorld('sewer', mod.planFog(trip.plan))
+    setMood(mod.planMood(trip.plan))
     zonePlaces = []
     delve = trip
     delveUnlocked = -1
@@ -1828,9 +1825,8 @@ function stageTrip(mod: typeof import('./world/dungeon/run'), trip: Delve): void
   combat.places = []
   landmarks.group.visible = false
   const plan = trip.plan
-  const theme = mod.themeOf(plan)
   stage.setWorld('sewer', mod.planFog(plan))
-  setMood({ fog: theme.fog, sky: theme.sky, clear: theme.fog })
+  setMood(mod.planMood(plan))
   zonePlaces = []
   delve = trip
   delveUnlocked = -1

@@ -19,7 +19,7 @@ import type { Hero } from '../../actors/hero'
 import type { Mochi } from '../../actors/mochi'
 import type { Vfx } from '../../core/vfx'
 import { axis, consumeDash, consumeMap, consumeRecall, consumeTalk, pad, runningHeld, shoulder } from '../../core/input'
-import { TILE, Tile, rng, tileCentre, worldToTile, type Maze } from './maze'
+import { TILE, Tile, blocksWalk, rng, tileCentre, worldToTile, type Maze } from './maze'
 import { EXPLORE, floorMaze, planLayout, type Layout } from './layout'
 import { ExploreDirector, type ExploreEvent } from './explore'
 import { CrackedWall, Shrine, StarDoor } from './props'
@@ -49,6 +49,7 @@ import { packSeen, unpackSeen, type FloorState } from '../../sim/floorsnap'
 import type { Drop } from '../../sim/loot'
 import { LootView } from './loot-view'
 import { FIELD, FieldDirector } from './field'
+import { MEADOW, MeadowScenery } from './meadow'
 
 /** Adds the boss calls at two-thirds and one-third health. */
 export const BOSS_ADDS = 4
@@ -178,10 +179,18 @@ export function themeFog(depth: number): { color: number; near: number; far: num
 export function planFog(plan: FloorPlan): { color: number; near: number; far: number } {
   const color = themeOf(plan).fog
   if (plan.objective === 'town') return { color, near: 22, far: 90 }
-  if (plan.objective === 'field') return { color, near: 14, far: 62 }
+  // 몽실 들판 (2026-11): a pastel day sky, fog far enough back to see the tree line across the river.
+  if (plan.objective === 'field') return { color: MEADOW.sky, near: 22, far: 76 }
   return { ...SEWER_FOG, color }
 }
 export { themeOf }
+
+/** Light mood for a plan (fog tint, hemisphere sky, clear colour): the theme's, or 몽실 들판's day sky. */
+export function planMood(plan: FloorPlan): { fog: number; sky: number; clear: number } {
+  if (plan.objective === 'field') return { fog: MEADOW.sky, sky: 0xf2f6ff, clear: MEADOW.sky }
+  const theme = themeOf(plan)
+  return { fog: theme.fog, sky: theme.sky, clear: theme.fog }
+}
 
 /** 달빛 둥지's boss (챕터 2 finale). */
 export const MOTH_NAME = '꿈먹는 밤나방'
@@ -315,6 +324,9 @@ export class DungeonRun {
   hordeMs = 0
   /** 몽실 들판 (챕터 2): the open-field pack director, or null in the sewer. */
   field: FieldDirector | null = null
+  /** 몽실 들판's trees, river and flowers (null elsewhere). */
+  meadow: MeadowScenery | null = null
+  private prevBackground: Scene['background'] = null
   /** 몽실 마을 dressing (objective 'town'), or null. */
   town: MongsilTown | null = null
   /** The 별문 in 몽실 마을 (a spot; the portal is only its look). */
@@ -404,6 +416,22 @@ export class DungeonRun {
       // An open sky over the field: no tunnel roof, and the fog pulls far back.
       const roof = this.sewer.group.getObjectByName('sewer-ceiling')
       if (roof) roof.visible = false
+      // 몽실 들판 dressing: trees stand on the grove and border tiles (the brick walls stay for collision only),
+      // a river, bridges, a ford, flowers, bushes and rocks. No tunnel dressing on a meadow.
+      this.meadow = new MeadowScenery(maze, host.lights <= 2)
+      // A day sky behind the tree line (the camera stops at 80 m: the fog fades to it first).
+      this.prevBackground = host.scene.background
+      host.scene.background = new Color(MEADOW.sky)
+      this.sewer.group.add(this.meadow.group)
+      const walls = this.sewer.group.getObjectByName('sewer-walls')
+      if (walls) walls.visible = false
+      const floor = this.sewer.group.getObjectByName('sewer-floor')
+      if (floor) this.meadow.paintFloor(floor as Mesh)
+      for (const name of ['sewer-water', 'sewer-pipes', 'sewer-moons', 'sewer-star-lamps', 'sewer-lamp-pools', 'sewer-mushroom-stems', 'sewer-mushroom-caps']) {
+        this.decor.group.traverse((o) => {
+          if (o.name === name) o.visible = false
+        })
+      }
     }
     if (this.plan.objective === 'town') {
       // 몽실 마을: open night sky, no foes; the townsfolk and the 별문 are spots.
@@ -645,6 +673,8 @@ export class DungeonRun {
     this.spots.length = 0
     this.gate?.dispose()
     this.town?.dispose()
+    this.meadow?.dispose()
+    if (this.meadow) this.host.scene.background = this.prevBackground
     this.host.hero.boost = 1
     this.stairsPortal.dispose()
     this.hordeView.dispose()
@@ -709,7 +739,7 @@ export class DungeonRun {
     const maze = this.maze
     const a = worldToTile(maze, x, z)
     const b = worldToTile(maze, to.x, to.z)
-    const open = (tx: number, ty: number) => maze.tiles[ty * maze.w + tx] !== Tile.Solid
+    const open = (tx: number, ty: number) => !blocksWalk(maze.tiles[ty * maze.w + tx])
     const tiles = route(maze.w, maze.h, open, a.x, a.y, b.x, b.y)
     if (tiles.length === 0) return { line: [{ x, z }, to], tiles: [], length: Math.hypot(to.x - x, to.z - z) }
     const line = [{ x, z }, ...tiles.slice(1, -1).map((t) => tileCentre(maze, t.x, t.y)), to]
@@ -845,6 +875,7 @@ export class DungeonRun {
     this.stairsPortal.update(this.time)
     this.gate?.update(this.time)
     this.town?.update(this.time, dt)
+    this.meadow?.update(dt)
     this.paintSpots()
     this.mapFoes()
     this.minimap.update(dt, p.x, p.z, this.view.yaw)
@@ -1457,7 +1488,7 @@ export class DungeonRun {
     for (let y = r.y; y < r.y + r.h; y += 1)
       for (let x = r.x; x < r.x + r.w; x += 1) {
         const edge = x === r.x || y === r.y || x === r.x + r.w - 1 || y === r.y + r.h - 1
-        if (!edge || this.maze.tiles[y * this.maze.w + x] === Tile.Solid) continue
+        if (!edge || blocksWalk(this.maze.tiles[y * this.maze.w + x])) continue
         const c = tileCentre(this.maze, x, y)
         if (Math.hypot(c.x - p.x, c.z - p.z) >= 7) spots.push(c)
       }
@@ -1557,7 +1588,7 @@ export class DungeonRun {
       ]) {
         const x = d.x + dx
         const y = d.y + dy
-        if (x < 0 || y < 0 || x >= m.w || y >= m.h || inExit(x, y) || isDoor(x, y) || m.tiles[y * m.w + x] === Tile.Solid) continue
+        if (x < 0 || y < 0 || x >= m.w || y >= m.h || inExit(x, y) || isDoor(x, y) || blocksWalk(m.tiles[y * m.w + x])) continue
         const door = new StarDoor(c.x + dx * (TILE / 2 - 0.15), c.z + dy * (TILE / 2 - 0.15), dy !== 0)
         this.doorMeshes.push(door)
         this.sewer.group.add(door.group)
