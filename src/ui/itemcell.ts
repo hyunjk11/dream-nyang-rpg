@@ -57,6 +57,8 @@ export function nameTitle(tag: 'h3' | 'h4', item: ItemInstance): HTMLElement {
   if (p.suffix) h.append(span('suf', p.suffix), ' ')
   const base = span('base', p.base)
   base.style.color = RARITY_COLOR[item.rarity]
+  // Pale rarities (일반 white) need a soft outline to read on the pastel cards.
+  h.dataset.rarity = item.rarity
   h.append(base)
   if (p.plus) h.append(' ', span('plus', p.plus))
   return h

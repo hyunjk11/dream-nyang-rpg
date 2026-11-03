@@ -802,3 +802,9 @@ body.compact .set-group { width: auto; }
 .set-group > button[aria-pressed="true"] { background: #dff7ec; border-color: #a8e3c6; color: #1f6b48; }
 .set-group > button[aria-pressed]::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: #d6c3e0; vertical-align: 1px; }
 .set-group > button[aria-pressed="true"]::before { background: #35c288; box-shadow: 0 0 0 3px rgba(53, 194, 136, 0.2); }
+/* Item cards: the rarity name reads on pastel, lines are tidy rows not bullets. */
+.item-title .base { -webkit-text-stroke: 0.4px rgba(58, 36, 72, 0.45); paint-order: stroke fill; }
+.item-title[data-rarity="common"] .base { color: #5a4468 !important; -webkit-text-stroke: 0; }
+.inv-lines { list-style: none; padding-left: 0; display: flex; flex-wrap: wrap; gap: 3px 4px; line-height: 1.35; }
+.inv-lines li { flex: 1 1 100%; padding: 2px 8px; border-radius: 8px; background: rgba(243, 233, 246, 0.6); word-break: keep-all; }
+.inv-lines li:nth-child(-n + 2) { flex: 0 0 auto; padding: 1px 9px; border-radius: 999px; background: #efe4f2; font: 12px "Jua", sans-serif; color: #7a5a8a; }
