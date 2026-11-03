@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
 import { HDR_MAX, NEAR_FADE, POINT_MAX_PX, SANITIZE_SHADER, allFinite, pointGuard, safeHdr } from '../src/core/safeframe'
 import { particleAlpha, stepParticle } from '../src/core/vfx'
 import { needsRelock } from '../src/core/cursor'
@@ -12,7 +11,8 @@ import { freshSave } from '../src/sim/mutate'
 import { townFoeHp } from '../src/combat/combat'
 import { DIFFICULTY } from '../src/combat/difficulty'
 
-const src = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8')
+const SOURCES = import.meta.glob(['../src/core/arena.ts', '../src/main.ts', '../src/core/vfx.ts', '../src/world/town/decor.ts', '../src/world/dungeon/dream.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const src = (p: string) => SOURCES[`../${p}`]
 
 describe('화면 깨짐 (검은/흰 사각형) 방지', () => {
   it('HDR 정리: NaN·무한대는 0, 너무 밝은 값은 상한으로', () => {
