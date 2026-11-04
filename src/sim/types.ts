@@ -57,6 +57,8 @@ export interface ItemInstance {
   v?: 2
   /** Gun workshop upgrade level (+1..+10); absent = +0. */
   plus?: number
+  /** 강화 실패 횟수 (이번 단계, 성공하면 0): each adds +10%p to the next try. Absent = 0. */
+  upFails?: number
   /** 총 개조: mod parts slotted into this gun (absent = none; old saves). */
   mods?: ItemInstance[]
   /** 🔒 잠금: fast sell / salvage (one click, modes, bulk) leave it alone. */

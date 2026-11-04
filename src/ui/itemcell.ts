@@ -6,7 +6,7 @@ import { ITEMS, MATERIAL_KO } from '../data/items'
 import { powerVsWorn } from '../sim/inventory'
 import { ilvText, itemLines, itemName, itemNameParts, itemPower, plusOf, upgradeMul } from '../sim/loot'
 import { gunMods, isGun, isMod, modLabel, modSlots, modUpgradeCost, partTier } from '../sim/mods'
-import { MAX_PLUS, upgradeCost } from '../sim/workshop'
+import { MAX_PLUS, upgradeChance, upgradeCost } from '../sim/workshop'
 import { type ItemInstance, type SaveData } from '../sim/types'
 import { isUnique, itemColor, itemRarityKo } from '../sim/rarity'
 import { iconSvg } from './icons'
@@ -47,6 +47,7 @@ export function fillCell(b: HTMLElement, item: ItemInstance, save: SaveData | nu
   // 강화 +N on guns; 개조 칸 (filled/total) under it; a part's 강화 단계 (n/5).
   const plus = plusOf(item)
   if (plus > 0) b.append(span('plus-badge', `+${plus}`))
+  b.classList.toggle('plus-max', plus >= MAX_PLUS)
   if (isGun(item)) {
     const slots = modSlots(item)
     if (slots > 0) b.append(span('sock-badge', `${'●'.repeat(gunMods(item).length)}${'○'.repeat(Math.max(0, slots - gunMods(item).length))}`))
@@ -60,13 +61,18 @@ export function itemTip(item: ItemInstance): string {
   return [itemName(item), `${itemRarityKo(item)} · 파워 ${itemPower(item)} · ${ilvText(item.itemLevel)}`, ...upgradeLines(item), ...lines].join('\n')
 }
 
+/** 0.65 → '65%'. */
+export function pct(p: number): string {
+  return `${Math.round(p * 100)}%`
+}
+
 /** 강화 lines for a tooltip: guns +N/+10 and the next step's damage and price; parts their 단계. */
 export function upgradeLines(item: ItemInstance): string[] {
   if (isGun(item)) {
     const p = plusOf(item)
     const out = [`강화 +${p} / +${MAX_PLUS} · 총 피해 ×${upgradeMul(p).toFixed(2)}`]
     const cost = upgradeCost(item)
-    out.push(cost ? `다음 +${p + 1}: 총 피해 ×${upgradeMul(p + 1).toFixed(2)} · ${costLine(cost)} (키키 공방)` : '최대 강화 완료!')
+    out.push(cost ? `다음 +${p + 1}: 총 피해 ×${upgradeMul(p + 1).toFixed(2)} · 성공 ${pct(upgradeChance(item) ?? 1)} · ${costLine(cost)} (키키 공방)` : '최대 강화 완료!')
     const slots = modSlots(item)
     if (slots) out.push(`개조 칸 ${gunMods(item).length}/${slots}${gunMods(item).length ? ` · ${gunMods(item).map(modLabel).join(', ')}` : ''}`)
     return out

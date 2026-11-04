@@ -659,7 +659,11 @@ function townSuccess(kind: TownSuccess, item?: ItemInstance): void {
     audio.sfx('coin')
     vfx.ring(hero.object.position.clone().setY(0.06), 0xffd66b, 0.3, 2.4, 0.5)
     vfx.burst(at, 0xffe9a0, { count: 26, speed: 3.4, up: 2.4, life: 0.7, size: 0.14, gravity: 2, drag: 1.6, additive: true })
-    if (item) float(`+${item.plus ?? 0} 강화 성공!`, at.clone().setY(1.9), '#ffe08a')
+    if (item) float(`반짝! +${item.plus ?? 0}`, at.clone().setY(1.9), '#ffe08a')
+  } else if (kind === 'upfail') {
+    audio.sfx('pop')
+    vfx.burst(at, 0xb9a9c9, { count: 10, speed: 1.6, up: 1.2, life: 0.5, size: 0.1, gravity: 2.4, drag: 2, additive: false })
+    float('픽… 실패', at.clone().setY(1.9), '#c9b8d8')
   } else if (kind === 'mod') {
     chime('forge')
     vfx.burst(at, 0xc9f0ff, { count: 20, speed: 2.8, up: 2, life: 0.6, size: 0.12, gravity: 1.6, drag: 1.7, additive: true })

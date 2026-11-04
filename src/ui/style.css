@@ -964,3 +964,15 @@ body.touch .inv-bulk .bulk-r input { width: 20px; height: 20px; }
 .inv-cell .slot-name { font-size: 10px; color: #7a5a88; }
 /* A6 공격 버튼 글자: 하늘색 위 흰 글씨가 안 보였다. */
 #fire { color: #23506e; }
+
+/* ==== 확률 강화 ==== */
+.town-odds { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; margin: 6px 0; padding: 6px 10px; border-radius: 10px; background: #effaf2; color: #2f5a3c; }
+.town-odds.risky { background: #fff3e0; color: #7a4a12; }
+.town-odds b { font-family: "Jua", sans-serif; font-size: 16px; }
+.town-odds .pity { font-size: 12px; font-weight: 700; color: #a2531b; }
+.town-odds small { flex-basis: 100%; font-size: 12px; color: inherit; opacity: 0.9; }
+.town-job.forging { position: relative; overflow: hidden; }
+.town-job.forging::after { content: "✦ ✧ ✦"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 34px; letter-spacing: 10px; color: #ffd66b; text-shadow: 0 0 12px #fff2b0; background: radial-gradient(circle, rgba(255,240,180,0.55), rgba(255,255,255,0) 70%); animation: forge-spark 0.6s ease-in-out; pointer-events: none; }
+@keyframes forge-spark { 0% { opacity: 0; transform: scale(0.6) rotate(-8deg); } 50% { opacity: 1; transform: scale(1.1) rotate(4deg); } 100% { opacity: 0.2; transform: scale(1) rotate(0); } }
+.inv-cell.plus-max { box-shadow: 0 0 0 2px #ffd66b, 0 0 12px 3px rgba(255, 214, 107, 0.85); animation: plus-max-glow 1.6s ease-in-out infinite; }
+@keyframes plus-max-glow { 50% { box-shadow: 0 0 0 2px #fff0b0, 0 0 18px 6px rgba(255, 214, 107, 1); } }
