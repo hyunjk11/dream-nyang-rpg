@@ -10,7 +10,9 @@ import {
   PCFSoftShadowMap,
   PerspectiveCamera,
   Scene,
+  ShaderMaterial,
   SphereGeometry,
+  UniformsUtils,
   Vector2,
   WebGLRenderTarget,
   WebGLRenderer,
@@ -20,7 +22,8 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
-import { SANITIZE_SHADER, allFinite } from './safeframe'
+import { GUARD_EVERY, GUARD_GRID, GUARD_HOLD, GUARD_PROBE_SHADER, HDR_MAX, HDR_SAFE, SANITIZE_SHADER, allFinite, guardMean, guardVerdict, type GuardVerdict } from './safeframe'
+import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js'
 import { LOOK } from './look'
 import { buildIsland } from '../world/town/decor'
 import { toon } from './materials'
@@ -40,6 +43,64 @@ export interface Stage {
   setDetail: (level: number) => void
   /** Draw calls in the last rendered frame (QA). */
   readonly drawCalls: number
+  /** Frame guard readout. */
+  readonly guard: GuardStats
+  /** QA: scan the raw HDR scene buffer (before the sanitize pass) of the last frame. Null on the no-composer path. */
+  hdrScan: () => HdrScan | null
+}
+
+/** Frame guard readout (window.__dnrGuard, prod too): what it caught and fixed on this GPU. */
+export interface GuardStats {
+  reads: number
+  nonfinite: number
+  black: number
+  white: number
+  contextLost: number
+  contextRestored: number
+  /** Frames left with bloom off after the last catch. */
+  hold: number
+  last: GuardVerdict | ''
+}
+
+/** Reads the final HDR frame into a 32×18 probe target; draws nothing on screen. */
+class GuardProbePass extends Pass {
+  readonly target: WebGLRenderTarget
+  private readonly quad: FullScreenQuad
+  private readonly material: ShaderMaterial
+  constructor() {
+    super()
+    this.needsSwap = false
+    this.target = new WebGLRenderTarget(GUARD_GRID[0], GUARD_GRID[1], { type: HalfFloatType, depthBuffer: false })
+    this.material = new ShaderMaterial({ ...GUARD_PROBE_SHADER, uniforms: UniformsUtils.clone(GUARD_PROBE_SHADER.uniforms) })
+    this.quad = new FullScreenQuad(this.material)
+  }
+  render(renderer: WebGLRenderer, _write: WebGLRenderTarget, read: WebGLRenderTarget): void {
+    this.material.uniforms.tDiffuse.value = read.texture
+    const was = renderer.getRenderTarget()
+    renderer.setRenderTarget(this.target)
+    this.quad.render(renderer)
+    renderer.setRenderTarget(was)
+  }
+}
+
+export interface HdrScan {
+  pixels: number
+  nan: number
+  inf: number
+  max: number
+  over4: number
+  over24: number
+  /** First bad pixel (device px from the bottom-left), if any. */
+  at: [number, number] | null
+}
+
+function halfToFloat(h: number): number {
+  const e = (h >> 10) & 0x1f
+  const m = h & 0x3ff
+  const sign = h & 0x8000 ? -1 : 1
+  if (e === 0) return sign * m * 2 ** -24
+  if (e === 31) return m ? NaN : sign * Infinity
+  return sign * (1 + m / 1024) * 2 ** (e - 15)
 }
 
 export function createStage(canvas: HTMLCanvasElement): Stage {
@@ -96,6 +157,76 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   const camera = new PerspectiveCamera(TPS.fov, window.innerWidth / window.innerHeight, 0.1, 80)
 
   let composer: EffectComposer | null = null
+  let sceneTarget: WebGLRenderTarget | null = null
+  let sanitize: ShaderPass | null = null
+  let probe: GuardProbePass | null = null
+  let bloomWanted = true
+  const guard: GuardStats = { reads: 0, nonfinite: 0, black: 0, white: 0, contextLost: 0, contextRestored: 0, hold: 0, last: '' }
+  let guardLit = false
+  let guardFrame = 0
+  let reading = false
+  let lost = false
+  canvas.addEventListener('webglcontextlost', (event) => {
+    // Keep the context restorable; three rebuilds its GPU state on restore.
+    event.preventDefault()
+    lost = true
+    guard.contextLost += 1
+  })
+  canvas.addEventListener('webglcontextrestored', () => {
+    lost = false
+    guard.contextRestored += 1
+    guard.hold = GUARD_HOLD
+    resize()
+  })
+  ;(window as unknown as { __dnrGuard?: GuardStats }).__dnrGuard = guard
+
+  /** Read the probe back and react: bloom off and a low HDR cap for a while after a bad frame. */
+  const checkFrame = () => {
+    if (!probe) return
+    if (guard.hold > 0) {
+      guard.hold -= 1
+      if (guard.hold === 0) {
+        if (bloomPass) bloomPass.enabled = bloomWanted
+        if (sanitize) sanitize.uniforms.uMax.value = HDR_MAX
+      }
+    }
+    if (++guardFrame % GUARD_EVERY !== 0 || reading) return
+    const [w, h] = GUARD_GRID
+    const buf = new Uint16Array(w * h * 4)
+    reading = true
+    // Async (PBO + fence): no GPU stall on the frame that asks.
+    renderer
+      .readRenderTargetPixelsAsync(probe.target, 0, 0, w, h, buf)
+      .then(() => judge(buf, w, h))
+      .catch(() => {})
+      .finally(() => {
+        reading = false
+      })
+  }
+  const judge = (buf: Uint16Array, w: number, h: number) => {
+    const n = w * h
+    const lum = new Float32Array(n)
+    const bad = new Float32Array(n)
+    const dark = new Float32Array(n)
+    const blown = new Float32Array(n)
+    for (let i = 0; i < n; i += 1) {
+      lum[i] = halfToFloat(buf[i * 4])
+      bad[i] = halfToFloat(buf[i * 4 + 1])
+      dark[i] = halfToFloat(buf[i * 4 + 2])
+      blown[i] = halfToFloat(buf[i * 4 + 3])
+    }
+    guard.reads += 1
+    const verdict = guardVerdict({ lum, bad, dark, blown }, w, h, guardLit)
+    guard.last = verdict
+    if (verdict === 'ok') {
+      guardLit = guardMean(lum) > 0.03
+      return
+    }
+    guard[verdict] += 1
+    guard.hold = GUARD_HOLD
+    if (bloomPass) bloomPass.enabled = false
+    if (sanitize && verdict === 'white') sanitize.uniforms.uMax.value = HDR_SAFE
+  }
   let bloomPass: UnrealBloomPass | null = null
   if (!mobile) {
     // HalfFloat + MSAA target: the composer path used to drop antialiasing (jaggy outlines) and
@@ -106,11 +237,21 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       samples: Math.min(LOOK.msaa, renderer.capabilities.maxSamples || 0),
     })
     composer = new EffectComposer(renderer, target)
-    composer.addPass(new RenderPass(scene, camera))
+    const scenePass = new RenderPass(scene, camera)
+    const draw = scenePass.render.bind(scenePass)
+    scenePass.render = (r, w, read, dt, mask) => {
+      sceneTarget = read
+      draw(r, w, read, dt, mask)
+    }
+    composer.addPass(scenePass)
     // 화면 깨짐 방지: a NaN/Inf pixel (or a blown-out HDR one) never reaches the bloom mips.
-    composer.addPass(new ShaderPass(SANITIZE_SHADER))
+    sanitize = new ShaderPass(SANITIZE_SHADER)
+    composer.addPass(sanitize)
     const bloom = new UnrealBloomPass(new Vector2(window.innerWidth, window.innerHeight), LOOK.bloom.strength, LOOK.bloom.radius, LOOK.bloom.threshold)
     composer.addPass(bloom)
+    // Frame guard: a 32×18 look at the final HDR frame (before tone mapping), read back every few frames.
+    probe = new GuardProbePass()
+    composer.addPass(probe)
     composer.addPass(new OutputPass())
     bloomPass = bloom
   }
@@ -136,6 +277,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     get drawCalls() {
       return calls
     },
+    guard,
     setWorld: (world, fogLook) => {
       const sewer = world === 'sewer'
       if (islandRoot) islandRoot.visible = !sewer
@@ -157,11 +299,35 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
         composer?.setPixelRatio(pr)
         resize()
       }
-      if (bloomPass) bloomPass.enabled = d.bloom
+      bloomWanted = d.bloom
+      if (bloomPass) bloomPass.enabled = d.bloom && guard.hold === 0
       // Shadows refresh every N frames instead of recompiling materials without them.
       shadowEvery = d.shadowEvery
       renderer.shadowMap.autoUpdate = shadowEvery === 1
       renderer.shadowMap.needsUpdate = true
+    },
+    hdrScan: () => {
+      const t = sceneTarget
+      if (!t) return null
+      const w = t.width
+      const h = t.height
+      const buf = new Uint16Array(w * h * 4)
+      renderer.readRenderTargetPixels(t, 0, 0, w, h, buf)
+      const out: HdrScan = { pixels: w * h, nan: 0, inf: 0, max: 0, over4: 0, over24: 0, at: null }
+      for (let i = 0; i < buf.length; i += 4) {
+        let worst = 0
+        for (let c = 0; c < 3; c += 1) {
+          const v = halfToFloat(buf[i + c])
+          if (Number.isNaN(v)) out.nan += 1
+          else if (!Number.isFinite(v)) out.inf += 1
+          else worst = Math.max(worst, v)
+          if (!Number.isFinite(v) && !out.at) out.at = [(i / 4) % w, Math.floor(i / 4 / w)]
+        }
+        if (worst > out.max) out.max = worst
+        if (worst > 4) out.over4 += 1
+        if (worst > 24) out.over24 += 1
+      }
+      return out
     },
     scene,
     camera,
@@ -183,8 +349,11 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
         camera.quaternion.copy(goodQuat)
         camera.updateMatrixWorld()
       }
-      if (composer) composer.render()
-      else renderer.render(scene, camera)
+      if (lost) return
+      if (composer) {
+        composer.render()
+        checkFrame()
+      } else renderer.render(scene, camera)
       calls = renderer.info.render.calls
     },
   }

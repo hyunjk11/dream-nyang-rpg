@@ -32,8 +32,8 @@ describe('화면 깨짐 (검은/흰 사각형) 방지', () => {
     expect(render).toBeGreaterThan(0)
     expect(clean).toBeGreaterThan(render)
     expect(bloom).toBeGreaterThan(clean)
-    // NaN은 비교가 모두 거짓이라 !(v < L && v > -L) 로 잡는다.
-    expect(SANITIZE_SHADER.fragmentShader).toMatch(/!\(v < [\d.e+]+ && v > -[\d.e+]+\)/)
+    // 비교식은 fast-math 드라이버가 지워 버릴 수 있어 지수 비트로 잡는다(2026-11).
+    expect(SANITIZE_SHADER.fragmentShader).toContain('nonFinite(c.r)')
   })
 
   it('카메라 행렬에 NaN이 끼면 마지막 정상 자세로 되돌린다', () => {
