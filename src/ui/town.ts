@@ -61,7 +61,7 @@ export interface TownHost {
 const TITLE: Record<TownPanel, string> = { shop: '포포 상점', workshop: '키키의 총 공방', board: '퀘스트 게시판', stash: '별하의 보관함', codex: '유니크 도감' }
 const SUB: Record<TownPanel, string> = {
   shop: '하수도에 다녀올 때마다 진열대가 바뀌어.',
-  workshop: '+6부터는 강화가 실패할 수도 있어. 실패해도 강화 수치는 안 떨어져!',
+  workshop: '+6부터 실패할 수도 · 실패해도 강화 수치는 안 떨어져!',
   board: '의뢰는 하수도에서 진행되고, 돌아오면 여기서 보상을 받아.',
   stash: '가방이 꽉 차면 여기에 넣어 둬.',
   codex: '이름 붙은 총 일곱 자루. 정해진 곳에서만 떨어지고, 못 찾을수록 확률이 올라가.',
