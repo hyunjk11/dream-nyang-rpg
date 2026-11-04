@@ -1,4 +1,5 @@
-/** 챕터 2 지역 (꿈 미로, 구름 다락, 멈춘 시계탑, 달빛 둥지): ids, names and labels. No imports (floorsnap uses it). */
+/** 챕터 2 지역 (꿈 미로, 구름 다락, 멈춘 시계탑, 달빛 둥지): ids, names and labels. Only imports places (no deps). */
+import { placeLabel } from './places'
 
 export type AreaId = 'maze' | 'loft' | 'tower' | 'moon'
 
@@ -32,10 +33,10 @@ export function isArea(v: unknown): v is AreaId {
   return typeof v === 'string' && v in AREAS
 }
 
-/** "꿈 미로 · 2/4층" (or "달빛 둥지 · 보스층"). */
+/** "2장 · 꿈 미로 · 2/4층" (or "2장 · 달빛 둥지 · 보스층"). */
 export function areaLabel(area: AreaId, floor: number): string {
   const a = AREAS[area]
-  if (a.boss && floor >= a.floors) return `${a.name} · 보스층`
-  return `${a.name} · ${floor}/${a.floors}층`
+  if (a.boss && floor >= a.floors) return placeLabel(area, '보스층')
+  return placeLabel(area, `${floor}/${a.floors}층`)
 }
 

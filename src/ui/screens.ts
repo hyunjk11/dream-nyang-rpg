@@ -213,7 +213,7 @@ export function openQuestLog(save: SaveData, onClose: () => void, onPin?: (id: s
       .map((q) => {
         const pin = q.group === 'main' ? '' : `<button type="button" class="qpin${pins.includes(q.id) ? ' on' : ''}" data-pin="${escHtml(q.id)}" aria-pressed="${pins.includes(q.id)}">${pins.includes(q.id) ? '📌 고정됨' : '📌 고정'}</button>`
         const state = q.ready ? `<em class="qready">완료 · ${escHtml(q.turnIn)}</em>` : q.prog ? `<em>${escHtml(q.prog)}</em>` : ''
-        return `<article class="q ${q.group}${q.ready ? ' done' : ''}"><h3>${escHtml(q.title)}${pin}</h3><p>${escHtml(q.line)}${state}</p>${q.reward ? `<small>보상: ${escHtml(q.reward)}</small>` : ''}${!q.ready && q.turnIn ? `<small class="qturn">${escHtml(q.turnIn)}</small>` : ''}</article>`
+        return `<article class="q ${q.group}${q.ready ? ' done' : ''}"><h3>${escHtml(q.title)}${pin}</h3><small class="qarea">📍 ${escHtml(q.area)}</small><p>${escHtml(q.line)}${state}</p>${q.reward ? `<small>보상: ${escHtml(q.reward)}</small>` : ''}${!q.ready && q.turnIn ? `<small class="qturn">${escHtml(q.turnIn)}</small>` : ''}</article>`
       })
       .join('')
     const old = done.filter((d) => d.group === at)

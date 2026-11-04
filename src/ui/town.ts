@@ -584,17 +584,18 @@ export class TownUI {
     const box = el('div', 'town-chapter')
     box.id = 'board-chapter'
     if (!chapter2Open(save)) {
-      box.append(el('b', '', `챕터 1 · ${CHAPTER_TITLE[1]}`), el('small', '', '가이드를 따라 깊이 1의 악몽 꽃을 쓰러뜨리면 챕터 2 퀘스트가 열려.'))
+      // 1장 중에는 다음 장 이름도, 퀘스트도 안 보여 준다.
+      box.append(el('b', '', `1장 · ${CHAPTER_TITLE[1]}`), el('small', '', '가이드를 따라 깊이 1의 악몽 꽃을 쓰러뜨려 봐. 그다음 이야기는 그때 열려.'))
       list.append(box)
       return
     }
     if (!fieldOpen(save)) {
-      box.append(el('b', '', `챕터 2 · ${CHAPTER_TITLE[2]}`), el('small', '', '모찌와 꿈 미로를 지나 몽실 마을에 닿으면, 그곳 별문 너머 "몽실 들판" 퀘스트가 여기 붙어.'))
+      box.append(el('b', '', `2장 · ${CHAPTER_TITLE[2]}`), el('small', '', '모찌와 꿈 미로를 지나 몽실 마을에 닿으면, 그곳 퀘스트가 여기 붙어.'))
       list.append(box)
       return
     }
     const prog = chapterProgress(save)
-    const head = prog.claimed >= prog.total ? `몽실 들판 퀘스트 · 모두 완료!` : `몽실 들판 퀘스트 (${prog.claimed}/${prog.total}) · 챕터 2 ${CHAPTER_TITLE[2]}${c.cleared.includes(2) ? ' 클리어' : ''}`
+    const head = prog.claimed >= prog.total ? `몽실 들판 퀘스트 · 모두 완료!` : `몽실 들판 퀘스트 (${prog.claimed}/${prog.total}) · 2장 ${CHAPTER_TITLE[2]}${c.cleared.includes(2) ? ' 클리어' : ''}`
     box.append(el('b', 'town-chapter-head', head))
     box.append(el('small', '', '맡은 퀘스트는 몽실 마을 별문의 "몽실 들판"에서 진행돼. 끝나면 여기서 보상!'))
     const shown = CHAPTER2.filter((d) => c.quests[d.id].status !== 'locked' && c.quests[d.id].status !== 'claimed')

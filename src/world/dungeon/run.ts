@@ -1,3 +1,4 @@
+import { placeLabel } from '../../sim/places'
 import { themeFor, themeOf, type DungeonTheme } from './theme'
 import { MongsilTown, townFigure, webbedSheep, type Blocker } from './town'
 import { distances } from './maze'
@@ -374,7 +375,7 @@ export class DungeonRun {
     // Stairs only ever stand in the exit room at the far end.
     this.stairsPortal.active = exploring
     this.sewer.group.add(this.homePortal.group, this.exitPortal.group, this.stairsPortal.group)
-    this.minimap = new Minimap(this.maze, host.hud)
+    this.minimap = new Minimap(this.maze, host.hud, 12, floorIntro(this.plan).title)
     this.minimap.mark(this.maze.startRoom.x, this.maze.startRoom.y, '#7fd0ff')
     if (isBoss) this.minimap.mark(bx, by, '#ff6fb8')
     else if (!field) this.minimap.mark(bx, by, '#7be0a8', 'exit', false, 'exit')
@@ -1048,7 +1049,7 @@ export class DungeonRun {
   startRecall(): void {
     if (!this.host.hero.alive) return
     if (this.town) {
-      this.host.banner('여긴 몽실 마을이야', '별문(E)에서 섬 마을이나 다른 곳으로 갈 수 있어')
+      this.host.banner('여긴 몽실 마을이야', `별문(E)에서 ${placeLabel('village')}이나 다른 곳으로 갈 수 있어`)
       return
     }
     if (this.recallT > 0) {
@@ -1989,7 +1990,7 @@ export class DungeonRun {
       if (text !== this.delveText) {
         this.delveText = text
         const [a, b, c] = this.delveEl.children
-        a.textContent = this.field ? '챕터 2 · 몽실 들판' : label
+        a.textContent = this.field ? placeLabel('field') : label
         b.textContent = goal
         c.textContent = recall
         this.delveEl.classList.toggle('done', this.done)

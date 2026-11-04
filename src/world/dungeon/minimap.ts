@@ -41,7 +41,8 @@ export class Minimap {
   big = false
   private seq = 0
 
-  constructor(maze: Maze, parent: HTMLElement | null, cell = 12) {
+  /** `title`: where she is, in the places.ts scheme ('2장 · 구름 다락 · 1/2층'). */
+  constructor(maze: Maze, parent: HTMLElement | null, cell = 12, readonly title = '') {
     this.maze = maze
     this.cell = cell
     this.seen = new Uint8Array(maze.w * maze.h)
@@ -56,7 +57,7 @@ export class Minimap {
     el.width = maze.w * cell
     el.height = maze.h * cell
     // Free cursor (Alt or a panel): a click opens or closes the big map.
-    el.dataset.tip = '지도\n눌러서 크게 보기 (M)'
+    el.dataset.tip = `${title ? `${title}\n` : ''}지도\n눌러서 크게 보기 (M)`
     el.addEventListener('click', () => queueMap())
     parent.appendChild(el)
     this.el = el
@@ -64,7 +65,7 @@ export class Minimap {
     const legend = document.createElement('div')
     legend.id = 'map-legend'
     legend.innerHTML =
-      '<b>지도</b>' +
+      `<b>지도${title ? ` · ${title}` : ''}</b>` +
       LEGEND.map(([, c, t]) => `<span><i style="background:${c}"></i>${t}</span>`).join('') +
       '<span><i style="background:#ff5a7a"></i>쫓아오는 몹</span><small>M 닫기</small>'
     parent.appendChild(legend)

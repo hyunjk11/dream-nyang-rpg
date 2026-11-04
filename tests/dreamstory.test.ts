@@ -76,7 +76,7 @@ describe('챕터 2 지역 (꿈 미로 · 구름 다락 · 시계탑 · 달빛 �
         expect(themeOf(plan).id).toBe(a.theme)
       }
     }
-    expect(areaPlan('maze', 2).label).toBe('꿈 미로 · 2/4층')
+    expect(areaPlan('maze', 2).label).toBe('2장 · 꿈 미로 · 2/4층')
     expect(areaPlan('moon', 1).objective).toBe('boss')
     expect(areaPlan('maze', 4).objective).toBe('exit')
   })
@@ -90,7 +90,7 @@ describe('챕터 2 지역 (꿈 미로 · 구름 다락 · 시계탑 · 달빛 �
   it('지역 여행은 마지막 층에서 areaLast가 되고 하수도 체크포인트를 건드리지 않는다', () => {
     const save = freshSave()
     const trip = Delve.area(save, 'maze')
-    expect(trip.plan.label).toBe('꿈 미로 · 1/4층')
+    expect(trip.plan.label).toBe('2장 · 꿈 미로 · 1/4층')
     for (let f = 1; f < AREAS.maze.floors; f += 1) {
       expect(trip.areaLast).toBe(false)
       trip.nextFloor(save)
@@ -98,7 +98,7 @@ describe('챕터 2 지역 (꿈 미로 · 구름 다락 · 시계탑 · 달빛 �
     expect(trip.floor).toBe(4)
     expect(trip.areaLast).toBe(true)
     const sum = trip.finish(save, 'clear', 0)
-    expect(sum.label).toBe('꿈 미로 · 4/4층')
+    expect(sum.label).toBe('2장 · 꿈 미로 · 4/4층')
     expect(summaryLines(sum).sub).toContain('꿈 미로')
     expect(save.delve?.checkpoint ?? null).toBeNull()
   })

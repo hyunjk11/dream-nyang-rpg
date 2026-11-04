@@ -25,12 +25,13 @@ import { killLoot, GameState, type Storageish } from './core/loop'
 import { nearestTalk, placesFor, pushOutOfPlaces, type Place } from './world/town/places'
 import { fadeThrough, hideTitle, LEVELUP_MS, openQuestLog, paintStats, playIntro, playOnce, showEnding, showTitle, titleReady, toast, zoneBanner } from './ui/screens'
 import { TalkBox, type TalkChoice, type TalkDef } from './ui/talk'
+import { PLACE, isPlace, lockedLabel, placeLabel } from './sim/places'
 import { PLAZA, PORTAL_ARRIVAL, destinations, gateLocked, zone3d, type ZoneId } from './world/town/zones3d'
 import { Color, Fog, HemisphereLight } from 'three'
 import type { Action, MutationResult } from './sim/types'
 import { Vfx } from './core/vfx'
 import { HitStop } from './core/hitstop'
-import { AUTO_RISE, LAST_GATE_KEY, QOL_KEY, autoSellPick, loadQol, rememberFirst, shouldAutoCandy, type QolPrefs } from './sim/qol'
+import { AUTO_RISE, LAST_GATE_KEY, QOL_KEY, autoSellPick, loadQol, markLast, shouldAutoCandy, type QolPrefs } from './sim/qol'
 import { DETAIL, Quality } from './core/quality'
 import type { DungeonRun } from './world/dungeon/run'
 import { Portal } from './world/dungeon/portal'
@@ -64,7 +65,7 @@ import { isEquipped } from './sim/inventory'
 import { CHAPTER2, FLUFF, chapter2Open, chaptersOf, fieldNeeds, guideEvent, guideStep, keepGuide, questEvent, questHud, skipGuide, type ChapterOut, type FieldEvent, type GuideEvent } from './sim/chapters'
 import { ChapterUI } from './ui/chapters'
 import { GROUP_KO, pinsOf, questBook, togglePin, trackedQuests, type QuestGroup } from './sim/questbook'
-import { AREAS, MAZE_ELITE, RESCUE_NAME, dreamOf, enterMaze, mongsilOpen, mazeCleared, mazeEvent, mazeQuest, openAreas, passMaze, storyEvent, storyTalk, wantsSparks, type AreaId, type DreamOut } from './sim/dreamstory'
+import { AREAS, MAZE_ELITE, RESCUE_NAME, STORY, dreamOf, enterMaze, mongsilOpen, mazeCleared, mazeEvent, mazeQuest, openAreas, passMaze, storyEvent, storyTalk, wantsSparks, type AreaId, type DreamOut } from './sim/dreamstory'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -820,7 +821,7 @@ function paintContracts(): void {
     row.dataset.id = q.id
     if (q.group === 'main') row.id = 'quest-main'
     const how = q.group === 'main' ? (guideStep(game.save) ? '눌러서 가이드 펼치기 (J)' : 'L 퀘스트 수첩') : waypointFor(q.id) ? (waypoint?.id === q.id ? '다시 누르면 길 안내 끄기' : '눌러서 길 안내') : 'L 퀘스트 수첩'
-    row.dataset.tip = `${GROUP_KO[q.group]} · ${q.title}\n${q.line}${q.prog ? ` ${q.prog}` : ''}${q.ready ? `\n완료! ${q.turnIn}` : ''}${q.reward ? `\n보상: ${q.reward}` : ''}\n${how}`
+    row.dataset.tip = `${GROUP_KO[q.group]} · ${q.title}\n📍 ${q.area}\n${q.line}${q.prog ? ` ${q.prog}` : ''}${q.ready ? `\n완료! ${q.turnIn}` : ''}${q.reward ? `\n보상: ${q.reward}` : ''}\n${how}`
     const b = document.createElement('b')
     b.textContent = GROUP_KO[q.group]
     const t = document.createElement('span')
@@ -829,7 +830,10 @@ function paintContracts(): void {
     const l = document.createElement('span')
     l.className = 'ql'
     l.textContent = q.ready ? `✓ ${q.turnIn}` : q.line
-    row.append(b, t, l)
+    const where = document.createElement('small')
+    where.className = 'qa'
+    where.textContent = `📍 ${q.area}`
+    row.append(b, t, where, l)
     if (q.prog && !q.ready) {
       const em = document.createElement('em')
       em.textContent = q.prog
@@ -1502,7 +1506,7 @@ function enterZone(id: ZoneId, at: { x: number; z: number } = PORTAL_ARRIVAL): v
   const result = game.enter(id)
   if (id === 'village') hero.hp = hero.maxHp
   showResult(result)
-  zoneBanner(zone.name, zone.bgm === 'battle' ? '괴물들이 꿈을 갉고 있어' : '평온한 꿈결')
+  zoneBanner(isPlace(id) ? placeLabel(id) : zone.name, zone.bgm === 'battle' ? '괴물들이 꿈을 갉고 있어' : '평온한 꿈결')
   game.persist(store)
   paintReturnPortal()
   if (id === 'altar' && !game.save.flags.bossIntro && combat.bossAwake) window.setTimeout(() => talk.start('boss_intro'), 900)
@@ -1900,7 +1904,7 @@ function enterArea(id: AreaId): void {
         dropTown()
         stageTrip(mod, trip)
         game.persist(store)
-        if (id !== 'maze') zoneBanner(AREAS[id].name, AREAS[id].blurb)
+        if (id !== 'maze') zoneBanner(placeLabel(id), AREAS[id].blurb)
       }),
     )
     .catch(() => toast('길을 불러오지 못했어. 잠시 뒤 다시 해 줘.', 'info'))
@@ -2034,12 +2038,16 @@ function mongiTalk(): void {
 /** 몽실's 별문: back to the island, the field, and the areas the story opened. */
 function mongsilGate(): TalkDef {
   const areas = openAreas(game.save)
+  // Story order (places.ts): 1장 섬 마을, then 2장 들판 → 다락 → 시계탑 → 둥지; areas the story has not opened yet are 🔒.
+  const story = (['loft', 'tower', 'moon'] as const).map((a) => {
+    if (areas.includes(a)) return { text: placeLabel(a, PLACE[a].note), go: `area:${a}` }
+    const n = STORY.findIndex((q) => q.where === a) + 1
+    return { text: lockedLabel(a, `꿈의 비밀 ${n} 필요`), locked: true }
+  })
   return {
     lines: [{ speaker: '별문', portrait: 'prop_portal', text: '몽실 마을의 별문이 반짝인다. 어디로 갈까?' }],
     choices: [
-      ...areas.map((a) => ({ text: `${AREAS[a].name} · ${AREAS[a].blurb}`, go: `area:${a}` })),
-      { text: '몽실 들판 (게시판 퀘스트 · 등불 불씨)', go: 'field' },
-      { text: '섬 마을 (첫 마을로)', go: 'island' },
+      ...markLast([{ text: placeLabel('village', '섬으로'), go: 'island' }, { text: placeLabel('field', PLACE.field.note), go: 'field' }, ...story], safeStore()?.getItem(LAST_GATE_KEY)),
       { text: '그만두기' },
     ],
   }
@@ -2118,11 +2126,16 @@ function gateTalk(): TalkDef {
     lines: [{ speaker: '별문', portrait: 'prop_portal', text: '별빛 문이 일렁인다. 어디로 갈까?' }],
     choices: [
       ...(keptLabel() && game.zone === 'village' ? [{ text: `돌아가기 포털 · ${keptLabel()} (그 자리로)`, go: 'return' }] : []),
-      ...dests.map((d) => ({ text: d.label, go: d.to })),
-      ...rememberFirst(
+      // Story order (places.ts): 1장 초원 → 숲 → 골짜기 → 제단 → 하수도, then 2장 (🔒 until 챕터 2 opens).
+      ...markLast(
         [
+          ...dests.map((d) => ({ text: d.label, go: d.to as string })),
           ...(game.zone === 'village' ? portalChoices(game.save).map((c) => ({ text: c.label, go: `sewer:${c.depth}:${c.floor}` })) : []),
-          ...(game.zone === 'village' && chapter2Open(game.save) ? [dreamOf(game.save).maze.passed ? { text: '챕터 2 · 몽실 마을 (꿈의 비밀)', go: 'mongsil' } : { text: '챕터 2 · 꿈 미로 (모찌와 함께)', go: 'area:maze' }] : []),
+          ...(game.zone !== 'village'
+            ? []
+            : !chapter2Open(game.save)
+              ? [{ text: lockedLabel('maze'), locked: true }]
+              : [dreamOf(game.save).maze.passed ? { text: placeLabel('mongsil', PLACE.mongsil.note), go: 'mongsil' } : { text: placeLabel('maze', PLACE.maze.note), go: 'area:maze' }]),
         ],
         safeStore()?.getItem(LAST_GATE_KEY),
       ),
