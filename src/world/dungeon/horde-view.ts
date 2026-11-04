@@ -20,6 +20,10 @@ import {
   Quaternion,
   RingGeometry,
   SphereGeometry,
+  ExtrudeGeometry,
+  IcosahedronGeometry,
+  Shape,
+  TorusGeometry,
   Vector3,
   Group,
   type Material,
@@ -31,7 +35,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { FOE_SPECS, foePose, type FoeKind } from '../../combat/foes'
 import { outlineInstanced, toonGradient } from '../../core/materials'
 import { bakeSkinned, decimate } from './bake'
-import { DIE_TIME, ELITE, HORDE, HORDE_CAP, SPAWN_TIME, type Horde, type HordeKind } from './horde'
+import { DIE_TIME, ELITE, HORDE, HORDE_CAP, SHOT_STYLE, SHOTS_CAP, SPAWN_TIME, type Horde, type HordeKind, type ShotStyle } from './horde'
 import { LORD_TINTS, luckyFrames, type LuckyKind } from './lucky'
 
 /** Every kind the view can draw, in draw order. */
@@ -255,6 +259,29 @@ const BAR_RAGE = new Color(0xff4d6d)
 const WHITE = new Color(0xffffff)
 const TELL_MELEE = new Color(0.95, 0.18, 0.5)
 const TELL_CHARGE = new Color(1.0, 0.28, 0.08)
+/** Ranged charge: a soft gold ring under the foe while its shot glows. */
+const TELL_RANGED = new Color(1.0, 0.82, 0.35)
+/** Dream shots: one look per archetype, plain colours (≤ 1, inside the brightness cap). */
+export const SHOT_LOOK: Record<ShotStyle, { color: number; size: number; opacity: number }> = {
+  bubble: { color: 0x9fe3ff, size: 0.22, opacity: 0.72 },
+  star: { color: 0xffe07a, size: 0.26, opacity: 0.95 },
+  spore: { color: 0xb8ee8c, size: 0.2, opacity: 0.92 },
+  moon: { color: 0xd6bcff, size: 0.26, opacity: 0.92 },
+}
+const SHOT_STYLES_ALL: ShotStyle[] = ['bubble', 'star', 'spore', 'moon']
+function shotGeometry(style: ShotStyle): BufferGeometry {
+  if (style === 'bubble') return new SphereGeometry(1, 12, 8)
+  if (style === 'spore') return new IcosahedronGeometry(1, 0)
+  if (style === 'moon') return new TorusGeometry(0.72, 0.3, 6, 14, Math.PI * 1.25)
+  const star = new Shape()
+  for (let i = 0; i < 10; i += 1) {
+    const r = i % 2 ? 0.45 : 1
+    const a = (i / 10) * Math.PI * 2 + Math.PI / 2
+    if (i) star.lineTo(Math.cos(a) * r, Math.sin(a) * r)
+    else star.moveTo(Math.cos(a) * r, Math.sin(a) * r)
+  }
+  return new ExtrudeGeometry(star, { depth: 0.35, bevelEnabled: false }).translate(0, 0, -0.175)
+}
 const FLASH = new Color(3.2, 3.0, 3.4)
 const DEATH = new Color(2.4, 1.6, 2.6)
 
@@ -293,6 +320,10 @@ export class HordeView {
   private readonly fwd = new Vector3()
   /** Foes skipped last frame for sitting on the lens (QA, tests). */
   lensHidden = 0
+  /** Dream shots and charge orbs: one pooled instanced mesh per style. */
+  readonly shotMeshes = new Map<ShotStyle, InstancedMesh>()
+  /** Shots + charge orbs drawn last frame (QA). */
+  shotsDrawn = 0
 
   constructor() {
     this.group.name = 'sewer-horde'
@@ -320,6 +351,18 @@ export class HordeView {
       b.renderOrder = 20 + i
       b.setColorAt(0, i ? BAR_FILL : BAR_BACK)
       this.group.add(b)
+    }
+    for (const style of SHOT_STYLES_ALL) {
+      const look = SHOT_LOOK[style]
+      const mesh = new InstancedMesh(shotGeometry(style), new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: look.opacity, depthWrite: false }), SHOTS_CAP + TELL_CAP)
+      mesh.name = `horde-shot-${style}`
+      mesh.count = 0
+      mesh.visible = false
+      mesh.frustumCulled = false
+      mesh.renderOrder = 4
+      mesh.setColorAt(0, new Color(look.color))
+      this.shotMeshes.set(style, mesh)
+      this.group.add(mesh)
     }
     for (const kind of HORDE_KINDS) {
       const a = art.get(kind) ?? ballArt(kind)
@@ -391,6 +434,17 @@ export class HordeView {
           this.rings.setColorAt(rings, this.c.copy(TELL_MELEE).multiplyScalar(0.75 + 0.35 * k))
           rings += 1
         }
+        if (f.aim > 0 && rings < TELL_CAP) {
+          const k = 1 - f.aim / f.aimTime
+          const r = (f.radius + 0.35) * (0.7 + 0.3 * k)
+          this.p.set(f.x, 0.04, f.z)
+          this.s.set(r, 1, r)
+          this.q.identity()
+          this.m.compose(this.p, this.q, this.s)
+          this.rings.setMatrixAt(rings, this.m)
+          this.rings.setColorAt(rings, this.c.copy(TELL_RANGED).multiplyScalar(0.7 + 0.3 * k))
+          rings += 1
+        }
         if (f.chargeWind > 0 && lanes < TELL_CAP) {
           const k = 1 - f.chargeWind / DIFFICULTY.elite.chargeWind
           const len = f.speed * DIFFICULTY.elite.chargeSpeed * DIFFICULTY.elite.chargeTime * (0.3 + 0.7 * k)
@@ -452,6 +506,11 @@ export class HordeView {
       // The lord's six boss variants (boss10…50, bounty) are tints of one body.
       if (f.kind === 'lord') this.c.copy(this.tints[f.id % this.tints.length])
       else if (f.elite) this.c.copy(f.rage ? RAGE_TINT : ELITE_TINT)
+      // Charging a shot: a warm glow that quickens as it fills (≤ 1.35, under the flash cap).
+      if (f.aim > 0) {
+        const k = 1 - f.aim / f.aimTime
+        this.c.lerp(TELL_RANGED, 0.25 + 0.35 * k * (0.6 + 0.4 * Math.sin(time * (14 + 20 * k))))
+      }
       // Crouching to charge: a hot shimmer.
       if (f.chargeWind > 0) this.c.lerp(RAGE_TINT, 0.5 + 0.5 * Math.sin(time * 40))
       if (f.dying > 0) this.c.copy(DEATH).multiplyScalar(1 + Math.max(0, 0.5 - Math.abs(f.dying / DIE_TIME - 0.4) * 2.5))
@@ -482,6 +541,7 @@ export class HordeView {
       if (useNear) this.nearDrawn += 1
     }
     this.tells = rings + lanes
+    this.syncShots(horde, time)
     this.barsDrawn = bars
     for (const b of [this.bars, this.fills]) {
       b.count = bars
@@ -508,7 +568,48 @@ export class HordeView {
     }
   }
 
+  /** Shots in the air, plus a growing orb in front of every foe charging one. */
+  private syncShots(horde: Horde, time: number): void {
+    const n = new Map<ShotStyle, number>()
+    const put = (style: ShotStyle, x: number, y: number, z: number, size: number, spin: number, glow: number) => {
+      const mesh = this.shotMeshes.get(style) as InstancedMesh
+      const i = n.get(style) ?? 0
+      if (i >= mesh.instanceMatrix.count) return
+      n.set(style, i + 1)
+      this.p.set(x, y, z)
+      this.e.set(style === 'moon' ? 0 : spin * 0.7, spin, style === 'star' ? 0 : spin * 0.5)
+      this.q.setFromEuler(this.e)
+      // Bubbles wobble a little.
+      const w = style === 'bubble' ? 1 + 0.08 * Math.sin(time * 18 + spin) : 1
+      this.s.set(size * w, size / w, size * w)
+      this.m.compose(this.p, this.q, this.s)
+      mesh.setMatrixAt(i, this.m)
+      mesh.setColorAt(i, this.c.set(SHOT_LOOK[style].color).multiplyScalar(glow))
+    }
+    for (const s of horde.shots) {
+      if (!s.alive) continue
+      put(s.style, s.x, s.y, s.z, SHOT_LOOK[s.style].size, time * 6 + s.seed * 6.28, 1)
+    }
+    for (const f of horde.foes) {
+      if (f.aim <= 0 || f.dying > 0) continue
+      const k = 1 - f.aim / f.aimTime
+      const style = SHOT_STYLE[f.kind]
+      const out = f.radius + 0.25
+      const y = Math.max(0.55, Math.min(1.3, HORDE[f.kind].chest * (f.elite ? ELITE.scale : 1)))
+      put(style, f.x + Math.sin(f.yaw) * out, y, f.z + Math.cos(f.yaw) * out, SHOT_LOOK[style].size * (0.35 + 0.75 * k), time * 9, 0.75 + 0.25 * k)
+    }
+    this.shotsDrawn = 0
+    for (const [style, mesh] of this.shotMeshes) {
+      mesh.count = n.get(style) ?? 0
+      mesh.visible = mesh.count > 0
+      this.shotsDrawn += mesh.count
+      mesh.instanceMatrix.needsUpdate = true
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    }
+  }
+
   dispose(): void {
+    for (const mesh of this.shotMeshes.values()) mesh.dispose()
     for (const mesh of [...this.all, ...this.ink.values(), this.rings, this.lanes, this.bars, this.fills]) mesh.dispose()
     this.group.removeFromParent()
   }

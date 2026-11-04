@@ -35,8 +35,8 @@ import { blast, SKILL_POWER, SKILL_REF_MUL, type SkillBody, type SkillWorld } fr
 import { applyProcs, chill, ELEMENTS, procBursts } from '../../combat/elements'
 import { itemColor } from '../../sim/rarity'
 import { collideCircle, rayHit } from './walls'
-import { HORDE, Horde, type HordeFoe } from './horde'
-import { HordeView } from './horde-view'
+import { HORDE, Horde, RANGED, type HordeFoe } from './horde'
+import { HordeView, SHOT_LOOK } from './horde-view'
 import { DRAIN, Director, LIVE_CAP, waveFor } from './waves'
 import { BOSS, Boss } from './boss'
 import { foePose, makeFoeBody } from '../../combat/foes'
@@ -92,6 +92,12 @@ export function runFoeScale(plan: Pick<FloorPlan, 'scale' | 'objective'>, isBoss
   scale.hit = [FOE_HIT_BAND[0] * maxHp, FOE_HIT_BAND[1] * maxHp]
   return scale
 }
+/** Share of ranged foes for a floor: 50% on fighting floors, a few on the boss floor, none in town. */
+export function rangedShareFor(plan: Pick<FloorPlan, 'objective'>): number {
+  if (plan.objective === 'town') return 0
+  return plan.objective === 'boss' ? RANGED_BOSS_SHARE : RANGED.share
+}
+export const RANGED_BOSS_SHARE = 0.34
 /** Damage factor for the boss room, given her max HP (150 at Lv 1). */
 export function bossRoomHit(maxHp: number, who: 'adds' | 'boss'): number {
   return BOSS_ROOM_HIT[who] * Math.max(1, maxHp / DIFFICULTY.hero.maxHp)
@@ -395,6 +401,8 @@ export class DungeonRun {
     }
     this.horde = new Horde(this.maze)
     this.horde.scale = runFoeScale(this.plan, isBoss, host.hero.maxHp)
+    // 원거리 (2026-11): half the pack lobs dream shots; the boss floor keeps only a few ranged adds.
+    this.horde.rangedShare = rangedShareFor(this.plan)
     this.horde.onKill = (f) => this.foeDown(f)
     this.horde.onRage = (f) => {
       const at = new Vector3(f.x, 1, f.z)
@@ -1454,7 +1462,9 @@ export class DungeonRun {
       this.host.sfx('windup', 0.6)
     }
     const strike = (amount: number, x: number, z: number) => this.host.hurt(amount, new Vector3(x, 0, z))
-    this.horde.update(dt, { x: p.x, z: p.z, alive: hero.alive }, strike)
+    // Dash i-frames let shots fly through her (the dodge).
+    this.horde.update(dt, { x: p.x, z: p.z, alive: hero.alive, dodge: hero.dashing || hero.iframes > 0 }, strike)
+    for (const pop of this.horde.popped) if (!pop.hit) this.host.vfx.hit(new Vector3(pop.x, pop.y, pop.z), SHOT_LOOK[pop.style].color)
     if (!boss) return
     for (const ev of boss.update(dt, p.x, p.z, hero.alive, strike)) {
       if (ev === 'wake') {
