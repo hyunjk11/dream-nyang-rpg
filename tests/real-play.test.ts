@@ -233,7 +233,7 @@ describe('실제 플레이: 원거리가 절반 섞인 무리', () => {
     for (const [d, f] of [[1, 1], [1, 3], [2, 2], [3, 2]] as const) {
       const melee = stand(floorPlan(d, f), ['slime', 'slime', 'bug', 'slime', 'bat'], 150, false, 0)
       const mixed = stand(floorPlan(d, f), ['slime', 'slime', 'bug', 'slime', 'bat'], 150, false, 0.5)
-      if (process.env.RANGED_LOG) console.log(`d${d}f${f} 근접만 ${(melee.lost * 100).toFixed(1)}% 섞임 ${(mixed.lost * 100).toFixed(1)}%`)
+      if ((globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.RANGED_LOG) console.log(`d${d}f${f} 근접만 ${(melee.lost * 100).toFixed(1)}% 섞임 ${(mixed.lost * 100).toFixed(1)}%`)
       expect(mixed.lost, `d${d}f${f}`).toBeGreaterThanOrEqual(0.2)
       expect(mixed.lost, `d${d}f${f}`).toBeLessThanOrEqual(0.4)
     }

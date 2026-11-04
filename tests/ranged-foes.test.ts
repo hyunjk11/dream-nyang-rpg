@@ -50,9 +50,10 @@ describe('원거리 몬스터', () => {
       expect(pack.some(Boolean)).toBe(true)
       expect(pack.some((r) => !r)).toBe(true)
     }
-    const h = new Horde(arena())
+    const m = arena()
+    const h = new Horde(m)
     h.rangedShare = 0.5
-    const c = centre(h.maze)
+    const c = centre(m)
     for (let i = 0; i < 40; i += 1) h.spawn('slime', c.x + (i % 6), c.z + Math.floor(i / 6))
     const r = h.foes.filter((f) => f.ranged).length
     expect(r).toBeGreaterThanOrEqual(18)
@@ -64,9 +65,10 @@ describe('원거리 몬스터', () => {
     expect(rangedShareFor({ objective: 'boss' })).toBe(RANGED_BOSS_SHARE)
     expect(RANGED_BOSS_SHARE).toBeLessThan(RANGED.share)
     expect(rangedShareFor({ objective: 'exit' } as never)).toBe(RANGED.share)
-    const h = new Horde(arena())
+    const m = arena()
+    const h = new Horde(m)
     h.rangedShare = 1
-    const c = centre(h.maze)
+    const c = centre(m)
     for (const k of NEVER_RANGED) expect(h.spawn(k, c.x, c.z)!.ranged).toBe(false)
     expect(new Horde(arena()).spawn('slime', c.x, c.z)!.ranged).toBe(false)
   })
@@ -112,9 +114,10 @@ describe('원거리 몬스터', () => {
   })
 
   it(`동시에 조준하는 원거리 몬스터는 최대 ${SHOT_CAP} 마리`, () => {
-    const h = new Horde(arena())
+    const m = arena()
+    const h = new Horde(m)
     h.rangedShare = 1
-    const c = centre(h.maze)
+    const c = centre(m)
     const hero = { x: c.x, z: c.z, alive: true, dodge: true }
     for (let i = 0; i < 12; i += 1) {
       const a = (i / 12) * Math.PI * 2
