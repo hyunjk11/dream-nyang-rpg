@@ -9,7 +9,7 @@ import { floorPlan, fieldPlan } from '../src/sim/delve'
 import { bombRadius } from '../src/data/tree'
 import { DIFFICULTY } from '../src/combat/difficulty'
 import { Hero } from '../src/actors/hero'
-import { AURA_BURN, OVERDRIVE_WAVE, SKILL_RANGE, rushLock, AURA_PULSE, AURA_TIME, SKILL_BITE, SKILL_CAP, SKILL_SHOTS, auraShare, skillBite, skillBlast, skillGear, SKILL_REF_MUL, type SkillBody } from '../src/combat/skills'
+import { AURA_BURN, OVERDRIVE_WAVE, SKILL_RANGE, rushLock, AURA_PULSE, AURA_TIME, SKILL_CAP, SKILL_SHOTS, auraShare, skillBite, skillBlast, skillGear, SKILL_REF_MUL, type SkillBody } from '../src/combat/skills'
 import { migrateSave } from '../src/sim/migrate'
 import { freshSave } from '../src/sim/mutate'
 
@@ -115,7 +115,7 @@ function body(tone: SkillBody['tone'], maxHp: number): SkillBody & { hp: number 
   return b
 }
 
-describe('실제 플레이: 스킬 한 번 = 무리 정리 · 정예 30–40% · 보스 15–25%', () => {
+describe('밸런스 패스: 스킬 한 번 = 정예 12–18% · 보스 4–6%, 큰 쿨 스킬만 일반 무리 한 방', () => {
   const kinds = ['bomb', 'wave', 'rush', 'aura'] as const
   for (const d of [1, 2, 3]) {
     it(`깊이 ${d}: 막 시작한 장비(배율 1)도 장비가 좋아도(배율 3) 약속 범위다`, () => {
@@ -126,17 +126,20 @@ describe('실제 플레이: 스킬 한 번 = 무리 정리 · 정예 30–40% ·
         for (const k of kinds) {
           const pack = (['slime', 'bug', 'bat', 'slime', 'jelly'] as const).map((kind) => body('n', hordeHp(kind, hp, false)))
           skillBlast(pack, 0, 0, 3, { kind: k, rank: 1, gear })
-          expect(pack.every((b) => b.hp <= 0), `${k} pack`).toBe(true)
+          const left = pack.reduce((a, b) => a + Math.max(0, b.hp), 0) / pack.reduce((a, b) => a + b.maxHp, 0)
+          // 큰 쿨(과열 폭주 파동·사탕 오라)만 무리를 한 방에 지우고, 나머지는 크게 깎는다 (70% 이상).
+          if (k === 'wave' || k === 'aura') expect(pack.every((b) => b.hp <= 0), `${k} pack`).toBe(true)
+          else expect(left, `${k} pack 남은 체력`).toBeLessThanOrEqual(0.3)
           const elite = body('elite', hordeHp('knight', hp, true))
           skillBlast([elite], 0, 0, 3, { kind: k, rank: 1, gear })
           const ep = 1 - elite.hp / elite.maxHp
-          expect(ep, `${k} elite ×${mul}`).toBeGreaterThanOrEqual(0.3)
-          expect(ep, `${k} elite ×${mul}`).toBeLessThanOrEqual(0.4)
+          expect(ep, `${k} elite ×${mul}`).toBeGreaterThanOrEqual(0.12)
+          expect(ep, `${k} elite ×${mul}`).toBeLessThanOrEqual(0.1805)
           const boss = body('boss', Math.round(BOSS.hp * floorPlan(d, 4).scale.boss.hp))
           skillBlast([boss], 0, 0, 3, { kind: k, rank: 1, gear })
           const bp = 1 - boss.hp / boss.maxHp
-          expect(bp, `${k} boss ×${mul}`).toBeGreaterThanOrEqual(0.15)
-          expect(bp, `${k} boss ×${mul}`).toBeLessThanOrEqual(0.25)
+          expect(bp, `${k} boss ×${mul}`).toBeGreaterThanOrEqual(0.04)
+          expect(bp, `${k} boss ×${mul}`).toBeLessThanOrEqual(0.0605)
         }
       }
     })
@@ -144,7 +147,6 @@ describe('실제 플레이: 스킬 한 번 = 무리 정리 · 정예 30–40% ·
   it('보스가 스스로 멈추는 거리(BOSS.keep)와 그보다 조금 먼 곳에서도 네 스킬이 모두 닿는다', () => {
     for (const d of [BOSS.keep, BOSS.keep + 0.8]) {
       const mk = () => { const b = body('boss', 28000); b.r = BOSS.radius; b.x = d; return b }
-      // 폭탄: 조준점 = 보스 몸통 앞면 (실제 조준선이 캡슐에 맞는 곳)
       expect(skillBlast([mk()], d - BOSS.radius, 0, bombRadius(0), { kind: 'bomb', rank: 1, gear: 1 }), `폭탄 ${d}`).toBe(1)
       expect(skillBlast([mk()], 0, 0, OVERDRIVE_WAVE.radius, { kind: 'wave', rank: 1, gear: 1 }), `과열 ${d}`).toBe(1)
       expect(rushLock([mk()], 0, 0, 1, 0, SKILL_RANGE.rush), `돌진 ${d}`).not.toBeNull()
@@ -152,19 +154,18 @@ describe('실제 플레이: 스킬 한 번 = 무리 정리 · 정예 30–40% ·
     }
   })
 
-  it('사탕 오라는 4.4–5.6 m 거리를 지키는 보스에게도 닿는다 (브라우저 추적: 예전 3.2 m 고리는 보스 −5%)', () => {
+  it('사탕 오라는 4.4–5.6 m 거리를 지키는 보스에게도 닿고, 한 번 전체가 보스 4–6%다', () => {
     const boss = body('boss', 28000)
-    boss.r = 1.0 // BOSS.radius 1.25: 조금 작게 잡아도 닿아야 한다
+    boss.r = 1.0
     boss.x = 5.6
-    let p = 0
     for (let i = 0; i < AURA_TIME / AURA_PULSE; i++) {
       if (i > 0) boss.x = 4.6
       const hit = skillBlast([boss], 0, 0, i === 0 ? AURA_BURN.burst : AURA_BURN.radius, { kind: 'aura', rank: 1, gear: 1, share: auraShare(i === 0) })
       expect(hit, `펄스 ${i}`).toBe(1)
     }
-    p = 1 - boss.hp / boss.maxHp
-    expect(p).toBeGreaterThanOrEqual(0.15)
-    expect(p).toBeLessThanOrEqual(0.25)
+    const p = 1 - boss.hp / boss.maxHp
+    expect(p).toBeGreaterThanOrEqual(0.04)
+    expect(p).toBeLessThanOrEqual(0.0605)
   })
 
   it('사탕 오라는 첫 펄스에 절반이 한 번에 들어가 큰 숫자로 보이고, 전체 합은 그대로다', () => {
@@ -173,31 +174,29 @@ describe('실제 플레이: 스킬 한 번 = 무리 정리 · 정예 30–40% ·
     for (let i = 1; i < pulses; i += 1) sum += auraShare(false)
     expect(sum).toBeCloseTo(1, 5)
     expect(auraShare(true)).toBeGreaterThanOrEqual(0.4)
-    // 정예 첫 숫자 = 최대 체력의 15% 이상 (예전 2.5%: 물총 한 방보다 작았다).
     const elite = body('elite', 4000)
     skillBlast([elite], 0, 0, 3, { kind: 'aura', rank: 1, gear: 1, share: auraShare(true) })
-    expect(4000 - elite.hp).toBeGreaterThanOrEqual(4000 * 0.15)
+    expect(4000 - elite.hp).toBeGreaterThanOrEqual(4000 * 0.06)
   })
 
-  it('스킬 숫자는 장비 좋은 물총 치명타 한 방보다 늘 크다 (총알 한발 수준도 안 돼)', () => {
-    const crit = 620 // 강한 총의 치명타 한 방울
+  it('스킬 숫자는 총 치명타 한 방보다 크지만, 정예·보스 상한은 넘지 않는다', () => {
+    const crit = 620
     const floor = SKILL_SHOTS * crit
     for (const k of ['bomb', 'wave', 'rush'] as const) {
       expect(skillBite({ tone: 'n', maxHp: 374 }, k, 1, 1, 1, floor)).toBeGreaterThan(crit)
       expect(skillBite({ tone: 'elite', maxHp: 6570 }, k, 1, 1, 1, floor)).toBeGreaterThan(crit)
-      // 상한은 그대로.
       expect(skillBite({ tone: 'elite', maxHp: 6570 }, k, 1, 1, 1, floor)).toBeLessThanOrEqual(Math.round(6570 * SKILL_CAP.elite))
       expect(skillBite({ tone: 'boss', maxHp: 28000 }, k, 1, 1, 1, floor)).toBeLessThanOrEqual(Math.round(28000 * SKILL_CAP.boss))
     }
-    // 오라 첫 펄스도.
-    expect(skillBite({ tone: 'n', maxHp: 374 }, 'aura', 1, 1, auraShare(true), floor)).toBeGreaterThan(crit)
   })
 
-  it('랭크가 올라도 상한(정예 40%, 보스 25%)을 넘지 않는다', () => {
+  it('랭크가 올라도 상한(정예 18%, 보스 6%)을 넘지 않는다', () => {
     const elite = body('elite', 10000)
     skillBlast([elite], 0, 0, 3, { kind: 'wave', rank: 10, gear: 1.15 })
-    expect(1 - elite.hp / 10000).toBeLessThanOrEqual(0.4)
-    expect(SKILL_BITE.wave.elite).toBeGreaterThanOrEqual(0.3)
+    expect(1 - elite.hp / 10000).toBeLessThanOrEqual(0.1805)
+    const boss = body('boss', 30000)
+    skillBlast([boss], 0, 0, 3, { kind: 'bomb', rank: 10, gear: 1.15 })
+    expect(1 - boss.hp / 30000).toBeLessThanOrEqual(0.0605)
   })
 })
 
@@ -211,5 +210,19 @@ describe('난이도 제거 + 저장 이전', () => {
     expect(s.difficulty).toBeUndefined()
     expect((s.settings as Record<string, unknown>).difficulty).toBeUndefined()
     expect(s.gold).toBe(gold)
+  })
+})
+
+describe('밸런스 패스: 1장 튜토리얼 스킬은 그대로', () => {
+  it('마을 몹(town)은 예전 비율: 정예 30–40%, 보스(제단 꽃) 15–25%, 일반은 한 방', () => {
+    for (const k of ['bomb', 'wave', 'rush'] as const) {
+      expect(skillBite({ tone: 'n', maxHp: 300, town: true }, k, 1, 1)).toBeGreaterThanOrEqual(300)
+      const e = skillBite({ tone: 'elite', maxHp: 1000, town: true }, k, 1, 1) / 1000
+      expect(e).toBeGreaterThanOrEqual(0.3)
+      expect(e).toBeLessThanOrEqual(0.4)
+      const b = skillBite({ tone: 'boss', maxHp: 10000, town: true }, k, 1, 1) / 10000
+      expect(b).toBeGreaterThanOrEqual(0.15)
+      expect(b).toBeLessThanOrEqual(0.25)
+    }
   })
 })

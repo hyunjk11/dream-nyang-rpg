@@ -2,6 +2,7 @@
  * Quest waypoints (편의성): what a tracked quest points at, the walking route to it over the maze
  * grid, and how far it is. Pure (no Three.js, no DOM) so it is tested headless.
  */
+import { PLACE } from './places'
 
 /** What to walk to. `foe` may name a horde kind ('any' / undefined = whichever is nearest). */
 export type WaypointGoal =
@@ -39,7 +40,8 @@ export function goalForQuest(kind: string, target: string, done: boolean, inRun:
 export type FieldLeg = 'island' | 'mongsil' | 'field' | 'elsewhere'
 
 /** The field's real name on every sign (board, tracker, waypoint chip). */
-export const FIELD_NAME = '몽실 들판'
+/** Plain place names (places.ts) so routes read like the portal menu without repeating 'n장'. */
+export const FIELD_NAME = PLACE.field.name
 
 /**
  * A 몽실 들판 quest row → the next leg of the walk and what the chip says. The field is only reached
@@ -48,9 +50,9 @@ export const FIELD_NAME = '몽실 들판'
 export function fieldQuestWay(kind: string, target: string, done: boolean, leg: FieldLeg, title: string): { goal: WaypointGoal; label: string } {
   if (done) return { goal: { kind: 'board' }, label: `${title} · 게시판에서 보상` }
   if (leg === 'field') return { goal: goalForQuest(kind, target, false, true), label: title }
-  if (leg === 'mongsil') return { goal: { kind: 'gate' }, label: `${title} · 몽실 마을 별문 → ${FIELD_NAME}` }
-  if (leg === 'island') return { goal: { kind: 'gate' }, label: `${title} · 별문 → 몽실 마을 → ${FIELD_NAME}` }
-  return { goal: { kind: 'exit' }, label: `${title} · 마을로 돌아가 ${FIELD_NAME}으로` }
+  if (leg === 'mongsil') return { goal: { kind: 'gate' }, label: `${title} · ${PLACE.mongsil.name} 별문 → ${FIELD_NAME}` }
+  if (leg === 'island') return { goal: { kind: 'gate' }, label: `${title} · 별문 → ${PLACE.mongsil.name} → ${FIELD_NAME}` }
+  return { goal: { kind: 'exit' }, label: `${title} · 마을로 돌아가 ${FIELD_NAME}로` }
 }
 
 /** A board contract row → its goal (down in the sewer), the board when done, else the gate. */

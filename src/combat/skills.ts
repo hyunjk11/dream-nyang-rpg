@@ -10,7 +10,7 @@ import type { Vfx } from '../core/vfx'
 import type { RayFn } from '../core/tps'
 import type { GunCue } from '../audio/gunsound'
 import type { Shooter } from './shooter'
-import { SKILL_BITE, TREE_BY_ID, auraHeal, bombRadius, type ActiveId, type SkillKind } from '../data/tree'
+import { SKILL_BITE, SKILL_BITE_TOWN, TREE_BY_ID, auraHeal, bombRadius, type ActiveId, type SkillKind } from '../data/tree'
 
 /** Something a skill can hurt (a horde foe, the boss, a nest pipe, a town foe). */
 export interface SkillBody {
@@ -22,6 +22,8 @@ export interface SkillBody {
   tone: 'n' | 'elite' | 'boss'
   /** Full health: skills bite a share of it (fix/gun-identity). */
   maxHp: number
+  /** A 1장 town foe: bites from SKILL_BITE_TOWN / SKILL_CAP_TOWN (the tutorial keeps its numbers). */
+  town?: boolean
   /** Land `amount`, pushed along (dx, dz) × knock; slow for `slow` seconds where supported. */
   hit: (amount: number, dx: number, dz: number, knock: number, slow: number) => boolean
 }
@@ -79,7 +81,8 @@ export const SKILL_GEAR = { min: 1, max: 1.15 }
  * kit to ×0.8 (elite ~26%, boss ~14%: under the 30–40% / 15–25% promise). Now gear only ever
  * helps, and never past these.
  */
-export const SKILL_CAP = { elite: 0.4, boss: 0.25 }
+export const SKILL_CAP = { elite: 0.18, boss: 0.06 }
+export const SKILL_CAP_TOWN = { elite: 0.4, boss: 0.25 }
 export function skillGear(damageMul: number, refMul = 1): number {
   return Math.max(SKILL_GEAR.min, Math.min(SKILL_GEAR.max, damageMul / Math.max(0.1, refMul)))
 }
@@ -92,12 +95,15 @@ export const SKILL_REF_MUL: Record<number, number> = { 0: 1.1, 1: 1.5, 2: 2.1, 3
  * "스킬도 총알 한발 수준도 안 돼"): on normals the number was just their max HP (a 374-HP slime read
  * 393 next to a geared crit of 500+). Elites and the boss still stop at SKILL_CAP.
  */
-export const SKILL_SHOTS = 8
-export function skillBite(b: Pick<SkillBody, 'tone' | 'maxHp'>, kind: SkillKind, rank: number, gear: number, share = 1, floor = 0): number {
-  const t = SKILL_BITE[kind]
+export const SKILL_SHOTS = 3
+/** Town foes keep the old 8-droplet floor. */
+export const SKILL_SHOTS_TOWN = 8
+export function skillBite(b: Pick<SkillBody, 'tone' | 'maxHp' | 'town'>, kind: SkillKind, rank: number, gear: number, share = 1, floor = 0): number {
+  const t = (b.town ? SKILL_BITE_TOWN : SKILL_BITE)[kind]
+  if (b.town) floor *= SKILL_SHOTS_TOWN / SKILL_SHOTS
   if (b.tone === 'n') return Math.max(Math.ceil(b.maxHp * t.n * share), Math.round(floor * share))
   const base = (b.tone === 'elite' ? t.elite : t.boss) + t.rank * Math.max(0, rank - 1)
-  const cap = SKILL_CAP[b.tone]
+  const cap = (b.town ? SKILL_CAP_TOWN : SKILL_CAP)[b.tone]
   const cut = Math.min(cap, base * Math.max(SKILL_GEAR.min, gear))
   return Math.max(1, Math.round(b.maxHp * cut * share), Math.round(Math.min(floor, b.maxHp * cap) * share))
 }

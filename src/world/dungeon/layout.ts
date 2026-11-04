@@ -55,7 +55,7 @@ export const EXPLORE = {
   /** No pack this close (tiles) to the start: the first room is safe. */
   safe: 7,
   /** Foe hp on explore floors (on top of DIFFICULTY.horde.hp): fewer foes, each one a bit meatier. */
-  hp: 1.6,
+  hp: 1.15,
 } as const
 
 /** Elite affixes: a name prefix and what it does. */

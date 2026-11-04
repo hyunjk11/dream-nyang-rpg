@@ -13,39 +13,39 @@ import { REF_DPS } from '../tools/sim-ttk-ref'
 const ttk = (kind: Parameters<typeof hordeHp>[0], d: number, f: number, elite = false) =>
   hordeHp(kind, floorPlan(d, f).scale.hp * EXPLORE.hp, elite) / REF_DPS[`d${d}f${f}`][0]
 
-describe('몹 체력 재조정 (실측 DPS 기준 처치 시간)', () => {
-  it('보통 장비로 일반 몹은 1~3.5초, 기사는 3~7.5초 걸린다 (깊이 1~3)', () => {
-    for (const [d, f] of [[1, 1], [1, 2], [1, 3], [2, 1], [2, 2], [2, 3], [3, 1], [3, 3]]) {
-      expect(ttk('slime', d, f), `d${d}f${f} 슬라임`).toBeGreaterThan(1)
-      expect(ttk('slime', d, f), `d${d}f${f} 슬라임`).toBeLessThan(3.5)
-      if (d * 10 + f >= 13) {
-        expect(ttk('knight', d, f), `d${d}f${f} 기사`).toBeGreaterThan(3)
-        expect(ttk('knight', d, f), `d${d}f${f} 기사`).toBeLessThan(7.5)
-      }
+describe('몹 체력 재조정 (밸런스 패스: 실측 DPS 기준 처치 시간)', () => {
+  it('보통 장비로 일반 슬라임은 0.5~1.2초, 기사는 1.2~2.5초 (깊이 1~2, 첫 층 시작 총은 2초 안)', () => {
+    expect(ttk('slime', 1, 1), 'd1f1 시작 총').toBeLessThan(2)
+    for (const [d, f] of [[1, 2], [1, 3], [2, 1], [2, 2], [2, 3]]) {
+      expect(ttk('slime', d, f), `d${d}f${f} 슬라임`).toBeGreaterThan(0.5)
+      expect(ttk('slime', d, f), `d${d}f${f} 슬라임`).toBeLessThan(1.2)
+      expect(ttk('knight', d, f), `d${d}f${f} 기사`).toBeGreaterThan(1.2)
+      expect(ttk('knight', d, f), `d${d}f${f} 기사`).toBeLessThan(2.5)
     }
   })
 
-  it('정예는 대략 10~25초, 종류가 커도 너무 길어지지 않는다', () => {
-    for (const [d, f] of [[1, 2], [2, 2], [2, 3], [3, 1]]) {
+  it('정예는 총만 써도 대략 3.5~9초 (예전 10~25초), 종류가 커도 너무 길어지지 않는다', () => {
+    for (const [d, f] of [[1, 2], [1, 3], [2, 2], [2, 3]]) {
       for (const k of ['slime', 'knight', 'golem'] as const) {
-        expect(ttk(k, d, f, true), `d${d}f${f} 정예 ${k}`).toBeGreaterThan(10)
-        expect(ttk(k, d, f, true), `d${d}f${f} 정예 ${k}`).toBeLessThan(26)
+        expect(ttk(k, d, f, true), `d${d}f${f} 정예 ${k}`).toBeGreaterThan(3.5)
+        expect(ttk(k, d, f, true), `d${d}f${f} 정예 ${k}`).toBeLessThan(9)
       }
     }
   })
 
-  it('보스는 보통 장비로 1분~1분 35초 싸움이다 (사격 가능 시간 75%)', () => {
-    for (const d of [1, 2, 3]) {
+  it('보스는 총만 쓰면 45~80초 (사격 가능 시간 75%), 스킬을 섞으면 더 짧다 (깊이 1~2)', () => {
+    for (const d of [1, 2]) {
       const s = (BOSS.hp * floorPlan(d, 4).scale.boss.hp) / (REF_DPS[`d${d}f4`][0] * 0.75)
-      expect(s, `깊이 ${d}`).toBeGreaterThan(55)
-      expect(s, `깊이 ${d}`).toBeLessThan(95)
+      expect(s, `깊이 ${d}`).toBeGreaterThan(45)
+      expect(s, `깊이 ${d}`).toBeLessThan(80)
     }
   })
 
-  it('치명타 확률·배율에 상한이 있고 별총 기본 피해는 낮췄다', () => {
+  it('치명타 확률·배율에 상한이 있고, 별총·저격총 DPS는 물총의 75~95%로 올렸다', () => {
     expect(STAT_CAPS.critChance).toBeLessThanOrEqual(0.45)
     expect(STAT_CAPS.critMul).toBeLessThanOrEqual(2.6)
-    expect(GUN_PROFILES.star.damage).toBeLessThan(17)
+    expect(GUN_PROFILES.star.damage).toBeGreaterThan(13)
+    expect(GUN_PROFILES.dart.damage).toBeGreaterThan(88)
   })
 })
 

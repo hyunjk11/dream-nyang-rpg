@@ -6,6 +6,8 @@ export interface TalkChoice {
   actions?: Action[]
   /** Portal choices carry the zone to travel to. */
   go?: string
+  /** A portal row she cannot take yet ("🔒 2장 · 꿈 미로 · 2장 필요"): shown greyed, not pickable. */
+  locked?: boolean
 }
 
 export interface TalkDef {
@@ -108,6 +110,7 @@ export class TalkBox {
   }
 
   private pick(i: number): void {
+    if (this.choices[i]?.locked) return
     const choice = this.choices[i] ?? null
     const id = this.id
     this.close()
@@ -139,6 +142,10 @@ export class TalkBox {
         const b = document.createElement('button')
         b.type = 'button'
         b.textContent = `${k + 1}. ${choice.text}`
+        if (choice.locked) {
+          b.classList.add('locked')
+          b.setAttribute('aria-disabled', 'true')
+        }
         b.addEventListener('pointerdown', (event) => {
           event.stopPropagation()
           event.preventDefault()
@@ -146,7 +153,7 @@ export class TalkBox {
         })
         this.list?.append(b)
       })
-      this.highlight(0)
+      this.highlight(Math.max(0, step.choices.findIndex((c) => !c.locked)))
     }
     if (this.help) this.help.textContent = step.choices.length ? '숫자 · 위/아래 · E로 고르기' : 'E · Enter · 탭으로 넘기기'
     this.box?.classList.remove('hidden')

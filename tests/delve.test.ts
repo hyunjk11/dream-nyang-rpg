@@ -43,8 +43,8 @@ describe('탐험 층 구성', () => {
   })
 
   it('HUD 문구가 한국어로 진행도를 보여준다', () => {
-    expect(floorLabel(1, 2)).toBe('깊이 1 · 2층')
-    expect(floorLabel(2, 4)).toBe('깊이 2 · 보스층')
+    expect(floorLabel(1, 2)).toBe('1장 · 꿈 하수도 · 깊이 1 · 2층')
+    expect(floorLabel(2, 4)).toBe('1장 · 꿈 하수도 · 깊이 2 · 보스층')
     expect(objectiveText(floorPlan(1, 1))).toBe('미궁 끝 출구 방 찾기')
     expect(objectiveText(floorPlan(1, 2), 0)).toBe('별 열쇠를 가진 정예 찾기')
     expect(objectiveText(floorPlan(1, 2), 1)).toBe('별 열쇠로 출구 문 열기')
@@ -80,7 +80,8 @@ describe('탐험 진행과 저장', () => {
     const sum = run.finish(save, 'clear', 2)
     expect(sum.unlocked).toBe(2)
     expect(delveOf(save)).toMatchObject({ unlocked: 2, cleared: 1, checkpoint: null })
-    expect(portalChoices(save).map((c) => c.depth)).toEqual([2, 1])
+    // 이야기 순서: 얕은 깊이부터 (깊이 1 → 2)
+    expect(portalChoices(save).map((c) => c.depth)).toEqual([1, 2])
   })
 
   it('보스를 쓰러뜨린 뒤 쓰러져도 다음 깊이는 열린 채, 체크포인트는 비어 있다', () => {
@@ -110,7 +111,8 @@ describe('탐험 진행과 저장', () => {
     expect(save.gold).toBe(before + 100 - sum.lost)
     expect(save.items.some((i) => i.uid === item.uid)).toBe(true)
     expect(delveOf(save).checkpoint).toEqual({ depth: 1, floor: 2 })
-    expect(portalChoices(save)[0]).toMatchObject({ resume: true, depth: 1, floor: 2 })
+    // 이어하기 줄은 깊이 목록 뒤 (맨 아래)
+    expect(portalChoices(save).at(-1)).toMatchObject({ resume: true, depth: 1, floor: 2 })
   })
 
   it('중간 귀환은 골드를 모두 챙기고 같은 층에서 이어간다', () => {

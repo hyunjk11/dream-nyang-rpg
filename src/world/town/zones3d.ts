@@ -1,3 +1,4 @@
+import { placeLabel } from '../../sim/places'
 import { ZONES } from '../../data/zones'
 import type { SaveData } from '../../sim/types'
 import type { FoeKind } from '../../combat/foes'
@@ -112,15 +113,15 @@ const status = (save: SaveData, id: string) => save.quests[id]?.status ?? 'inact
 export function destinations(save: SaveData, from: ZoneId, bossAwake = false): Destination[] {
   if (from === 'meadow') {
     const slept = (save.quests.q_awaken?.counts.slime ?? 0) >= 1 || status(save, 'q_awaken') === 'turnedIn'
-    return slept ? [{ to: 'village', label: '꿈의 마을로' }] : []
+    return slept ? [{ to: 'village', label: placeLabel('village') }] : []
   }
   if (from === 'altar' && bossAwake) return []
-  if (from !== 'village') return [{ to: 'village', label: '꿈의 마을로 돌아가기' }]
-  const out: Destination[] = [{ to: 'meadow', label: '꿈의 초원' }]
-  if (status(save, 'q_awaken') === 'turnedIn') out.push({ to: 'forest', label: '몽환의 숲' })
+  if (from !== 'village') return [{ to: 'village', label: placeLabel('village', '돌아가기') }]
+  const out: Destination[] = [{ to: 'meadow', label: placeLabel('meadow') }]
+  if (status(save, 'q_awaken') === 'turnedIn') out.push({ to: 'forest', label: placeLabel('forest') })
   const parts = status(save, 'q_parts')
-  if (status(save, 'q_dust') === 'turnedIn' || parts === 'active' || parts === 'completed') out.push({ to: 'vale', label: '버섯 골짜기' })
-  if (status(save, 'q_bloom') !== 'inactive') out.push({ to: 'altar', label: '별빛 제단' })
+  if (status(save, 'q_dust') === 'turnedIn' || parts === 'active' || parts === 'completed') out.push({ to: 'vale', label: placeLabel('vale') })
+  if (status(save, 'q_bloom') !== 'inactive') out.push({ to: 'altar', label: placeLabel('altar') })
   return out
 }
 

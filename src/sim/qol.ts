@@ -130,6 +130,11 @@ export const LAST_GATE_KEY = 'dnr.lastGate'
  * The portal list with the last place she went (same `go`) moved to the top and marked, so a
  * repeat trip is one press. Unknown or missing `last` leaves the list as is.
  */
+export function markLast<T extends { text: string; go?: string }>(choices: T[], last: string | null | undefined): T[] {
+  if (!last) return choices
+  return choices.map((c) => (c.go === last ? { ...c, text: `${c.text} · 지난번` } : c))
+}
+/** Old behaviour (kept for saves/tests): moves the last trip to the top. The menus now use markLast (story order). */
 export function rememberFirst<T extends { text: string; go?: string }>(choices: T[], last: string | null | undefined): T[] {
   if (!last) return choices
   const i = choices.findIndex((c) => c.go === last)

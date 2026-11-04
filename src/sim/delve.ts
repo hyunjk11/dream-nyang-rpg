@@ -13,6 +13,7 @@
  *    it, so the town portal offers "이어가기" from that floor (fresh maze, fresh foes). Beating the
  *    boss clears it and unlocks the next depth.
  */
+import { placeLabel } from './places'
 import { isUnique } from './rarity'
 import { DIFFICULTY } from '../combat/difficulty'
 import { MATERIAL_KO } from '../data/items'
@@ -127,7 +128,7 @@ export interface FieldNeeds {
 }
 
 /** Field foes use depth 1 floor 2; its bloom is a smaller boss than the delve's (chapter-2 gear). */
-export const FIELD_BOSS_HP = 0.6
+export const FIELD_BOSS_HP = 1.05
 function fieldScale(): FloorScale {
   const s = floorScale(1, 2)
   return { ...s, boss: { ...s.boss, hp: FIELD_BOSS_HP } }
@@ -197,8 +198,12 @@ export function floorPlan(depth: number, floor: number, salt = 0): FloorPlan {
   }
 }
 
-/** "깊이 1 · 2층" / "깊이 1 · 보스층". */
+/** "1장 · 꿈 하수도 깊이 1 · 2층" / "… · 보스층" (places.ts scheme). */
 export function floorLabel(depth: number, floor: number): string {
+  return placeLabel('sewer', `깊이 ${depth} · ${floor >= BOSS_FLOOR ? '보스층' : `${floor}층`}`)
+}
+/** "깊이 1 · 2층": the short form for rows that already say where (summary, resume). */
+export function floorShort(depth: number, floor: number): string {
   return `깊이 ${depth} · ${floor >= BOSS_FLOOR ? '보스층' : `${floor}층`}`
 }
 
@@ -220,8 +225,8 @@ export function objectiveText(plan: Pick<FloorPlan, 'objective' | 'goal'> & { ke
 
 /** Banner title/sub when a floor begins. */
 export function floorIntro(plan: FloorPlan): { title: string; sub: string } {
-  if (plan.objective === 'field') return { title: '챕터 2 · 몽실 들판', sub: plan.field?.boss ? '들판 동쪽 끝에 악몽 꽃이 피어 있어' : '괴물 무리가 계속 몰려와 · 퀘스트를 채우자' }
-  if (plan.objective === 'town') return { title: '몽실 마을', sub: '구름양들의 야시장 · 별문으로 어디든 갈 수 있어' }
+  if (plan.objective === 'field') return { title: placeLabel('field'), sub: plan.field?.boss ? '들판 동쪽 끝에 악몽 꽃이 피어 있어' : '괴물 무리가 계속 몰려와 · 퀘스트를 채우자' }
+  if (plan.objective === 'town') return { title: placeLabel('mongsil'), sub: '구름양들의 야시장 · 별문으로 어디든 갈 수 있어' }
   const title = plan.label ?? floorLabel(plan.depth, plan.floor)
   if (plan.area === 'moon') return { title, sub: '둥지 한가운데 꿈먹는 밤나방이 날개를 접고 있어' }
   if (plan.objective === 'boss') return { title, sub: '달빛 방에 악몽 꽃이 잠들어 있어' }
@@ -565,16 +570,17 @@ export function formatTime(seconds: number): string {
   return m ? `${m}분 ${String(s % 60).padStart(2, '0')}초` : `${s}초`
 }
 
-/** Portal menu entries: resume (if any), then each open depth, deepest first. */
+/** Portal menu entries (story order): each open depth from 1 up, then the resume row (if any). */
 export function portalChoices(save: SaveData): { label: string; depth: number; floor: number; resume: boolean }[] {
   const d = delveOf(save)
   const out: { label: string; depth: number; floor: number; resume: boolean }[] = []
   // Floor 1 is the same as picking the depth itself, so only deeper checkpoints get a line.
   if (d.checkpoint && d.checkpoint.floor > 1) {
-    out.push({ label: `이어가기 · ${floorLabel(d.checkpoint.depth, d.checkpoint.floor)}`, depth: d.checkpoint.depth, floor: d.checkpoint.floor, resume: true })
+    out.push({ label: placeLabel('sewer', `이어가기 · ${floorShort(d.checkpoint.depth, d.checkpoint.floor)}`), depth: d.checkpoint.depth, floor: d.checkpoint.floor, resume: true })
   }
-  for (let depth = d.unlocked; depth >= Math.max(1, d.unlocked - 2); depth -= 1) {
-    out.push({ label: `꿈 하수도 깊이 ${depth}${depth > d.cleared ? '' : ' ✓'}`, depth, floor: 1, resume: false })
+  const rows: typeof out = []
+  for (let depth = Math.max(1, d.unlocked - 2); depth <= d.unlocked; depth += 1) {
+    rows.push({ label: placeLabel('sewer', `깊이 ${depth}${depth > d.cleared ? '' : ' ✓'}`), depth, floor: 1, resume: false })
   }
-  return out
+  return [...rows, ...out]
 }

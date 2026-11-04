@@ -134,10 +134,10 @@ describe('챕터 1 튜토리얼 지역 체력', () => {
       expect(townFoeHp(k, true) / DPS, k).toBeLessThanOrEqual(6)
     }
   })
-  it('별빛 제단 꽃은 예전(약 7150)보다 훨씬 약하고, 하수도·보스층·미로 수치는 그대로', () => {
+  it('별빛 제단 꽃은 예전(약 7150)보다 훨씬 약하고, 튜토리얼 수치는 그대로', () => {
     expect(townFoeHp('bloom', false)).toBeLessThan(4000)
     expect(townFoeHp('bloom', false) / DPS).toBeGreaterThan(15)
-    expect(DIFFICULTY.horde.hp).toBe(9)
+    expect(DIFFICULTY.town.hp).toBe(3) // 하수도·미로(horde)는 밸런스 패스에서 바뀌었고, 튜토리얼(town)은 그대로
     expect(DIFFICULTY.town.skillHp).toBe(11)
   })
 })

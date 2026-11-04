@@ -47,7 +47,7 @@ describe('챕터 게이팅 · 새 저장', () => {
   it('새 저장의 퀘스트 수첩에는 챕터 1 메인 퀘스트만 있다', () => {
     const book = questBook(freshSave())
     expect(book.map((q) => q.id)).toEqual(['main'])
-    expect(book[0].title).toMatch(/^챕터 1 · 가이드 1\/13/)
+    expect(book[0].title).toMatch(/^1장 · 가이드 1\/13/)
   })
 
   it('챕터 1에서는 미로 · 들판 이벤트가 진행되지 않는다', () => {
@@ -79,7 +79,7 @@ describe('챕터 게이팅 · 챕터 1 중간 저장', () => {
     const save = freshSave()
     walkGuide(save, 7)
     const m = mainQuest(save)
-    expect(m.title).toBe(`챕터 1 · 가이드 8/${GUIDE.length}`)
+    expect(m.title).toBe(`1장 · 가이드 8/${GUIDE.length}`)
     expect(m.line).toBe(GUIDE[7].title)
     expect(questBook(save).every((q) => !q.id.startsWith('c2_'))).toBe(true)
   })
@@ -99,7 +99,7 @@ describe('챕터 게이팅 · 챕터 2 저장', () => {
     expect(chapter2Open(save)).toBe(true)
     expect(mazeOpen(save)).toBe(false)
     expect(mazeHud(save)).toBeNull()
-    expect(mainQuest(save).title).toBe('챕터 2 · 꿈 미로로')
+    expect(mainQuest(save).title).toBe('2장 · 꿈 미로로')
   })
 
   it('미로에 들어가면 모찌의 퀘스트가 열리고 메인에 보인다', () => {
@@ -108,7 +108,7 @@ describe('챕터 게이팅 · 챕터 2 저장', () => {
     enterMaze(save)
     expect(mazeOpen(save)).toBe(true)
     expect(mazeQuest(save)?.id).toBe('m_kill')
-    expect(mainQuest(save).title).toBe('챕터 2 · 꿈 미로 1/4')
+    expect(mainQuest(save).title).toBe('2장 · 꿈 미로 1/4')
   })
 
   it('미로를 건너면 몽실 이야기가 메인이 된다', () => {
@@ -117,7 +117,7 @@ describe('챕터 게이팅 · 챕터 2 저장', () => {
     passMaze(save)
     expect(mongsilOpen(save)).toBe(true)
     expect(storyHud(save)).not.toBeNull()
-    expect(mainQuest(save).title).toMatch(/^챕터 2 · 꿈의 비밀 1\/4/)
+    expect(mainQuest(save).title).toMatch(/^2장 · 꿈의 비밀 1\/4/)
   })
 
   it('챕터 2에서는 게시판 퀘스트를 받고 진행할 수 있다', () => {
@@ -194,7 +194,7 @@ describe('챕터 게이팅 · 챕터 3', () => {
 })
 
 describe('퀘스트 정리', () => {
-  const q = (id: string, ready = false): QuestEntry => ({ id, group: id === 'main' ? 'main' : 'bounty', title: id, line: '', prog: '', ready, turnIn: '', reward: '' })
+  const q = (id: string, ready = false): QuestEntry => ({ id, group: id === 'main' ? 'main' : 'bounty', title: id, line: '', prog: '', ready, turnIn: '', reward: '', area: '' })
 
   it('HUD는 메인을 맨 위에 두고 최대 3개만 보여 준다', () => {
     const book = [q('main'), q('a'), q('b'), q('c'), q('d')]
@@ -231,6 +231,6 @@ describe('퀘스트 정리', () => {
   it('챕터 1을 마치면 완료 목록에 접혀 들어간다', () => {
     const save = freshSave()
     skipGuide(save)
-    expect(questArchive(save).some((x) => x.title.startsWith('챕터 1'))).toBe(true)
+    expect(questArchive(save).some((x) => x.title.startsWith('1장'))).toBe(true)
   })
 })

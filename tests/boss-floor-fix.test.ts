@@ -99,27 +99,32 @@ describe('보스층에서 내 피도 빠진다 (내 피도 안빠져)', () => {
 
 describe('스킬이 새 체력 곡선을 따라간다 (fix/gun-identity: 스킬은 큰 한 방)', () => {
   const kinds: HordeKind[] = ['slime', 'bug', 'skeleton', 'knight', 'golem']
-  it('랭크1 거품 폭탄·폭주 파동·모찌 돌진 한 번이면 일반 몹은 어떤 종류든 쓰러진다 (무리 정리)', () => {
+  it('큰 쿨 폭주 파동은 일반 몹을 한 방에, 거품 폭탄·모찌 돌진은 70% 이상 깎는다 (밸런스 패스)', () => {
     for (const d of [1, 2, 3])
       for (const k of kinds) {
         const hp = hordeHp(k, floorPlan(d, 2).scale.hp * EXPLORE.hp)
-        for (const kind of ['bomb', 'wave', 'rush'] as const) expect(skillBite({ tone: 'n', maxHp: hp }, kind, 1, 1), `d${d} ${k} ${kind}`).toBeGreaterThanOrEqual(hp)
+        expect(skillBite({ tone: 'n', maxHp: hp }, 'wave', 1, 1), `d${d} ${k} wave`).toBeGreaterThanOrEqual(hp)
+        for (const kind of ['bomb', 'rush'] as const) {
+          const b = skillBite({ tone: 'n', maxHp: hp }, kind, 1, 1)
+          expect(b, `d${d} ${k} ${kind}`).toBeGreaterThanOrEqual(hp * 0.7)
+          expect(b, `d${d} ${k} ${kind}`).toBeLessThan(hp)
+        }
       }
   })
 
-  it('같은 수준 장비면 정예는 한 번에 30~40%, 보스는 15~25%가 깎인다', () => {
+  it('같은 수준 장비면 정예는 한 번에 12~18%, 보스는 4~6%가 깎인다 (밸런스 패스)', () => {
     for (const kind of ['bomb', 'wave', 'rush', 'aura'] as const)
       for (const r of [1, 3]) {
         const e = skillBite({ tone: 'elite', maxHp: 1000 }, kind, r, 1) / 1000
         const b = skillBite({ tone: 'boss', maxHp: 10000 }, kind, r, 1) / 10000
-        expect(e, `${kind} r${r} 정예`).toBeGreaterThanOrEqual(0.3)
-        expect(e, `${kind} r${r} 정예`).toBeLessThanOrEqual(0.4)
-        expect(b, `${kind} r${r} 보스`).toBeGreaterThanOrEqual(0.15)
-        expect(b, `${kind} r${r} 보스`).toBeLessThanOrEqual(0.25)
+        expect(e, `${kind} r${r} 정예`).toBeGreaterThanOrEqual(0.12)
+        expect(e, `${kind} r${r} 정예`).toBeLessThanOrEqual(0.18)
+        expect(b, `${kind} r${r} 보스`).toBeGreaterThanOrEqual(0.04)
+        expect(b, `${kind} r${r} 보스`).toBeLessThanOrEqual(0.06)
       }
-    // 폭탄 r5도 정예 40%, 보스 25% 안쪽.
-    expect(skillBite({ tone: 'elite', maxHp: 1000 }, 'bomb', 5, 1)).toBeLessThanOrEqual(400)
-    expect(skillBite({ tone: 'boss', maxHp: 1000 }, 'bomb', 5, 1)).toBeLessThanOrEqual(250)
+    // 폭탄 r5도 정예 18%, 보스 6% 안쪽.
+    expect(skillBite({ tone: 'elite', maxHp: 1000 }, 'bomb', 5, 1)).toBeLessThanOrEqual(180)
+    expect(skillBite({ tone: 'boss', maxHp: 1000 }, 'bomb', 5, 1)).toBeLessThanOrEqual(60)
   })
 
   it('장비가 좋으면 조금 더, 나빠도 덜하지 않다 (1~1.15배로 묶임, fix/real-play)', () => {
@@ -133,21 +138,22 @@ describe('스킬이 새 체력 곡선을 따라간다 (fix/gun-identity: 스킬�
     const body = (id: string, tone: SkillBody['tone'], x: number, maxHp: number): SkillBody => ({ id, x, z: 0, r: 0.4, tone, maxHp, hit: (a) => ((got[id] = a), false) })
     const n = skillBlast([body('a', 'n', 0, 300), body('b', 'n', 1, 900), body('e', 'elite', -1, 2000), body('B', 'boss', 0.5, 20000), body('far', 'n', 9, 300)], 0, 0, 2.4, { kind: 'bomb', rank: 1, gear: 1 })
     expect(n).toBe(4)
-    expect(got.a).toBeGreaterThanOrEqual(300)
-    expect(got.b).toBeGreaterThanOrEqual(900)
+    expect(got.a).toBe(Math.ceil(300 * SKILL_BITE.bomb.n))
+    expect(got.b).toBe(Math.ceil(900 * SKILL_BITE.bomb.n))
     expect(got.e).toBe(Math.round(2000 * SKILL_BITE.bomb.elite))
     expect(got.B).toBe(Math.round(20000 * SKILL_BITE.bomb.boss))
     expect(got.far).toBeUndefined()
   })
 
-  it('TTK: 정예 기사·보스를 총만 쓸 때보다 스킬을 섞으면 훨씬 빨리 잡는다', () => {
+  it('TTK: 스킬 두 번이면 정예 처치가 빨라지지만, 총이 여전히 주 피해다 (스킬 25~35%)', () => {
     for (const d of [1, 2, 3]) {
       const dps = REF_DPS[`d${d}f2`][0]
       const elite = hordeHp('knight', floorPlan(d, 2).scale.hp * EXPLORE.hp, true)
       const gun = elite / dps
       // 폭탄 + 돌진 한 번씩.
       const mixed = (elite - skillBite({ tone: 'elite', maxHp: elite }, 'bomb', 1, 1) - skillBite({ tone: 'elite', maxHp: elite }, 'rush', 1, 1)) / dps
-      expect(mixed, `d${d}`).toBeLessThan(gun * 0.4)
+      expect(mixed, `d${d}`).toBeLessThan(gun * 0.8)
+      expect(mixed, `d${d}`).toBeGreaterThan(gun * 0.6)
       void SKILL_POWER
       void BOSS
     }
