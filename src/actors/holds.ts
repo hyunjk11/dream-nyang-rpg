@@ -36,7 +36,7 @@ export interface HoldStyle {
 
 export const HOLD_STYLES: Record<HoldType, HoldStyle> = {
   // 쌍권총: both arms out, guns a hand-width apart, light quick kicks that alternate.
-  dual: { type: 'dual', label: '쌍권총 (한 손씩)', twoHanded: false, dual: true, reach: { fwd: 0.02, right: 0.13, up: 0.01 }, centre: true, fore: 0, kickBack: 0.05, kickUp: 10, settle: 14, pitch: 0 },
+  dual: { type: 'dual', label: '쌍권총 (한 손씩)', twoHanded: false, dual: true, reach: { fwd: 0.02, right: 0.17, up: 0.03 }, centre: true, fore: 0, kickBack: 0.05, kickUp: 10, settle: 14, pitch: 0 },
   // 3점사 소총: tucked in at the chest, off hand on the barrel, small tight kicks.
   rifle: { type: 'rifle', label: '양손 소총 (가슴 앞)', twoHanded: true, dual: false, reach: { fwd: -0.02, right: 0.035, up: 0.05 }, centre: true, fore: 0.62, kickBack: 0.045, kickUp: 5, settle: 12, pitch: 1 },
   // 비눗방울 산탄총: held low at the hip, big shove and muzzle climb (펑!).
