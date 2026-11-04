@@ -1,5 +1,5 @@
 import { StickTaps, autoRunAfterKey } from '../sim/autorun'
-import { cursor, needsRelock, setAlt } from './cursor'
+import { aimHintWanted, cursor, cursorLook, needsRelock, setAlt } from './cursor'
 
 export interface Pad {
   /** Virtual stick (touch), -1..1. */
@@ -74,13 +74,19 @@ let everLocked = false
 let resumed = false
 let fireFinger = -1
 let lockedAt = 0
+let lockErrors = 0
 const refuse = () => {
+  lockErrors += 1
   if (!everLocked) lockRefused = true
 }
 if (typeof document !== 'undefined') {
   document.addEventListener('pointerlockchange', () => {
     lockedAt = performance.now()
-    if (document.pointerLockElement) everLocked = true
+    if (document.pointerLockElement) {
+      everLocked = true
+      // A refusal was only for that try (no gesture yet, a cooldown): a granted lock clears it.
+      lockRefused = false
+    }
     // Losing the lock (Esc, a tab switch) asks for a fresh "클릭해서 계속".
     else resumed = false
   })
@@ -149,10 +155,36 @@ export function syncCursor(armed: boolean, touch: boolean): boolean {
   if (free && !wasFree) resumed = false
   if (wasFree && !free && armed && !touch && everLocked && !locked) relockView()
   wasFree = free
-  const body = document.body.classList
-  if (body.contains('cursor-free') === (touch || locked)) body.toggle('cursor-free', !touch && !locked)
   const pending = performance.now() - lockAsked < 400
-  return !pending && needsRelock({ armed, touch, locked, free, hadLock: everLocked, refused: lockRefused, resumed })
+  const relock = !pending && needsRelock({ armed, touch, locked, free, hadLock: everLocked, refused: lockRefused, resumed })
+  // While the "클릭해서 계속" button is up the paw shows so it can be clicked; otherwise, while
+  // playing, the cursor is hidden whether or not the lock took (2026-11).
+  const look = cursorLook({ armed: armed && !relock, touch, free })
+  const body = document.body.classList
+  if (body.contains('cursor-free') !== (look === 'free' && !locked)) body.toggle('cursor-free', look === 'free' && !locked)
+  if (body.contains('cursor-aim') !== (look === 'aim')) body.toggle('cursor-aim', look === 'aim')
+  aiming = look === 'aim'
+  lockHint = aimHintWanted({ armed, touch, free, locked, refused: lockRefused, relock, pending })
+  return relock
+}
+
+let aiming = false
+let lockHint = false
+/** Show the small "클릭하면 조준" hint (lock truly missing while playing). */
+export function aimHint(): boolean {
+  return lockHint
+}
+
+/** Lock state for QA and the HUD. */
+export function lockState(): { locked: boolean; refused: boolean; everLocked: boolean; resumed: boolean; aiming: boolean; errors: number } {
+  return { locked: shoulder.locked, refused: lockRefused, everLocked, resumed, aiming, errors: lockErrors }
+}
+
+/** A key or click while playing without the lock: ask again (keys and clicks are user gestures). */
+function retryLock(): void {
+  if (!view || !aiming || shoulder.locked || cursor.free) return
+  if (performance.now() - lockAsked < 600) return
+  requestLock(view)
 }
 
 let mapClick = false
@@ -177,6 +209,8 @@ export function installInput(canvas: HTMLCanvasElement): void {
     if (event.code === 'KeyG' && !event.repeat) equipQueued = true
     if (event.code === 'Tab') event.preventDefault()
     if (event.repeat) return
+    // Lost or refused lock while playing: any key press is a fresh gesture to take it back.
+    if (shoulder.on && event.code !== 'Escape' && !event.altKey) retryLock()
     const slot = skillSlotFor(event.code)
     if (slot >= 0 && skillQueue.length < 4) skillQueue.push(slot)
     if (event.code === 'KeyI' || event.code === 'Tab') menuQueued = 'bag'
@@ -187,6 +221,13 @@ export function installInput(canvas: HTMLCanvasElement): void {
     keys.clear()
     pad.fire = false
   })
+  // A click that lands on the HUD (not the canvas) while aiming without the lock also retries it.
+  window.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'mouse' || event.button !== 0 || !shoulder.on || event.target === canvas) return
+    const el = event.target as HTMLElement | null
+    if (el?.closest?.('button, a, input, select, textarea, [data-tip], #minimap, .panel, #inv, #town')) return
+    retryLock()
+  }, true)
   let lookFinger = -1
   let lookX = 0
   let lookY = 0
@@ -206,7 +247,11 @@ export function installInput(canvas: HTMLCanvasElement): void {
         // Same rule as the button: this click resumes, whatever the browser says about the lock.
         resumed = true
         requestLock(canvas)
-      } else pad.fire = true
+      } else {
+        pad.fire = true
+        // Refused before (no gesture yet, a cooldown): this click is a fresh gesture, ask again.
+        if (!shoulder.locked) retryLock()
+      }
       return
     }
     // Fingers: the right part of the screen is the look pad (the stick and buttons sit on top).

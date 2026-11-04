@@ -15,7 +15,7 @@ import { Shooter, type ShotWorld } from './combat/shooter'
 import { TPS, loadSens, rayCapsule, setSens, SENS, type AimTarget } from './core/tps'
 import { WALK_RADIUS } from './world/town/island'
 import { Hero } from './actors/hero'
-import { autoRunOn, onAutoRun, setAutoRun, axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, gestureActive, installInput, pad, resumeView, runningHeld, shoulder, syncCursor } from './core/input'
+import { autoRunOn, onAutoRun, setAutoRun, axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, aimHint, gestureActive, installInput, lockState, pad, resumeView, runningHeld, shoulder, syncCursor } from './core/input'
 import { ALT_LABEL, cursor, installAlt, saveAltMode, setAlt } from './core/cursor'
 import { aimZone, hudArena, installLayout, placePocket } from './ui/layout'
 import { installTooltips } from './ui/tooltip'
@@ -1264,6 +1264,7 @@ altBtn?.addEventListener('click', () => {
   toast(cursor.mode === 'hold' ? 'Alt를 누르는 동안 마우스 커서가 나와.' : 'Alt를 한 번 누르면 커서가 나오고, 다시 누르면 들어가.', 'info')
 })
 const relockBtn = document.getElementById('relock')
+const aimHintEl = document.getElementById('aim-hint')
 // One press resumes: pointerdown (the bobbing button can slide out from under a slow click), and the
 // lock is asked for inside this same gesture. Keyboard activation (click with detail 0) works too.
 relockBtn?.addEventListener('pointerdown', (event) => {
@@ -1346,7 +1347,7 @@ document.getElementById('guide-skip')?.addEventListener('click', () => {
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
 const view: { on: boolean; yaw: number; pitch: number; dist: number; height: number; aimYaw?: number; timeScale: number } = { timeScale: 1, on: false, yaw: 0, pitch: 12, dist: 2.4, height: 1.05 }
-if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, makeMod, makeLegend, legendDrop, get legends() { return legendsOf(game.save) }, get lastLegend() { return lastLegend }, codexRows: () => codexRows(game.save), get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, aimZone, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, get keptFloor() { return savedFloor() }, enterArea, enterMongsil, mongsilToIsland, get travelling() { return travelling }, get dream() { return dreamOf(game.save) }, dreamHit, placeMazeQuest, spotUsed, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() }, questLog: (tab?: QuestGroup) => openQuests(tab), questBook: () => questBook(game.save) } })
+if (import.meta.env.DEV) Object.assign(window, { __slice: { hero, mochi, combat, hitStop, quality, stage, view, aim, rig, shooter, TPS, SENS, setSens, landmarks, talk, vfx, audio, get game() { return game }, enterZone, travel, get mode() { return mode }, get run() { return run }, get delve() { return delve }, get summary() { return lastSummary }, skills, inventory, applyBuild, giveXp, get stats() { return stats }, dpsOf, makeItem, makeMod, makeLegend, legendDrop, get legends() { return legendsOf(game.save) }, get lastLegend() { return lastLegend }, codexRows: () => codexRows(game.save), get places() { return zonePlaces }, enterSewer, leaveSewer, nextFloor, gateTalk, townUI, help, openTown, quickEquip, eatCandyNow, contractHit, paintContracts, townOf, enterField, guideHit, questHit, chapterUI, get chapters() { return chaptersOf(game.save) }, get lastPickup() { return lastPickup }, toast, zoneBanner, aimZone, cursor, hudArena, levelUpFx, guideFold: (v: 'full' | 'chip') => chapterUI.force(v), setWaypoint, waypointFor, get waypoint() { return waypoint ? { ...waypoint, goal: wpGoal, distance: waypointDistance(), dots: wpLine.length } : null }, get parked() { return parked ? { depth: parked.depth, floor: parked.floor, field: !!parked.field } : null }, returnThrough, get keptFloor() { return savedFloor() }, enterArea, enterMongsil, mongsilToIsland, get travelling() { return travelling }, get dream() { return dreamOf(game.save) }, dreamHit, placeMazeQuest, spotUsed, returnPortal, RETURN_SPOT, setAutoRun, get autoRun() { return autoRunOn() }, get qol() { return qol }, get guideView() { return chapterUI.view() }, questLog: (tab?: QuestGroup) => openQuests(tab), questBook: () => questBook(game.save), lockState } })
 
 void bootGame()
 
@@ -2132,6 +2133,7 @@ function frame(): void {
   // Auto-run stops for trips, a fall, talks and menus.
   if (autoRunOn() && (travelling || !hero.alive || talk.open || menuUp() || mode !== 'play')) setAutoRun(false)
   relockBtn?.classList.toggle('hidden', !syncCursor(shoulder.on && mode === 'play', stage.touch))
+  aimHintEl?.classList.toggle('hidden', !aimHint())
   if (mode !== 'play') {
     stage.render()
     return

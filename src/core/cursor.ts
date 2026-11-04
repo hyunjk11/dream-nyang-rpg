@@ -29,6 +29,21 @@ export function needsRelock(s: { armed: boolean; touch: boolean; locked: boolean
   return s.armed && !s.touch && !s.locked && !s.free && s.hadLock && !s.refused && !s.resumed
 }
 
+/**
+ * Which mouse cursor the page shows (2026-11): 'free' = the paw (title, panels, Alt), 'aim' = none at
+ * all while the game is playing — even when the browser has not granted (or has just dropped) the
+ * pointer lock, so play never shows a stray arrow — 'touch' = the OS default on phones. Pure.
+ */
+export function cursorLook(s: { armed: boolean; touch: boolean; free: boolean }): 'free' | 'aim' | 'touch' {
+  if (s.touch) return 'touch'
+  return s.armed && !s.free ? 'aim' : 'free'
+}
+
+/** The tiny "클릭하면 조준" hint: playing, no lock (refused too: the next click asks again), not just asked, and the big resume button is not up. Pure. */
+export function aimHintWanted(s: { armed: boolean; touch: boolean; free: boolean; locked: boolean; refused: boolean; relock: boolean; pending: boolean }): boolean {
+  return cursorLook(s) === 'aim' && !s.locked && !s.relock && !s.pending
+}
+
 export function loadAltMode(): AltMode {
   try {
     return localStorage.getItem(MODE_KEY) === 'toggle' ? 'toggle' : 'hold'

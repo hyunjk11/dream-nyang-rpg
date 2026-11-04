@@ -682,6 +682,13 @@ body.cursor-free button:not(:disabled), body.cursor-free #minimap, body.cursor-f
 }
 body.cursor-free #crosshair { opacity: 0.35; }
 body.alt-free #crosshair { display: none; }
+/* Playing: no OS cursor at all, lock or not (the lock can be refused or dropped by the browser). */
+body.cursor-aim, body.cursor-aim #view, body.cursor-aim #hud, body.cursor-aim #crosshair { cursor: none !important; }
+#aim-hint {
+  position: absolute; left: 50%; top: calc(50% + 26px); transform: translateX(-50%); z-index: 8; pointer-events: none;
+  padding: 3px 10px; border-radius: 999px; font: 400 12px "Jua", sans-serif; color: #fff6fb; background: rgba(58, 36, 72, 0.55);
+}
+#aim-hint.hidden { display: none; }
 #relock {
   position: absolute; left: 50%; top: 58%; transform: translateX(-50%); z-index: 9; padding: 9px 18px; font-size: 16px; pointer-events: auto;
   background: rgba(255, 248, 252, 0.95); color: #6a3a8a; box-shadow: 0 4px 0 rgba(58, 36, 72, 0.3); animation: relock-bob 1.2s ease-in-out infinite alternate;
