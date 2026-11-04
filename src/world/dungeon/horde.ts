@@ -9,7 +9,7 @@
  */
 import { ELEMENTS, speedMul, tickElements } from '../../combat/elements'
 import { DIFFICULTY } from '../../combat/difficulty'
-import { TILE, tileCentre, walkable, worldToTile, type Maze } from './maze'
+import { Tile, TILE, tileCentre, walkable, worldToTile, type Maze } from './maze'
 import { collideCircle } from './walls'
 import { rayCapsule, type AimTarget } from '../../core/tps'
 
@@ -71,6 +71,75 @@ export const CHAMPIONS: HordeKind[] = ['lord', 'lich']
 /** Elites: bigger, tougher, hit harder; a golden tint so they read in the crowd. */
 export const ELITE = { scale: 1.45, hp: DIFFICULTY.elite.hp, damage: DIFFICULTY.elite.damage, speed: 0.9 }
 
+/**
+ * 원거리 몬스터 (2026-11, "50%의 몬스터를 원거리로"): about half the normals and elites keep 7–11 m off,
+ * back away when she closes in, and lob a slow cute dream shot after a glowing 0.4–0.6 s charge.
+ * Shots fly at the spot she stood on at release (no lead), so stepping aside or a dash dodges them.
+ * They need a clear line (walls block, the 몽실 river does not), at most SHOT_CAP charge at once,
+ * and each hit is RANGED.damage × the foe's melee hit (inside the same %maxHP band).
+ */
+export const RANGED = { share: 0.5, near: 7, far: 11, kite: 5.2, maxShot: 13, minShot: 1.4, damage: 0.85, life: 2.6, radius: 0.3, sightEvery: 0.2 }
+/** Most ranged foes charging a shot at once (like SWING_CAP for melee). */
+export const SHOT_CAP = 3
+/** Live shots in the pool (the view's instance buffers are sized from it). */
+export const SHOTS_CAP = 48
+export type ShotStyle = 'bubble' | 'star' | 'spore' | 'moon'
+/** Each archetype's projectile: charge time (s) and speed (m/s, slow to medium). */
+export const SHOT_STYLES: Record<ShotStyle, { aim: number; speed: number }> = {
+  bubble: { aim: 0.55, speed: 6.0 },
+  spore: { aim: 0.5, speed: 6.5 },
+  star: { aim: 0.42, speed: 8.0 },
+  moon: { aim: 0.6, speed: 7.0 },
+}
+export const SHOT_STYLE: Record<HordeKind, ShotStyle> = {
+  slime: 'bubble',
+  jelly: 'bubble',
+  bug: 'spore',
+  rabbit: 'spore',
+  goblin: 'spore',
+  wolf: 'star',
+  bat: 'star',
+  knight: 'star',
+  golem: 'star',
+  drake: 'star',
+  lord: 'star',
+  skeleton: 'moon',
+  skel_rogue: 'moon',
+  skel_warrior: 'moon',
+  skel_mage: 'moon',
+  wraith: 'moon',
+  lich: 'moon',
+}
+/** Champions stay melee bruisers. */
+export const NEVER_RANGED: readonly HordeKind[] = ['lord', 'lich']
+
+export interface Shot {
+  alive: boolean
+  style: ShotStyle
+  x: number
+  z: number
+  y: number
+  vx: number
+  vz: number
+  life: number
+  damage: number
+  /** It already slipped past her dash (no second chance this pass). */
+  dodged: boolean
+  /** Spin / wobble seed for the view. */
+  seed: number
+}
+
+/** Rest between shots: like swingRest, a touch longer (they trade reach for rate). */
+export function shotRest(f: Pick<HordeFoe, 'beat'>): number {
+  f.beat = (f.beat + 0.618034) % 1
+  return DIFFICULTY.horde.cooldown * (0.75 + 0.7 * f.beat)
+}
+
+/** Is the n-th spawned foe ranged for this share? Low-discrepancy, so packs mix instead of clumping. */
+export function rangedPick(n: number, share: number): boolean {
+  return share > 0 && (n * 0.6180339887 + 0.29) % 1 < share
+}
+
 /** Seconds a foe spends popping out of a pipe / bursting apart. */
 export const SPAWN_TIME = 0.45
 export const DIE_TIME = 0.42
@@ -128,6 +197,15 @@ export interface HordeFoe {
   chargeRun: number
   chargeX: number
   chargeZ: number
+  /** 원거리: lobs shots from range instead of swinging. */
+  ranged: boolean
+  /** Ranged: charge left on the current shot (>0 = glowing), its full length, and line-of-sight cache. */
+  aim: number
+  aimTime: number
+  los: boolean
+  losT: number
+  /** Strafe side while holding range (±1). */
+  side: number
 }
 
 export type FoeMode = 'idle' | 'chase' | 'home'
@@ -226,6 +304,8 @@ export interface HordeTarget {
   x: number
   z: number
   alive: boolean
+  /** Mid-dash: shots pass through her. */
+  dodge?: boolean
 }
 
 /** Hard cap: the view's instance buffers are sized from it. */
@@ -323,6 +403,20 @@ export class Horde {
   /** Melee wind-ups running this frame (see SWING_CAP). */
   private winding = 0
   swingCap = SWING_CAP
+  /** Share of new normals / elites that spawn ranged (0 = all melee; the run sets RANGED.share). */
+  rangedShare = 0
+  /** Ranged charges running this frame (see SHOT_CAP). */
+  private aiming = 0
+  shotCap = SHOT_CAP
+  /** The shot pool (fixed size, reused). */
+  readonly shots: Shot[] = Array.from({ length: SHOTS_CAP }, () => ({ alive: false, style: 'bubble' as ShotStyle, x: 0, z: 0, y: 1, vx: 0, vz: 0, life: 0, damage: 0, dodged: false, seed: 0 }))
+  /** Shots that popped this frame (wall, her, timeout): the run puffs VFX there. */
+  readonly popped: { x: number; y: number; z: number; style: ShotStyle; hit: boolean }[] = []
+  /** Shots fired / dodged (QA). */
+  fired = 0
+  dodged = 0
+  /** Optional shot-line test (default: the maze grid, water is see-through). */
+  shotLine: SightFn | null = null
 
   get chasing(): number {
     let n = 0
@@ -404,6 +498,12 @@ export class Horde {
       chargeRun: 0,
       chargeX: 0,
       chargeZ: 0,
+      ranged: !NEVER_RANGED.includes(kind) && rangedPick(this.nextId, this.rangedShare),
+      aim: 0,
+      aimTime: SHOT_STYLES[SHOT_STYLE[kind]].aim,
+      los: false,
+      losT: ((this.nextId * 0.41) % 1) * RANGED.sightEvery,
+      side: this.nextId % 2 ? 1 : -1,
     }
     this.foes.push(foe)
     return foe
@@ -420,7 +520,9 @@ export class Horde {
     this.flow.aim(t.x, t.y)
     this.rebuildHash()
     this.winding = 0
+    this.aiming = 0
     for (const f of this.foes) if (f.dying <= 0 && f.windup > 0) this.winding += 1
+    for (const f of this.foes) if (f.dying <= 0 && f.aim > 0) this.aiming += 1
     for (let i = this.foes.length - 1; i >= 0; i -= 1) {
       const f = this.foes[i]
       f.hurt = Math.max(0, f.hurt - dt * 5)
@@ -445,10 +547,15 @@ export class Horde {
         continue
       }
       if (this.aggro && f.pack >= 0) this.leash(f, step, target, d)
+      if (f.ranged) {
+        this.ranged(f, step, dx, dz, d, target)
+        continue
+      }
       if (f.elite && this.charge(f, step, dx, dz, d, target, strike)) continue
       this.steer(f, step, dx, dz, d, target.alive)
       this.melee(f, step, d, target, strike)
     }
+    this.flyShots(dt, target, strike)
     this.separate()
     for (const f of this.foes) {
       if (f.dying > 0) continue
@@ -530,6 +637,164 @@ export class Horde {
   /** Drop everyone (leaving the sewer / boss cleared the room). */
   clear(): void {
     this.foes.length = 0
+    for (const s of this.shots) s.alive = false
+  }
+
+  /** Shots in the air right now. */
+  get liveShots(): number {
+    let n = 0
+    for (const s of this.shots) if (s.alive) n += 1
+    return n
+  }
+
+  /** A clear shot from a to b: walls stop it, the river does not. */
+  clearShot(ax: number, az: number, bx: number, bz: number): boolean {
+    if (this.shotLine) return this.shotLine(ax, az, bx, bz)
+    const d = Math.hypot(bx - ax, bz - az)
+    const n = Math.ceil(d / (TILE * 0.25))
+    for (let i = 1; i < n; i += 1) if (this.solidAt(ax + ((bx - ax) * i) / n, az + ((bz - az) * i) / n)) return false
+    return true
+  }
+
+  private solidAt(x: number, z: number): boolean {
+    const t = worldToTile(this.maze, x, z)
+    const m = this.maze
+    if (t.x < 0 || t.y < 0 || t.x >= m.w || t.y >= m.h) return true
+    return m.tiles[t.y * m.w + t.x] === Tile.Solid
+  }
+
+  /**
+   * Ranged foes: walk in until she is in range and in sight, hold 7–11 m (strafing a little), back
+   * off when she is closer than RANGED.kite, and charge a shot when the SHOT_CAP allows.
+   */
+  private ranged(f: HordeFoe, dt: number, dx: number, dz: number, d: number, target: HordeTarget): void {
+    f.losT -= dt
+    if (f.losT <= 0) {
+      f.losT = RANGED.sightEvery
+      f.los = target.alive && d < RANGED.maxShot && this.clearShot(f.x, f.z, target.x, target.z)
+    }
+    f.cooldown = Math.max(0, f.cooldown - dt)
+    if (!f.los || d > RANGED.far) {
+      // Lost the line mid-charge: the glow fizzles.
+      if (f.aim > 0 && !f.los) {
+        f.aim = 0
+        this.aiming = Math.max(0, this.aiming - 1)
+      }
+      this.steer(f, dt, dx, dz, d, target.alive)
+    } else {
+      const inv = d > 1e-4 ? 1 / d : 0
+      const ux = dx * inv
+      const uz = dz * inv
+      let want = 0
+      let sx = 0
+      let sz = 0
+      if (d < RANGED.kite) {
+        // Too close: back away (walls stop it via collideCircle), a little sideways.
+        want = f.speed * 0.6
+        sx = -ux + -uz * 0.35 * f.side
+        sz = -uz + ux * 0.35 * f.side
+      } else if (d < RANGED.near) {
+        want = f.speed * 0.3
+        sx = -ux
+        sz = -uz
+      } else {
+        // Holding range: a slow strafe that flips now and then.
+        want = f.speed * 0.25
+        sx = -uz * f.side
+        sz = ux * f.side
+        if (((this.time + f.id * 1.7) % 4) < dt) f.side = -f.side
+      }
+      if (f.aim > 0) want *= 0.2
+      if (f.age < SPAWN_TIME) want *= 0.5
+      if (f.stun > 0) want *= STUN_SPEED
+      want *= speedMul(f)
+      const sl = Math.hypot(sx, sz) || 1
+      const k = Math.min(1, dt * 6)
+      f.vx += ((sx / sl) * want - f.vx) * k
+      f.vz += ((sz / sl) * want - f.vz) * k
+      f.x += f.vx * dt
+      f.z += f.vz * dt
+      let turn = Math.atan2(dx, dz) - f.yaw
+      turn = Math.atan2(Math.sin(turn), Math.cos(turn))
+      f.yaw += turn * Math.min(1, dt * 10)
+    }
+    if (f.aim > 0) {
+      f.aim -= dt
+      if (f.aim <= 0) {
+        f.aim = 0
+        this.aiming = Math.max(0, this.aiming - 1)
+        f.cooldown = shotRest(f)
+        if (target.alive && f.los) this.fire(f, target)
+      }
+      return
+    }
+    if (f.cooldown > 0 || !f.los || !target.alive || f.age < SPAWN_TIME || f.stun > 0 || d < RANGED.minShot || d > RANGED.maxShot) return
+    if (this.aiming >= this.shotCap) {
+      f.cooldown = 0.15 + 0.25 * ((f.beat + f.id * 0.37) % 1)
+      return
+    }
+    this.aiming += 1
+    f.aim = f.aimTime
+  }
+
+  /** Let a charged shot go at where she stands now (no lead: moving dodges it). */
+  private fire(f: HordeFoe, target: HordeTarget): void {
+    const slot = this.shots.find((s) => !s.alive)
+    if (!slot) return
+    const style = SHOT_STYLE[f.kind]
+    const sp = SHOT_STYLES[style].speed
+    const y = Math.max(0.55, Math.min(1.3, HORDE[f.kind].chest * (f.elite ? ELITE.scale : 1)))
+    const dx = target.x - f.x
+    const dz = target.z - f.z
+    const d = Math.hypot(dx, dz) || 1
+    const out = f.radius + 0.15
+    slot.alive = true
+    slot.style = style
+    slot.x = f.x + (dx / d) * out
+    slot.z = f.z + (dz / d) * out
+    slot.y = y
+    slot.vx = (dx / d) * sp
+    slot.vz = (dz / d) * sp
+    slot.life = RANGED.life
+    slot.damage = Math.max(1, Math.round(f.damage * RANGED.damage))
+    slot.dodged = false
+    slot.seed = (f.id * 0.37) % 1
+    this.fired += 1
+  }
+
+  private flyShots(dt: number, target: HordeTarget, strike: (amount: number, x: number, z: number) => void): void {
+    this.popped.length = 0
+    const reach = RANGED.radius + 0.42
+    for (const s of this.shots) {
+      if (!s.alive) continue
+      s.life -= dt
+      // Sub-step so a medium shot never tunnels past her or through a thin wall.
+      const steps = 2
+      for (let k = 0; k < steps && s.alive; k += 1) {
+        s.x += (s.vx * dt) / steps
+        s.z += (s.vz * dt) / steps
+        if (this.solidAt(s.x, s.z)) {
+          s.alive = false
+          this.popped.push({ x: s.x - (s.vx * dt) / steps, y: s.y, z: s.z - (s.vz * dt) / steps, style: s.style, hit: false })
+          break
+        }
+        if (target.alive && Math.hypot(target.x - s.x, target.z - s.z) < reach) {
+          if (target.dodge) {
+            if (!s.dodged) this.dodged += 1
+            s.dodged = true
+            continue
+          }
+          if (s.dodged) continue
+          s.alive = false
+          strike(s.damage, s.x - s.vx * 0.05, s.z - s.vz * 0.05)
+          this.popped.push({ x: s.x, y: s.y, z: s.z, style: s.style, hit: true })
+        }
+      }
+      if (s.alive && s.life <= 0) {
+        s.alive = false
+        this.popped.push({ x: s.x, y: s.y, z: s.z, style: s.style, hit: false })
+      }
+    }
   }
 
   /** Can a foe at (ax, az) see her at (bx, bz)? */
@@ -613,6 +878,7 @@ export class Horde {
       f.mode = 'home'
       f.lost = 0
       f.windup = 0
+      f.aim = 0
     }
   }
 

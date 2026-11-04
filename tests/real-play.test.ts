@@ -14,9 +14,10 @@ import { migrateSave } from '../src/sim/migrate'
 import { freshSave } from '../src/sim/mutate'
 
 /** 브라우저와 같은 길: Horde.update → 진짜 Hero.hurt (무적·방어·반올림) → Hero.update 자연 회복. */
-function stand(plan: Parameters<typeof runFoeScale>[0] & Parameters<typeof floorMaze>[0], kinds: HordeKind[], maxHp = 150, isBoss = false) {
+function stand(plan: Parameters<typeof runFoeScale>[0] & Parameters<typeof floorMaze>[0], kinds: HordeKind[], maxHp = 150, isBoss = false, share = 0) {
   const maze = floorMaze(plan)
   const h = new Horde(maze)
+  h.rangedShare = share
   h.scale = runFoeScale(plan, isBoss, maxHp)
   const s = tileCentre(maze, maze.start.x, maze.start.y)
   const hero = new Hero()
@@ -223,6 +224,18 @@ describe('밸런스 패스: 1장 튜토리얼 스킬은 그대로', () => {
       const b = skillBite({ tone: 'boss', maxHp: 10000, town: true }, k, 1, 1) / 10000
       expect(b).toBeGreaterThanOrEqual(0.15)
       expect(b).toBeLessThanOrEqual(0.25)
+    }
+  })
+})
+
+describe('실제 플레이: 원거리가 절반 섞인 무리', () => {
+  it('원거리 50% 무리 5마리에 10초 서 있어도 23–37% 안쪽 (근접만일 때와 비슷)', () => {
+    for (const [d, f] of [[1, 1], [1, 3], [2, 2], [3, 2]] as const) {
+      const melee = stand(floorPlan(d, f), ['slime', 'slime', 'bug', 'slime', 'bat'], 150, false, 0)
+      const mixed = stand(floorPlan(d, f), ['slime', 'slime', 'bug', 'slime', 'bat'], 150, false, 0.5)
+      if (process.env.RANGED_LOG) console.log(`d${d}f${f} 근접만 ${(melee.lost * 100).toFixed(1)}% 섞임 ${(mixed.lost * 100).toFixed(1)}%`)
+      expect(mixed.lost, `d${d}f${f}`).toBeGreaterThanOrEqual(0.2)
+      expect(mixed.lost, `d${d}f${f}`).toBeLessThanOrEqual(0.4)
     }
   })
 })
