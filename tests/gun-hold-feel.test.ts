@@ -11,11 +11,12 @@ import { HDR_SAFE } from '../src/core/safeframe'
 
 describe('총 잡는 법', () => {
   it('저격총·소총·산탄총은 양손으로, 물총은 쌍권총으로 잡는다', () => {
-    expect(HOLD_OF.water).toBe('dual')
+    expect(HOLD_OF.water).toBe('pistol')
     expect(holdFor('dart').twoHanded).toBe(true)
     expect(holdFor('star').twoHanded).toBe(true)
     expect(holdFor('bubble').twoHanded).toBe(true)
-    expect(holdFor('water').dual).toBe(true)
+    expect(holdFor('water').dual).toBe(false)
+    expect(holdFor('water', true).dual).toBe(true)
     expect(holdFor('water').twoHanded).toBe(false)
   })
 

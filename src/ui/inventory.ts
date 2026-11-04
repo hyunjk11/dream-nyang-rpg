@@ -8,10 +8,11 @@ import { GUN_KO, GUN_PROFILES, gunDps, gunStatLine } from '../data/guns'
 import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { BRANCH_KO, TIER_LEVEL, TREE, type Branch, type TreeSkill } from '../data/tree'
 import { xpToNext } from '../sim/formulas'
-import { bagItems, findItem, isEquipped, slotFor, equipItem, slotFits } from '../sim/inventory'
+import { bagItems, findItem, isEquipped, slotFor, equipItem, slotFits, oneHanded } from '../sim/inventory'
 import { ilvText, itemLines, itemName, itemPower } from '../sim/loot'
 import { fillCell, ilvRow, nameTitle } from './itemcell'
 import { tryEquip, tryUnequip } from '../sim/mutate'
+import { handDps, offGun } from '../sim/hands'
 import { buildOf, learn, learnBlock, rank, respec, respecCost } from '../sim/skilltree'
 import { computeStats, type ComputedStats } from '../sim/stats'
 import { BAG_CAP, EQUIP_SLOTS, RARITY_COLOR, RARITY_KO, SLOT_KO, type Rarity, type EquipSlot, type ItemInstance, type SaveData } from '../sim/types'
@@ -314,6 +315,8 @@ export class InventoryUI {
     }
     const item = findItem(save, id)
     if (isMod(item)) this.fit(id)
+    // 쌍권총: right-click a one-handed gun while the main hand holds one → into the off hand.
+    else if (item && oneHanded(item) && oneHanded(findItem(save, save.equipment.weapon))) this.equip(id, 'offhand')
     else if (item && ITEMS[item.defId]?.slot) this.equip(id)
   }
 
@@ -423,6 +426,11 @@ export class InventoryUI {
     for (const slot of EQUIP_SLOTS) {
       const c = this.cell(findItem(save, save.equipment[slot]), SLOT_KO[slot])
       c.dataset.slot = slot
+      if (slot === 'offhand' && !save.equipment.offhand) {
+        const twoHand = !oneHanded(findItem(save, save.equipment.weapon))
+        c.classList.toggle('blocked', twoHand)
+        c.dataset.tip = twoHand ? '보조 손\n양손 총이 두 손을 다 쓰고 있어.' : '보조 손\n한 손 총(물총)을 하나 더 차면 쌍권총! 오른쪽 클릭 · 끌어다 놓기 · \'보조 손에 차기\''
+      }
       if (!c.dataset.tip) c.dataset.tip = `${SLOT_KO[slot]}\n비어 있어. 가방에서 끌어다 놓으면 장착!`
       this.dropZone(c, slot)
       slots.append(c)
@@ -732,6 +740,19 @@ export class InventoryUI {
       dl.lastElementChild?.setAttribute('data-stat', row.key)
     }
     box.append(dl)
+    // 쌍권총: each hand's DPS and the pair's total (two equal guns ≈ ×1.7 one gun).
+    const off = offGun(save)
+    const hd = handDps(save)
+    const hands = el('div', 'inv-hands')
+    hands.id = 'inv-hands'
+    if (off) {
+      hands.append(el('b', '', `🔫🔫 쌍권총 · 초당 피해 합계 ${Math.round(hd.total)}`))
+      hands.append(el('span', 'hand main', `주 손 ${Math.round(hd.main)}`), el('span', 'hand off', `보조 손 ${Math.round(hd.off)}`))
+      hands.append(el('small', '', `한 자루일 때의 ×${hd.vsOne.toFixed(2)} · 번갈아 쏘고, 손마다 자기 총 피해 · 스킬은 주 손 기준`))
+    } else if (oneHanded(findItem(save, save.equipment.weapon))) {
+      hands.append(el('small', '', `한 손 권총 · 초당 피해 ${Math.round(hd.total)} · 한 손 총을 하나 더 '보조 손에 차기' 하면 쌍권총!`))
+    } else hands.append(el('small', '', '양손 총: 두 손을 다 써서 보조 손은 비어 있어.'))
+    box.append(hands)
   }
 
   private renderDetail(save: SaveData, box: HTMLElement): void {
@@ -806,6 +827,12 @@ export class InventoryUI {
     } else if (def?.slot === 'accessory' && save.equipment.accessory && save.equipment.accessory2) {
       btn('장신구 1에 장착', () => this.equip(item.uid, 'accessory'), 'primary')
       btn('장신구 2에 장착', () => this.equip(item.uid, 'accessory2'), 'primary')
+    } else if (def?.slot === 'weapon') {
+      btn('주 손에 장착', () => this.equip(item.uid), 'primary')
+      // 보조 손: always offered on a gun, so a two-handed one explains why it can't go there.
+      const off = btn('보조 손에 차기', () => this.equip(item.uid, 'offhand'), oneHanded(item) ? 'primary' : '')
+      off.id = 'inv-offhand'
+      off.title = oneHanded(item) ? '한 손 총 두 자루 = 쌍권총 (오른쪽 클릭도 보조 손)' : '양손 총은 보조 손에 못 차'
     } else if (def?.slot) {
       btn('장착', () => this.equip(item.uid), 'primary')
     }
@@ -830,7 +857,7 @@ export class InventoryUI {
     if (!r.ok) this.host.toast(r.reason ?? '장착할 수 없어.')
     else {
       const item = findItem(save, id)
-      if (item) this.host.toast(`${itemName(item)} 장착!`)
+      if (item) this.host.toast(prefer === 'offhand' ? `${itemName(item)} 보조 손에 장착! 쌍권총이야` : `${itemName(item)} 장착!`)
       this.host.sfx('pop')
       this.host.changed()
     }

@@ -23,6 +23,7 @@ import { HudFx } from '../ui/hudfx'
 import type { GunCue } from '../audio/gunsound'
 import { JUICE, Juice, rollCloud, rollStar } from './juice'
 import type { SkillBody } from './skills'
+import { DUAL_PACE } from '../sim/hands'
 
 /** What a world tells the rig and the gun. */
 export interface AimWorld {
@@ -237,6 +238,8 @@ export interface Loadout {
   tint: number
   /** 부품 조합 on this gun (see data/mods COMBOS). */
   combos?: ComboId[]
+  /** 쌍권총: the off-hand gun's own droplet (left-hand shots use it). `fireRate` above is then the pair's cadence. */
+  off?: Omit<Loadout, 'off'>
 }
 
 export function defaultLoadout(): Loadout {
@@ -272,6 +275,12 @@ export class Shooter {
   loadout: Loadout = defaultLoadout()
   /** Bonus crit chance while overdrive runs. */
   overdriveCrit = 0
+  /** Which hand's gun fired last (QA: per-hand damage numbers). */
+  lastHand: 'main' | 'off' = 'main'
+  /** Damage dealt per hand since the last reset (QA). */
+  readonly handDamage = { main: 0, off: 0 }
+  /** Shots / landed shots per hand since the last reset (QA). */
+  readonly handShots = { main: 0, off: 0, mainHit: 0, offHit: 0 }
   private readonly host: ShooterHost
   private readonly tip = new Vector3()
   private readonly dir = new Vector3()
@@ -313,7 +322,9 @@ export class Shooter {
   /** Swap in a gun / stat set: cadence, droplet damage, procs and tracer colour. */
   setLoadout(l: Loadout): void {
     this.loadout = l
-    this.gun.setFeel(l.profile, l.fireRate)
+    // A pair fires faster; each gun heats at its own pace, so the pair overheats no sooner than one gun.
+    // 쌍권총: each barrel heats and blooms on its own, so per pair-shot both build 1/DUAL_PACE as fast (same heat & cone per second as one gun).
+    this.gun.setFeel(l.off ? { ...l.profile, heatPerShot: l.profile.heatPerShot / DUAL_PACE, bloomPerShot: l.profile.bloomPerShot / DUAL_PACE } : l.profile, l.fireRate)
     this.juice.combos = new Set(l.combos ?? [])
     ;(this.tracers.material as MeshBasicMaterial).color.set(l.tint).multiplyScalar(2.4)
   }
@@ -323,7 +334,8 @@ export class Shooter {
     const { hero } = this.host
     const wasHot = this.gun.overheated
     const shots = this.gun.update(dt, trigger && hero.alive)
-    for (let i = 0; i < shots; i += 1) this.fireOne(world)
+    // Two shots on a long frame still alternate hands: number each one, not the gun's final count.
+    for (let i = 0; i < shots; i += 1) this.fireOne(world, this.gun.shots - shots + 1 + i)
     if (this.gun.overheated && !wasHot) {
       this.host.gun?.('hiss', 1)
       const t = hero.muzzle.getWorldPosition(this.tip)
@@ -337,14 +349,16 @@ export class Shooter {
     this.hudFx.update(dt, this.host.camera)
   }
 
-  private fireOne(world: ShotWorld): void {
+  private fireOne(world: ShotWorld, n = this.gun.shots): void {
     const { hero, camera } = this.host
     const gun = this.gun
-    const l = this.loadout
-    const p = l.profile
     // Dual pistols alternate hands; two-handed guns always fire from the one barrel.
-    const hand = firingHand(hero.holdStyle, gun.shots)
-    const tip = hero.muzzleFor(gun.shots).getWorldPosition(this.tip)
+    const hand = firingHand(hero.holdStyle, n)
+    // 쌍권총: each hand's droplet is its own gun's (damage, crits, element, parts).
+    const l = hand === 'left' && this.loadout.off ? this.loadout.off : this.loadout
+    this.lastHand = l === this.loadout ? 'main' : 'off'
+    const p = l.profile
+    const tip = hero.muzzleFor(n).getWorldPosition(this.tip)
     const aim = new Vector3().copy(this.rig.aim).sub(tip).normalize()
     const sfx = this.host.gun
     let anyHit = false
@@ -412,17 +426,21 @@ export class Shooter {
     this.last = { from: tip.clone(), to: lastEnd.clone(), aim: this.rig.aim.clone(), hit: anyHit, ndcX: ndc.x, ndcY: ndc.y }
     this.fired += 1
     if (anyHit) this.landed += 1
-    this.gunFx.shot(tip, firstDir, camera, gun.shots, 0xc8f0ff, p.casing, p.light, p.pellets > 1 ? 1.35 : p.voice === 'crack' ? 1.6 : 1)
+    this.handShots[this.lastHand] += 1
+    if (anyHit) this.handShots[this.lastHand === 'main' ? 'mainHit' : 'offHit'] += 1
+    this.gunFx.shot(tip, firstDir, camera, n, 0xc8f0ff, p.casing, p.light, p.pellets > 1 ? 1.35 : p.voice === 'crack' ? 1.6 : 1)
     hero.recoil(hand)
     // Heavy guns shove the lens back along the view (water pistols barely).
-    this.rig.punch = Math.min(0.22, this.rig.punch + p.punch)
+    // 쌍권총: 1/DUAL_PACE kick per shot, so the view climbs as fast as with one gun (twice the shots would otherwise walk the crosshair off).
+    const pace = this.loadout.off ? 1 / DUAL_PACE : 1
+    this.rig.punch = Math.min(0.22, this.rig.punch + p.punch * pace)
     // Each gun kicks its own way: the 연사 gun barely twitches, the sniper throws the view up.
-    kick(this.rig.view, p.kickUp * (1 + gun.bloom * 0.6), (Math.random() - 0.5) * 2 * p.kickSide)
+    kick(this.rig.view, p.kickUp * pace * (1 + gun.bloom * 0.6), (Math.random() - 0.5) * 2 * p.kickSide * pace)
     const feel = fireFeel(p)
     this.rig.fovKick = Math.min(feel.fovCap, this.rig.fovKick + p.fovKick)
     this.rig.shake = Math.min(feel.shakeCap, this.rig.shake + p.fireShake)
     const pan = hero.holdStyle.dual ? (hand === 'left' ? -0.35 : 0.35) : 0
-    if (sfx) for (const [cue, gain, pitch] of gunVoice(p.voice, gun.heat, gun.shots, Math.random())) sfx(cue, gain, pitch, pan)
+    if (sfx) for (const [cue, gain, pitch] of gunVoice(p.voice, gun.heat, n, Math.random())) sfx(cue, gain, pitch, pan)
     else this.host.sfx('shoot_water', 0.8)
     // 탕! — the sniper's shot word pops over the muzzle.
     if (p.voice === 'crack') this.hudFx.word('탕!', tip)
@@ -442,6 +460,7 @@ export class Shooter {
     }
     this.hudFx.hit(hit.kill, roll.crit)
     const shown = pierced ? Math.round(roll.amount * 0.8) : roll.amount
+    this.handDamage[this.lastHand] += shown
     this.hudFx.number(shown, end, p.bigNumbers && !pierced ? 'snipe' : roll.crit ? 'crit' : hit.tone)
     this.hudFx.tally(shown, end, hit.ref ?? null, hit.kill)
     if (hit.kill && hit.tone !== 'boss') {

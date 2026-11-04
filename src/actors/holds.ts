@@ -1,13 +1,14 @@
 /**
  * How Byeolha holds each toy gun (2026-11, "저격총같은건 양손으로", "물총은 쌍권총도 가능"):
- * - dual: a water pistol in each hand, shots alternate left/right (두두두), each hand kicks on its own.
+ * - pistol: one water pistol in the right hand (한 손), the left arm free.
+ * - dual: a water pistol in each hand (보조 손에 두 번째 총), shots alternate left/right, each hand kicks on its own.
  * - rifle / shotgun / sniper: one gun in front, main hand on the grip, off hand on the foregrip,
  *   barrel along the camera; recoil shoves the whole pose (both hands ride the gun).
  * Pure numbers, no Three.js, so the choices are tested.
  */
 import type { WeaponKind } from '../sim/types'
 
-export type HoldType = 'dual' | 'rifle' | 'shotgun' | 'sniper'
+export type HoldType = 'pistol' | 'dual' | 'rifle' | 'shotgun' | 'sniper'
 
 export interface HoldStyle {
   type: HoldType
@@ -35,6 +36,8 @@ export interface HoldStyle {
 }
 
 export const HOLD_STYLES: Record<HoldType, HoldStyle> = {
+  // 한 손 권총: one gun out in the right hand, a touch off-centre, quick light kicks.
+  pistol: { type: 'pistol', label: '한 손 권총', twoHanded: false, dual: false, reach: { fwd: 0.02, right: 0.12, up: 0.03 }, centre: true, fore: 0, kickBack: 0.05, kickUp: 10, settle: 14, pitch: 0 },
   // 쌍권총: both arms out, guns a hand-width apart, light quick kicks that alternate.
   dual: { type: 'dual', label: '쌍권총 (한 손씩)', twoHanded: false, dual: true, reach: { fwd: 0.02, right: 0.17, up: 0.03 }, centre: true, fore: 0, kickBack: 0.05, kickUp: 10, settle: 14, pitch: 0 },
   // 3점사 소총: tucked in at the chest, off hand on the barrel, small tight kicks.
@@ -47,14 +50,16 @@ export const HOLD_STYLES: Record<HoldType, HoldStyle> = {
 
 /** Which hold each gun base uses. */
 export const HOLD_OF: Record<WeaponKind, HoldType> = {
-  water: 'dual',
+  water: 'pistol',
   star: 'rifle',
   bubble: 'shotgun',
   dart: 'sniper',
 }
 
-export function holdFor(kind: WeaponKind): HoldStyle {
-  return HOLD_STYLES[HOLD_OF[kind] ?? 'dual']
+/** The hold for this gun base; `paired` = a second one-handed gun in the off hand (쌍권총). */
+export function holdFor(kind: WeaponKind, paired = false): HoldStyle {
+  const t = HOLD_OF[kind] ?? 'pistol'
+  return HOLD_STYLES[t === 'pistol' && paired ? 'dual' : t]
 }
 
 /** Which hand fires shot number n (1-based, Gun.shots): dual guns alternate, starting right. */

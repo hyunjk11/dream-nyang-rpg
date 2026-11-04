@@ -1,10 +1,10 @@
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
 
-/** Equipment slots. A ring/charm (`accessory` item) fits either accessory slot; `collar` is Mochi's (old saves). */
-export type EquipSlot = 'weapon' | 'hat' | 'outfit' | 'shoes' | 'accessory' | 'accessory2' | 'collar'
+/** Equipment slots. `offhand` (보조 손) holds a second one-handed gun (쌍권총). A ring/charm (`accessory` item) fits either accessory slot; `collar` is Mochi's (old saves). */
+export type EquipSlot = 'weapon' | 'offhand' | 'hat' | 'outfit' | 'shoes' | 'accessory' | 'accessory2' | 'collar'
 
 /** Slots shown in the equipment panel, in order. */
-export const EQUIP_SLOTS: EquipSlot[] = ['weapon', 'hat', 'outfit', 'shoes', 'accessory', 'accessory2']
+export const EQUIP_SLOTS: EquipSlot[] = ['weapon', 'offhand', 'hat', 'outfit', 'shoes', 'accessory', 'accessory2']
 
 export type StatKey =
   | 'hp'
@@ -186,6 +186,7 @@ export const UNIQUE_KO = '유니크'
 
 export const SLOT_KO: Record<EquipSlot, string> = {
   weapon: '총',
+  offhand: '보조 손',
   hat: '모자·머리핀',
   outfit: '옷',
   shoes: '신발',

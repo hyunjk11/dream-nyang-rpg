@@ -482,19 +482,20 @@ export class Hero {
    * Swap the toy gun in her hand: rebuild its parts for this base and look (rarity gem on top)
    * and resize it; the muzzle moves with the barrel so shots leave the new tip.
    */
-  setGunLook(kind: WeaponKind, look: GunLook, gem: number | null): void {
+  setGunLook(kind: WeaponKind, look: GunLook, gem: number | null, off?: { kind: WeaponKind; look: GunLook; gem: number | null }): void {
     this.gunSize = look.size
     this.gunLook = [kind, look, gem]
     const gun = this.gun
     if (!gun) return
     buildToyGun(gun, this.muzzle, kind, look, gem)
     if (this.grip) gun.scale.setScalar((GUN_SIZE / this.grip.handScale) * look.size)
-    this.style = holdFor(kind)
+    // 쌍권총 only with a real second gun in the off hand (its own look); one pistol = one hand.
+    this.style = holdFor(kind, !!off)
     const left = this.gunL
     if (left) {
-      if (this.style.dual) {
-        buildToyGun(left, this.muzzleL, kind, look, gem)
-        if (this.gripL) left.scale.setScalar((GUN_SIZE / this.gripL.handScale) * look.size)
+      if (this.style.dual && off) {
+        buildToyGun(left, this.muzzleL, off.kind, off.look, off.gem)
+        if (this.gripL) left.scale.setScalar((GUN_SIZE / this.gripL.handScale) * off.look.size)
       }
       left.visible = this.style.dual
     }
