@@ -881,3 +881,34 @@ body.compact .set-group { width: auto; }
 #contract-hud > div.q .qa { grid-column: 1 / 3; grid-row: 3; font-size: 10.5px; color: #8a78a0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #contract-hud > div.q em { grid-row: 1 / 4; }
 #quest-body .qarea { display: block; margin: 2px 0 0; font-size: 12px; color: #8a78a0; }
+
+/* 빠른 판매 · 분해 */
+.inv-tools button.on { background: #8a4fb0; color: #fff; }
+#inv-mode-sell.on { background: #d99a1e; }
+#inv-mode-salvage.on { background: #c0603a; }
+.inv-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; width: 100%; font-size: 12px; }
+.inv-bulk .bulk-r { display: inline-flex; align-items: center; gap: 2px; color: var(--rar); font-weight: 700; text-shadow: 0 0 1px rgba(58, 36, 72, 0.35); cursor: pointer; }
+.inv-bulk .bulk-r input { accent-color: var(--rar); margin: 0; }
+.inv-bulk button { margin-left: auto; }
+.inv-bulk button.danger { background: #e0506a; color: #fff; }
+.inv-bulk button.warn { background: #ffe1c2; }
+#inv.mode-sell #inv-grid .inv-cell.item { cursor: copy; outline: 2px dashed #d99a1e; outline-offset: -4px; }
+#inv.mode-salvage #inv-grid .inv-cell.item { cursor: crosshair; outline: 2px dashed #c0603a; outline-offset: -4px; }
+#inv.mode-sell #inv-grid .inv-cell.item:hover { background: #fff2cc; }
+#inv.mode-salvage #inv-grid .inv-cell.item:hover { background: #ffe0d2; }
+.inv-cell .lock-badge { position: absolute; left: 2px; bottom: 1px; font-size: 11px; line-height: 12px; pointer-events: none; }
+.inv-cell.armed { box-shadow: 0 0 0 3px #e0506a; animation: armed-pulse 0.6s ease-in-out infinite alternate; }
+.inv-cell .armed-badge { position: absolute; inset: auto 0 40% 0; font: normal 11px "Jua", sans-serif; color: #fff; background: #e0506a; border-radius: 6px; pointer-events: none; }
+@keyframes armed-pulse { to { box-shadow: 0 0 0 5px rgba(224, 80, 106, 0.5); } }
+.fast-pop { position: fixed; z-index: 30; transform: translate(-50%, -50%); pointer-events: none; font: normal 17px "Jua", sans-serif; color: #ffd24a; text-shadow: 0 1px 0 #6a3a10, 0 0 6px rgba(0, 0, 0, 0.45); white-space: nowrap; animation: fast-pop 1.1s ease-out forwards; }
+.fast-pop.salvage { color: #9fe3ff; text-shadow: 0 1px 0 #1d4a6a, 0 0 6px rgba(0, 0, 0, 0.45); }
+@keyframes fast-pop { 0% { opacity: 0; margin-top: 6px; } 15% { opacity: 1; } 100% { opacity: 0; margin-top: -46px; } }
+.fast-menu { position: fixed; inset: 0; z-index: 20; display: grid; place-items: end center; background: rgba(20, 10, 30, 0.45); padding: 0 10px 14px; }
+.fast-card { width: min(360px, 100%); background: #fffaf6; border-radius: 16px; padding: 12px; display: grid; gap: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); }
+.fast-card h3 { margin: 0; }
+.fast-card .inv-sub { margin: 0; }
+.fast-card button.big { min-height: 52px; font-size: 17px; border-radius: 12px; background: #efe4f2; }
+.fast-card button.sell { background: #ffd977; }
+.fast-card button.salvage { background: #ffc7a8; }
+.fast-card button.cancel { min-height: 44px; font-size: 15px; background: #e8e0ec; }
+.fast-card button:disabled { opacity: 0.45; }

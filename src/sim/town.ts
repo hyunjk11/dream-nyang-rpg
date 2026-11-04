@@ -172,6 +172,7 @@ export function buyStock(save: SaveData, index: number): ShopResult {
 export function sellItem(save: SaveData, id: string): ShopResult {
   const item = findItem(save, id)
   if (!item) return { ok: false, reason: '없는 물건이야.' }
+  if (item.locked) return { ok: false, reason: '🔒 잠긴 물건이야. 잠금을 풀면 돼.' }
   if (save.equipment.weapon === id) return { ok: false, reason: '쓰고 있는 총은 팔 수 없어.' }
   stripMods(save, item)
   const before = computeStats(save).maxHp

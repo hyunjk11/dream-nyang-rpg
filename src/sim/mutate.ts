@@ -108,6 +108,7 @@ export function tryUnequip(save: SaveData, slot: EquipSlot): { ok: boolean; reas
 export function sellOwned(save: SaveData, id: string): { ok: boolean; reason?: string; gold?: number } {
   const item = findItem(save, id)
   if (!item) return { ok: false, reason: '없는 물건이야.' }
+  if (item.locked) return { ok: false, reason: '🔒 잠긴 물건이야. 잠금을 풀면 돼.' }
   if (save.equipment.weapon === id) return { ok: false, reason: '쓰고 있는 총은 팔 수 없어.' }
   stripMods(save, item)
   const before = computeStats(save).maxHp
@@ -122,6 +123,7 @@ export function sellOwned(save: SaveData, id: string): { ok: boolean; reason?: s
 export function dismantleOwned(save: SaveData, id: string): { ok: boolean; reason?: string; got?: Record<string, number> } {
   const item = findItem(save, id)
   if (!item) return { ok: false, reason: '없는 물건이야.' }
+  if (item.locked) return { ok: false, reason: '🔒 잠긴 물건이야. 잠금을 풀면 돼.' }
   if (save.equipment.weapon === id) return { ok: false, reason: '쓰고 있는 총은 분해할 수 없어.' }
   stripMods(save, item)
   const before = computeStats(save).maxHp

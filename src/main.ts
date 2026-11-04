@@ -595,6 +595,10 @@ let codexPaused = false
 
 const townUI = new TownUI({
   save: () => game.save,
+  openBag: (bagMode) => {
+    townUI.close()
+    inventory.open('bag', bagMode)
+  },
   changed: () => {
     applyBuild()
     game.persist(store)
