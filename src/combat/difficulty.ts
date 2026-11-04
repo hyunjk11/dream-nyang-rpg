@@ -71,7 +71,7 @@ export const DIFFICULTY = {
     hpPerFloor: 0.08,
     damagePerFloor: 0.04,
     /** ...and per extra depth: hp ×2.35 each depth (geometric, like the gear), damage +8% (was 14%: depth 3 was a wall in the sim). */
-    hpDepthGrowth: 1.3,
+    hpDepthGrowth: 1.45,
     damagePerDepth: 0.08,
     /** Floors start this many waves further into the roster (floor 1 of depth 1 = wave 1). */
     wavesPerFloor: 1,
@@ -94,7 +94,7 @@ export const DIFFICULTY = {
     /** Nest pipe hp (×foe hp scale). Roughly five slimes of water. */
     nestHp: 2000,
     /** Boss hp growth per depth (×1.75 each, geometric) and damage growth (+20%). */
-    bossHpGrowth: 1.17,
+    bossHpGrowth: 1.3,
     bossDamagePerDepth: 0.2,
     /** Gold drop growth per depth. */
     goldPerDepth: 0.35,

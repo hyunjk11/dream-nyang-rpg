@@ -80,12 +80,25 @@ export const ACTIVES: ActiveId[] = ['bubble_bomb', 'overdrive', 'mochi_rush', 'c
 /** Bubble bomb base damage at rank r (before the damage multiplier). */
 export type SkillKind = 'bomb' | 'wave' | 'rush' | 'aura' | 'chain'
 /** (fix/gun-identity, see combat/skills.ts skillBite) */
+/**
+ * Balance pass (user: "스킬이 너무 셈 · 최대 체력 % 한 방"): a cast now takes 12–18% off an elite and
+ * 4–6% off the boss; only the big-cooldown 과열 폭주 wave (and the 28 s aura, over its pulses) wipes a
+ * normal pack, the 16 s bomb and 18 s rush leave it at ~25–30%. Skills land ~25–35% of a boss fight.
+ */
 export const SKILL_BITE: Record<SkillKind, { n: number; elite: number; boss: number; rank: number }> = {
   bomb: { n: 0.75, elite: 0.14, boss: 0.04, rank: 0.005 },
   wave: { n: 1.05, elite: 0.16, boss: 0.05, rank: 0.005 },
   rush: { n: 0.7, elite: 0.14, boss: 0.04, rank: 0.005 },
   aura: { n: 1.6, elite: 0.15, boss: 0.045, rank: 0.005 },
   chain: { n: 0.3, elite: 0.02, boss: 0.006, rank: 0 },
+}
+/** 1장 튜토리얼 (town foes): the pre-balance-pass numbers, untouched. */
+export const SKILL_BITE_TOWN: Record<SkillKind, { n: number; elite: number; boss: number; rank: number }> = {
+  bomb: { n: 1.05, elite: 0.33, boss: 0.18, rank: 0.015 },
+  wave: { n: 1.05, elite: 0.32, boss: 0.17, rank: 0.03 },
+  rush: { n: 1.05, elite: 0.34, boss: 0.18, rank: 0.03 },
+  aura: { n: 3, elite: 0.32, boss: 0.16, rank: 0.03 },
+  chain: { n: 0.6, elite: 0.05, boss: 0.015, rank: 0 },
 }
 
 /** "정예 33%·보스 18%" for a skill at rank r (tooltips). */

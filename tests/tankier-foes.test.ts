@@ -13,11 +13,11 @@ const hits = (hp: number) => Math.ceil(hp / DROP)
 const exploreHp = (d: number, f: number) => floorPlan(d, f).scale.hp * EXPLORE.hp
 
 describe('몬스터가 단단해짐 (한 방에 죽지 않음)', () => {
-  it('깊이 1 1층 일반 몬스터는 시작 물총(실측 137 DPS)으로 2~4초 걸린다', () => {
+  it('깊이 1 1층 일반 몬스터는 시작 물총(실측 137 DPS)으로 1~3.5초 걸린다 (밸런스 패스: 한 방에 죽지는 않음)', () => {
     for (const kind of ['slime', 'bat', 'bug', 'skeleton'] as const) {
       const s = hordeHp(kind, exploreHp(1, 1), false) / 137
-      expect(s, kind).toBeGreaterThanOrEqual(2)
-      expect(s, kind).toBeLessThanOrEqual(4.5)
+      expect(s, kind).toBeGreaterThanOrEqual(1)
+      expect(s, kind).toBeLessThanOrEqual(3.5)
     }
   })
 

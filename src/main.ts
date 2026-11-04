@@ -455,6 +455,7 @@ const townSkillWorld: SkillWorld = {
         z: p.z,
         r: foe.kind === 'bloom' ? 1.4 : 0.55,
         tone: foe.kind === 'bloom' ? 'boss' : foe.elite ? 'elite' : 'n',
+        town: true, // 1장 튜토리얼: 스킬 수치는 밸런스 패스 전 그대로 (SKILL_BITE_TOWN)
         maxHp: foe.maxHp,
         hit: (amount, dx, dz, knock, slow) => {
           chill(foe, slow)
