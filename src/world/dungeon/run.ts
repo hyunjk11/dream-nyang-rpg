@@ -1419,7 +1419,7 @@ export class DungeonRun {
     if (!foe) return null
     const f = foe.foe
     const k = procs?.knock ?? 1
-    const kill = this.horde.damage(f, amount, dir.x * k, dir.z * k)
+    const kill = this.horde.damage(f, amount, dir.x * k, dir.z * k, procs?.stagger ?? 0)
     this.procs(tip.clone().addScaledVector(dir, foe.t), amount, procs, kill ? null : f)
     return { t: foe.t, kill, tone: f.elite ? ('elite' as const) : ('n' as const), color: 0xffc6e8, floor: new Vector3(f.x, 0, f.z), ref: f }
   }

@@ -17,9 +17,11 @@ export interface QolPrefs {
   autoCandyAt: number
   /** Aim assist: the shot snaps to the nearest foe near the crosshair (default on for touch). */
   autoAim: boolean
+  /** ⚙ 화면 흔들림 (camera shake and the heavy-shot shove); on by default. */
+  shake: boolean
 }
 
-export const QOL_DEFAULTS: QolPrefs = { autoSellCommon: false, autoCandy: true, autoCandyAt: 0.3, autoAim: false }
+export const QOL_DEFAULTS: QolPrefs = { autoSellCommon: false, autoCandy: true, autoCandyAt: 0.3, autoAim: false, shake: true }
 export const QOL_KEY = 'dnr.qol'
 
 /** Read saved prefs (bad or missing JSON falls back to the defaults, field by field). */
@@ -31,6 +33,7 @@ export function loadQol(raw: string | null | undefined, touch = false): QolPrefs
       autoCandy: typeof v.autoCandy === 'boolean' ? v.autoCandy : QOL_DEFAULTS.autoCandy,
       autoCandyAt: typeof v.autoCandyAt === 'number' && v.autoCandyAt > 0 && v.autoCandyAt < 1 ? v.autoCandyAt : QOL_DEFAULTS.autoCandyAt,
       autoAim: typeof v.autoAim === 'boolean' ? v.autoAim : touch,
+      shake: typeof v.shake === 'boolean' ? v.shake : true,
     }
   } catch {
     return { ...QOL_DEFAULTS, autoAim: touch }

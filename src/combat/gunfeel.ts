@@ -142,10 +142,11 @@ export function rollDamage(r: number, damage: number = GUN.damage, critChance: n
 
 /** World freeze (seconds) for a hit: only elites, kills of elites and the boss get weight. */
 export function hitStopFor(hit: { elite?: boolean; kill?: boolean; boss?: boolean; crit?: boolean }): number {
-  if (hit.boss) return hit.kill ? 0.16 : hit.crit ? 0.018 : 0
-  if (hit.elite) return hit.kill ? 0.075 : hit.crit ? 0.03 : 0.012
-  // Regular foes: a whisker of a freeze on kills and crits so each pop lands (never on chip hits).
-  return hit.kill ? 0.022 : hit.crit ? 0.012 : 0
+  // 2026-11 손맛 pass: 30–80 ms on crits and kills (Hellgate-style weight); chip hits never freeze.
+  if (hit.boss) return hit.kill ? 0.16 : hit.crit ? 0.035 : 0
+  if (hit.elite) return hit.kill ? 0.08 : hit.crit ? 0.04 : 0.012
+  // Regular foes: kills and crits stop the world a beat (the budget in core/hitstop keeps 두두두 moving).
+  return hit.kill ? 0.045 : hit.crit ? 0.03 : 0
 }
 
 /**

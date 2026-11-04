@@ -4,7 +4,12 @@
  * a compressor on the gun bus. Hit ticks, kill pops, elite thunks and the overheat hiss share it.
  */
 
-export type GunCue = 'shot' | 'tail' | 'tick' | 'crit' | 'pop' | 'thunk' | 'hiss' | 'snap' | 'star' | 'boing' | 'puff'
+/**
+ * Layers (2026-11 손맛 pass): each shot = transient (snap) + body (shot / boom) + tail (tail / echo).
+ * 'boom' is the heavy low body of the shotgun and sniper, 'echo' the sniper's 탕! rolling off the
+ * walls, 'confirm' the kill-confirm ding (hits keep their tick / crit).
+ */
+export type GunCue = 'shot' | 'tail' | 'tick' | 'crit' | 'pop' | 'thunk' | 'hiss' | 'snap' | 'star' | 'boing' | 'puff' | 'boom' | 'echo' | 'confirm'
 
 /** Tiny seeded noise so every variant is stable between runs. */
 function noise(seed: number): () => number {
@@ -19,7 +24,7 @@ function noise(seed: number): () => number {
 
 /** Mono samples for one cue variant at `rate` Hz, peak-normalised to `peak` (< 1, no clipping). */
 export function synth(cue: GunCue, rate: number, variant = 0, peak = 0.8): Float32Array<ArrayBuffer> {
-  const len: Record<GunCue, number> = { shot: 0.085, tail: 0.18, tick: 0.045, crit: 0.07, pop: 0.11, thunk: 0.16, hiss: 0.6, snap: 0.035, star: 0.24, boing: 0.14, puff: 0.32 }
+  const len: Record<GunCue, number> = { shot: 0.085, tail: 0.18, tick: 0.045, crit: 0.07, pop: 0.11, thunk: 0.16, hiss: 0.6, snap: 0.035, star: 0.24, boing: 0.14, puff: 0.32, boom: 0.34, echo: 1.05, confirm: 0.17 }
   const n = Math.round(len[cue] * rate)
   const out = new Float32Array(n)
   const rnd = noise(1234 + variant * 977 + cue.length * 31)
@@ -79,6 +84,34 @@ export function synth(cue: GunCue, rate: number, variant = 0, peak = 0.8): Float
       bp += (lp - bp) * 0.3
       phase += (2 * Math.PI * (140 - 60 * t) * v) / rate
       s = (bp * 3 + Math.sin(phase) * 0.4) * Math.min(1, t / 0.03) * Math.exp(-t * 9)
+    } else if (cue === 'boom') {
+      // Heavy body: a sub thump that drops in pitch under a low-passed blast of noise.
+      const f = (38 + 70 * Math.exp(-t * 30)) * v
+      phase += (2 * Math.PI * f) / rate
+      const w = rnd()
+      lp += (w - lp) * 0.08
+      bp += (lp - bp) * 0.5
+      s = Math.sin(phase) * Math.exp(-t * 9) + bp * 2.4 * Math.exp(-t * 22) + (i < rate * 0.003 ? 0.9 : 0)
+    } else if (cue === 'echo') {
+      // 탕… 탕… : the crack coming back off the walls, darker and quieter each time.
+      const taps = [
+        [0.15, 0.55],
+        [0.33, 0.32],
+        [0.55, 0.18],
+        [0.8, 0.1],
+      ]
+      const w = rnd()
+      lp += (w - lp) * 0.12
+      for (const [at, g] of taps) {
+        const u = t - at
+        if (u >= 0 && u < 0.2) s += (lp * 2 + Math.sin(2 * Math.PI * 160 * u) * 0.6) * g * Math.exp(-u * 26)
+      }
+    } else if (cue === 'confirm') {
+      // Kill confirm: a bright two-note ding (ti-ding!), quick and clean.
+      const f = (t < 0.055 ? 1320 : 1980) * v
+      phase += (2 * Math.PI * f) / rate
+      const u = t < 0.055 ? t : t - 0.055
+      s = (Math.sin(phase) + 0.25 * Math.sin(phase * 2)) * Math.exp(-u * (t < 0.055 ? 40 : 22))
     } else if (cue === 'thunk') {
       const f = (60 + 110 * Math.exp(-t * 25)) * v
       phase += (2 * Math.PI * f) / rate
@@ -120,12 +153,13 @@ export class VoicePool<T> {
   }
 }
 
-const VARIANTS: Record<GunCue, number> = { shot: 4, tail: 2, tick: 2, crit: 1, pop: 3, thunk: 1, hiss: 1, snap: 3, star: 2, boing: 2, puff: 2 }
-const LEVEL: Record<GunCue, number> = { shot: 0.34, tail: 0.16, tick: 0.22, crit: 0.26, pop: 0.3, thunk: 0.42, hiss: 0.2, snap: 0.16, star: 0.2, boing: 0.18, puff: 0.3 }
+const VARIANTS: Record<GunCue, number> = { shot: 4, tail: 2, tick: 2, crit: 1, pop: 3, thunk: 1, hiss: 1, snap: 3, star: 2, boing: 2, puff: 2, boom: 2, echo: 1, confirm: 1 }
+const LEVEL: Record<GunCue, number> = { shot: 0.34, tail: 0.16, tick: 0.22, crit: 0.26, pop: 0.3, thunk: 0.42, hiss: 0.2, snap: 0.16, star: 0.2, boing: 0.18, puff: 0.3, boom: 0.46, echo: 0.26, confirm: 0.2 }
 
 interface Voice {
   src: AudioBufferSourceNode
   gain: GainNode
+  pan?: StereoPannerNode
 }
 
 export class GunSound {
@@ -159,8 +193,8 @@ export class GunSound {
     }
   }
 
-  /** `pitch` nudges playback rate (heat makes the gun sing a little higher). */
-  play(cue: GunCue, gain = 1, pitch = 0): void {
+  /** `pitch` nudges playback rate (heat makes the gun sing a little higher); `pan` -1..1 (dual pistols left/right). */
+  play(cue: GunCue, gain = 1, pitch = 0, pan = 0): void {
     if (this.ctx.state !== 'running') return
     const list = this.bufs.get(cue) as AudioBuffer[]
     let v = Math.floor(Math.random() * list.length)
@@ -172,14 +206,19 @@ export class GunSound {
     src.playbackRate.value = 1 + pitch + (Math.random() * 2 - 1) * 0.035
     const g = this.ctx.createGain()
     g.gain.value = LEVEL[cue] * gain
-    src.connect(g).connect(this.bus)
+    const panner = pan !== 0 && typeof this.ctx.createStereoPanner === 'function' ? this.ctx.createStereoPanner() : undefined
+    if (panner) {
+      panner.pan.value = Math.max(-1, Math.min(1, pan))
+      src.connect(g).connect(panner).connect(this.bus)
+    } else src.connect(g).connect(this.bus)
     src.onended = () => {
       src.disconnect()
       g.disconnect()
+      panner?.disconnect()
     }
     src.start(now)
     const end = now + (list[v].duration / src.playbackRate.value)
-    for (const old of this.pool.add({ src, gain: g }, now, end)) {
+    for (const old of this.pool.add({ src, gain: g, pan: panner }, now, end)) {
       old.gain.gain.cancelScheduledValues(now)
       old.gain.gain.setTargetAtTime(0, now, 0.006)
       try {

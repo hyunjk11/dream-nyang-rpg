@@ -17,6 +17,7 @@ import {
   MeshToonMaterial,
   Object3D,
   PlaneGeometry,
+  PointLight,
   Quaternion,
   RGBAFormat,
   Shape,
@@ -102,6 +103,26 @@ interface Casing {
   bubble: boolean
   /** Confetti flake colour index (-1 = not confetti). */
   confetti: number
+  /** Size (the sniper's long shell is chunky, water droplets are tiny). */
+  scale: number
+  /** Falls like a water drop (no bounce, quick fade). */
+  drop?: boolean
+}
+
+export type CasingKind = 'drop' | 'star' | 'shell' | 'long'
+
+/**
+ * Muzzle light pop, capped so a burst of shots next to her face stays inside the frame guard's
+ * safe range (core/safeframe HDR_SAFE): the light is short and dim, the flash sprite does the rest.
+ */
+export const MUZZLE_LIGHT = { max: 1.3, distance: 3.2, life: 0.06 }
+
+/** How the casing of each gun looks and flies: [mesh, scale, sideways speed, spin]. Pure. */
+export function casingLook(kind: CasingKind): { mesh: 'bubble' | 'star'; scale: number; side: number; spin: number; drop: boolean; confetti: boolean } {
+  if (kind === 'drop') return { mesh: 'bubble', scale: 0.55, side: 1.2, spin: 4, drop: true, confetti: false }
+  if (kind === 'shell') return { mesh: 'star', scale: 1.7, side: 1.4, spin: 6, drop: false, confetti: true }
+  if (kind === 'long') return { mesh: 'star', scale: 2.3, side: 1.1, spin: 4, drop: false, confetti: true }
+  return { mesh: 'star', scale: 1, side: 1.9, spin: 12, drop: false, confetti: true }
 }
 
 interface Splat {
@@ -126,6 +147,10 @@ export class GunFx {
   /** A long petal along the barrel, so the flash reads from behind her too. */
   private readonly flashSide: Mesh
   private flashT = 0
+  /** Muzzle light pop (desktop only: phones skip the extra light). */
+  readonly light: PointLight | null
+  private lightT = 0
+  private lightPeak = 0
   private readonly stars: InstancedMesh
   private readonly bubbles: InstancedMesh
   /** Little paper confetti flakes that flutter out with the casings. */
@@ -139,8 +164,11 @@ export class GunFx {
   private readonly c = new Color()
   private readonly up = new Vector3(0, 0, 1)
 
-  constructor() {
+  constructor(lowPower = false) {
     this.group.name = 'gun-fx'
+    // Always in the scene at 0 so the shader light count never changes mid-fight (no recompile hitch).
+    this.light = lowPower ? null : new PointLight(0xfff0e0, 0, MUZZLE_LIGHT.distance, 2)
+    if (this.light) this.group.add(this.light)
     const tex = starTexture()
     const flashMat = new MeshBasicMaterial({ map: tex, color: new Color(0xc8f0ff).multiplyScalar(2.2), transparent: true, blending: AdditiveBlending, depthWrite: false, side: DoubleSide })
     this.flash = new Mesh(new PlaneGeometry(1, 1), flashMat)
@@ -171,13 +199,19 @@ export class GunFx {
   }
 
   /** One shot: flash at the muzzle facing the lens, and a casing flicked out to her right. */
-  shot(tip: Vector3, dir: Vector3, camera: Camera, n: number, tint = 0xc8f0ff): void {
+  shot(tip: Vector3, dir: Vector3, camera: Camera, n: number, tint = 0xc8f0ff, casing: CasingKind = 'star', light = 0.5, flashScale = 1): void {
     this.flashT = 0.05
+    if (this.light) {
+      this.light.position.copy(tip).addScaledVector(dir, 0.15)
+      this.light.color.set(tint).lerp(this.c.set(0xffffff), 0.5)
+      this.lightPeak = Math.min(1, Math.max(0, light)) * MUZZLE_LIGHT.max
+      this.lightT = MUZZLE_LIGHT.life
+    }
     // Muzzle variety: the flash colour walks a little palette and every 5th one blooms big.
     const big = n % 5 === 0
     const mat = this.flash.material as MeshBasicMaterial
     mat.color.set(FLASH_TINTS[n % FLASH_TINTS.length] ?? tint).lerp(this.c.set(tint), 0.35).multiplyScalar(big ? 2.8 : 2.2)
-    const sz = (0.44 + Math.random() * 0.24) * (big ? 1.45 : 1)
+    const sz = (0.44 + Math.random() * 0.24) * (big ? 1.45 : 1) * flashScale
     const petal = this.flashSide
     petal.visible = true
     petal.position.copy(tip).addScaledVector(dir, 0.22)
@@ -196,10 +230,11 @@ export class GunFx {
     }
     if (this.casings.length >= CASINGS) this.casings.shift()
     // Right of the barrel and a bit back, like a brass ejection port.
+    const look = casingLook(casing)
     const rx = dir.z
     const rz = -dir.x
     const rl = Math.hypot(rx, rz) || 1
-    const side = 1.6 + Math.random() * 0.8
+    const side = look.side * (0.85 + Math.random() * 0.45)
     this.casings.push({
       x: tip.x - dir.x * 0.12,
       y: tip.y + 0.02,
@@ -209,13 +244,15 @@ export class GunFx {
       vz: (-rz / rl) * side - dir.z * 0.5 + (Math.random() - 0.5) * 0.4,
       rx: Math.random() * 6,
       ry: Math.random() * 6,
-      spin: 8 + Math.random() * 10,
+      spin: look.spin * (0.7 + Math.random() * 0.8),
       age: 0,
-      bubble: n % 3 === 2,
+      bubble: look.mesh === 'bubble' || (casing === 'star' && n % 3 === 2),
       confetti: -1,
+      scale: look.scale,
+      drop: look.drop,
     })
-    // Every other shot a couple of confetti flakes flutter out too.
-    if (n % 2 === 0) {
+    // Every other shot a couple of confetti flakes flutter out too (not from the water pistols).
+    if (look.confetti && n % 2 === 0) {
       for (let k = 0; k < 2; k += 1) {
         if (this.casings.length >= CASINGS) this.casings.shift()
         this.casings.push({
@@ -231,6 +268,7 @@ export class GunFx {
           age: 0,
           bubble: false,
           confetti: Math.floor(Math.random() * CONFETTI.length),
+          scale: 1,
         })
       }
     }
@@ -247,6 +285,11 @@ export class GunFx {
 
   update(dt: number): void {
     this.flashT -= dt
+    if (this.light) {
+      this.lightT = Math.max(0, this.lightT - dt)
+      const k = this.lightT / MUZZLE_LIGHT.life
+      this.light.intensity = this.lightPeak * k * k
+    }
     const on = this.flashT > 0
     this.flash.visible = on
     this.flashCore.visible = on
@@ -262,7 +305,7 @@ export class GunFx {
         continue
       }
       const flake = c.confetti >= 0
-      c.vy -= (c.bubble ? 1.2 : flake ? 2.2 : 9) * dt
+      c.vy -= (c.drop ? 9 : c.bubble ? 1.2 : flake ? 2.2 : 9) * dt
       if (flake) {
         // Paper drag: flutter down slowly.
         c.vx *= Math.exp(-dt * 2.5)
@@ -272,6 +315,11 @@ export class GunFx {
       c.x += c.vx * dt
       c.y += c.vy * dt
       c.z += c.vz * dt
+      if (c.drop && c.y < 0.03) {
+        // A water drop just lands and is gone (a tiny splash would be noise at 18 shots a second).
+        this.casings.splice(i, 1)
+        continue
+      }
       if (c.y < 0.03) {
         c.y = 0.03
         c.vy = Math.abs(c.vy) * 0.35
@@ -284,7 +332,7 @@ export class GunFx {
       const fade = Math.min(1, (CASING_LIFE - c.age) / 0.3)
       this.e.position.set(c.x, c.y, c.z)
       this.e.rotation.set(c.rx, c.ry, 0)
-      this.e.scale.setScalar(fade * (c.bubble ? 1 + c.age * 0.6 : 1))
+      this.e.scale.setScalar(fade * c.scale * (c.bubble && !c.drop ? 1 + c.age * 0.6 : 1))
       this.e.updateMatrix()
       if (flake) {
         this.confetti.setMatrixAt(fi, this.e.matrix)
@@ -321,8 +369,8 @@ export class GunFx {
     if (this.splats.instanceColor) this.splats.instanceColor.needsUpdate = true
   }
 
-  get live(): { casings: number; splats: number } {
-    return { casings: this.casings.length, splats: this.splatList.length }
+  get live(): { casings: number; splats: number; light: number } {
+    return { casings: this.casings.length, splats: this.splatList.length, light: this.light?.intensity ?? -1 }
   }
 
   dispose(): void {

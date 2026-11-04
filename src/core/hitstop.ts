@@ -17,6 +17,9 @@ export const GAP = 0.3
 export const BUDGET = 0.06
 /** …and the debt drains at this rate (freeze seconds per real second). */
 export const DRAIN = 0.08
+/** Slow-mo on elite and boss kills: world speed at its deepest, and the longest it may run (real s). */
+export const SLOW_SCALE = 0.3
+export const MAX_SLOW = 0.6
 
 export class HitStop {
   /** Freeze seconds left (real time). */
@@ -25,6 +28,10 @@ export class HitStop {
   private sinceEnd = 1e9
   /** Freeze seconds actually served (QA / tests). */
   served = 0
+  /** Slow-mo left (real s) and its full length, for the ease back to normal speed. */
+  slowLeft = 0
+  private slowLen = 0
+  private slowScale = 1
 
   get active(): boolean {
     return this.left > 0
@@ -34,13 +41,47 @@ export class HitStop {
   request(seconds: number): boolean {
     if (!(seconds > 0)) return false
     const heavy = seconds >= HEAVY
-    if (!heavy && !this.active && (this.sinceEnd < GAP || this.debt >= BUDGET)) return false
+    // A small hit during a freeze is absorbed by it (re-arming every frame would chain freezes forever).
+    if (!heavy && this.active) return false
+    if (!heavy && (this.sinceEnd < GAP || this.debt >= BUDGET)) return false
     this.left = Math.min(MAX_STOP, Math.max(this.left, seconds))
     return true
   }
 
+  /**
+   * A short slow-motion beat (elite / boss kill): the world runs at `scale`, easing back to 1 over
+   * the last half. Never stacks past MAX_SLOW; a deeper/longer request wins.
+   */
+  slow(seconds: number, scale = SLOW_SCALE): void {
+    if (!(seconds > 0)) return
+    const len = Math.min(MAX_SLOW, seconds)
+    const want = Math.max(0.05, Math.min(1, scale))
+    const active = this.slowLeft > 0
+    if (len > this.slowLeft) {
+      this.slowLeft = len
+      this.slowLen = len
+    }
+    this.slowScale = active ? Math.min(this.slowScale, want) : want
+  }
+
+  /** World speed from the slow-mo alone right now (1 when none). */
+  get slowNow(): number {
+    if (this.slowLeft <= 0) return 1
+    const ease = Math.min(1, this.slowLeft / (this.slowLen * 0.5))
+    return 1 - (1 - this.slowScale) * ease
+  }
+
   /** Advance by a real-time step; returns the world time scale for this frame (1 when free). */
   step(raw: number): number {
+    const slow = this.slowNow
+    if (this.slowLeft > 0) {
+      this.slowLeft = Math.max(0, this.slowLeft - Math.max(0, raw))
+      if (this.slowLeft <= 0) this.slowScale = 1
+    }
+    return this.freezeStep(raw) * slow
+  }
+
+  private freezeStep(raw: number): number {
     const dt = Math.max(0, raw)
     this.debt = Math.max(0, this.debt - dt * DRAIN)
     if (this.left <= 0) {
@@ -61,6 +102,8 @@ export class HitStop {
 
   /** Drop any freeze (menus, floor changes, death). */
   clear(): void {
+    this.slowLeft = 0
+    this.slowScale = 1
     this.left = 0
     this.debt = 0
     this.sinceEnd = 1e9
