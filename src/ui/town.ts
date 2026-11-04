@@ -17,8 +17,8 @@ import { CHAPTER2, CHAPTER_TITLE, chapter2Open, chapterProgress, chaptersOf, cla
 import { BAG_CAP, type MutationResult, type Element, type ItemInstance, type SaveData } from '../sim/types'
 import { compareEquip } from './inventory'
 import { iconSvg } from './icons'
-import { COMBOS, MAX_TRICKS, TRICK_KO, type ComboSpec } from '../data/mods'
-import { attachMod, bagMods, detachMod, fitBlock, fitCost, gunCombos, gunMods, gunTraits, isMod, MAX_MOD_SLOTS, MOD_SLOT_ILV, modKind, modLabel, modSlots, modUpgradeCost, swapIndex, upgradeMod, type Trait } from '../sim/mods'
+import { COMBOS, MAX_TRICKS, TRICK_KO } from '../data/mods'
+import { attachMod, bagMods, detachMod, fitBlock, fitCost, gunCombos, gunMods, gunTraits, isMod, MAX_MOD_SLOTS, MOD_SLOT_ILV, modKind, modLabel, modSlots, modUpgradeCost, newCombos, swapIndex, upgradeMod, type Trait } from '../sim/mods'
 import { RARITY_COLOR, RARITY_KO } from '../sim/types'
 import { itemColor, itemRarityKo } from '../sim/rarity'
 import type { LegendSource } from '../data/legends'
@@ -32,13 +32,6 @@ function traitName(t: Trait): string {
 }
 
 /** Combos this part would switch on if fitted (swapping a same-kind part out). */
-function newCombos(gun: ItemInstance, part: ItemInstance): ComboSpec[] {
-  const now = new Set(gunCombos(gun).map((c) => c.id))
-  const mods = gunMods(gun)
-  const i = swapIndex(mods, part)
-  const next = i >= 0 ? mods.map((m, k) => (k === i ? part : m)) : [...mods, part]
-  return gunCombos({ ...gun, mods: next }).filter((c) => !now.has(c.id))
-}
 
 export type TownSuccess = 'buy' | 'sell' | 'upgrade' | 'reroll' | 'element' | 'take' | 'claim' | 'stash' | 'mod'
 
@@ -476,7 +469,7 @@ export class TownUI {
     const mods = gunMods(gun)
     const slots = modSlots(gun)
     box.append(el('h4', '', `총 개조 ${mods.length}/${slots}칸`))
-    box.append(el('small', '', `부품을 눌러 끼우거나 칸으로 끌어다 놔 · Alt+클릭으로 빼기 · 같은 종류는 서로 바뀌어 · 특수 부품은 서로 다른 것 ${MAX_TRICKS}개까지`))
+    box.append(el('small', '', `부품을 한 번 누르면 바로 끼워 (가방에서도 두 번 클릭) · 칸의 빼기 / Alt+클릭으로 빼기 · 같은 종류는 서로 바뀌어 · 특수 부품은 서로 다른 것 ${MAX_TRICKS}개까지`))
     const row = el('div', 'mod-slots')
     const fit = (uid: string) => {
       const part = findItem(save, uid)
@@ -541,6 +534,10 @@ export class TownUI {
       b.disabled = !!block || save.gold < fitCost(p)
       b.addEventListener('dragstart', (e) => e.dataTransfer?.setData('text/plain', p.uid))
       b.addEventListener('click', () => fit(p.uid))
+      // Hover a part: its landing socket glows (the swap slot, or the next empty one).
+      const target = swap ? swapIndex(mods, p) : mods.length
+      b.addEventListener('mouseenter', () => row.querySelector(`[data-slot="${target}"]`)?.classList.add('target'))
+      b.addEventListener('mouseleave', () => row.querySelector(`[data-slot="${target}"]`)?.classList.remove('target'))
       list.append(b)
     })
     box.append(list)

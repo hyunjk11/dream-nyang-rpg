@@ -14,8 +14,10 @@ import { fillCell, ilvRow, nameTitle } from './itemcell'
 import { dismantleOwned, sellOwned, tryEquip, tryUnequip } from '../sim/mutate'
 import { buildOf, learn, learnBlock, rank, respec, respecCost } from '../sim/skilltree'
 import { computeStats, type ComputedStats } from '../sim/stats'
-import { BAG_CAP, EQUIP_SLOTS, SLOT_KO, type EquipSlot, type ItemInstance, type SaveData } from '../sim/types'
+import { BAG_CAP, EQUIP_SLOTS, RARITY_COLOR, SLOT_KO, type EquipSlot, type ItemInstance, type SaveData } from '../sim/types'
 import { itemRarityKo } from '../sim/rarity'
+import { attachMod, detachMod, fitPreview, gunMods, isGun, isMod, MAX_MOD_SLOTS, modLabel, modSlots } from '../sim/mods'
+import { iconSvg } from './icons'
 import { LEVEL_CAP } from '../data/tree'
 import { skillSvg } from './skillicons'
 import { bestUpgrades, junkIds, junkPartIds, junkToast, needsConfirm, sortBag } from '../sim/qol'
@@ -181,7 +183,7 @@ export class InventoryUI {
       this.host.sfx('ui')
       this.render()
     })
-    b.addEventListener('dblclick', () => this.equip(item.uid))
+    b.addEventListener('dblclick', () => (isMod(item) ? this.fit(item.uid) : this.equip(item.uid)))
     // Right-click: wear it, or take it off when it is already worn.
     b.addEventListener('contextmenu', (event) => {
       event.preventDefault()
@@ -207,7 +209,65 @@ export class InventoryUI {
       return
     }
     const item = findItem(save, id)
-    if (item && ITEMS[item.defId]?.slot) this.equip(id)
+    if (isMod(item)) this.fit(id)
+    else if (item && ITEMS[item.defId]?.slot) this.equip(id)
+  }
+
+  /** 총 개조 from the bag: fit a part into the worn gun (same kind swaps back to the bag). */
+  fit(partUid: string): void {
+    const save = this.host.save()
+    const gun = findItem(save, save.equipment.weapon)
+    const part = findItem(save, partUid)
+    if (!gun || !part) return
+    const r = attachMod(save, gun.uid, partUid)
+    if (!r.ok) this.host.toast(r.reason ?? '못 끼워.')
+    else {
+      this.host.toast(r.swapped ? `${itemName(part)} 장착! ${itemName(r.swapped)}은(는) 가방으로.` : `${itemName(part)} 장착! 총이 달라졌어.`)
+      this.host.sfx('pop')
+      this.picked = gun.uid
+      this.host.changed()
+    }
+    this.render()
+  }
+
+  /** One click on a filled socket: the part goes back to the bag (free). */
+  unfit(gunUid: string, partUid: string): void {
+    const save = this.host.save()
+    const r = detachMod(save, gunUid, partUid)
+    if (!r.ok) this.host.toast(r.reason ?? '못 빼.')
+    else {
+      this.host.toast(`${r.mod ? itemName(r.mod) : '부품'}을(를) 뺐어.`)
+      this.host.sfx('ui')
+      this.host.changed()
+    }
+    this.render()
+  }
+
+  /** The gun's sockets: filled ones show the part (click = 빼기), empty ones dashed, `target` glows. */
+  private sockets(gun: ItemInstance, target: number, removable: boolean): HTMLElement {
+    const row = el('div', 'inv-socks')
+    row.id = 'inv-socks'
+    const mods = gunMods(gun)
+    const slots = modSlots(gun)
+    for (let i = 0; i < Math.max(slots, Math.min(MAX_MOD_SLOTS, slots + 1)); i += 1) {
+      const m = mods[i]
+      const s = el('button', `inv-sock${m ? ' on' : ''}${i >= slots ? ' locked' : ''}${i === target ? ' target' : ''}`)
+      s.type = 'button'
+      s.dataset.slot = String(i)
+      if (m) {
+        s.style.setProperty('--rar', RARITY_COLOR[m.rarity])
+        s.innerHTML = iconSvg(ITEMS[m.defId]?.icon, 16)
+        s.append(` ${modLabel(m)}${removable ? ' ✕' : ''}`)
+        s.title = `${itemName(m)}${removable ? '\n누르면 빼서 가방으로 (무료)' : ''}`
+        if (removable) s.addEventListener('click', () => this.unfit(gun.uid, m.uid))
+        else s.disabled = true
+      } else {
+        s.append(i >= slots ? '🔒 더 높은 등급' : '빈 칸')
+        s.disabled = true
+      }
+      row.append(s)
+    }
+    return row
   }
 
   /** Drop handler: an item dropped on a gear slot (slot) or on the bag (null). */
@@ -217,6 +277,10 @@ export class InventoryUI {
     if (slot) {
       if (worn === slot) return
       const def = findItem(save, id)
+      if (slot === 'weapon' && isMod(def)) {
+        this.fit(id)
+        return
+      }
       const fits = !!def && slotFits(ITEMS[def.defId]?.slot, slot)
       if (!fits) {
         this.host.toast('그 칸에는 못 끼워.')
@@ -422,6 +486,27 @@ export class InventoryUI {
     const ul = el('ul', 'inv-lines')
     for (const line of itemLines(item).slice(2, -1)) ul.append(el('li', '', line))
     box.append(ul)
+    const wornGun = findItem(save, save.equipment.weapon)
+    if (isGun(item) && modSlots(item) > 0) {
+      box.append(el('h4', '', `개조 칸 ${gunMods(item).length}/${modSlots(item)}${worn ? ' · 칸을 누르면 빼기' : ''}`))
+      box.append(this.sockets(item, -1, worn))
+    }
+    let fitBtn: (() => void) | null = null
+    if (isMod(item) && !worn && wornGun) {
+      const pv = fitPreview(wornGun, item)
+      box.append(el('h4', '', `${itemName(wornGun)}에 끼우면`))
+      box.append(this.sockets(wornGun, pv.block ? -1 : pv.slot, true))
+      const p = el('p', 'inv-fit')
+      p.id = 'inv-fit-preview'
+      if (pv.block) p.append(el('span', 'lose', pv.block))
+      else {
+        p.append(pv.swap ? `${pv.slot + 1}번 칸 ${modLabel(pv.swap)}과(와) 바꿔 · ` : `${pv.slot + 1}번 빈 칸에 끼워 · `, `${pv.cost}골드`)
+        if (pv.gain.length) p.append(' · ', el('span', 'gain', `✦ 조합 켜짐: ${pv.gain.map((c) => c.name).join(', ')}`))
+        if (pv.lose.length) p.append(' · ', el('span', 'lose', `✖ 조합 꺼짐: ${pv.lose.map((c) => c.name).join(', ')}`))
+      }
+      box.append(p)
+      if (!pv.block) fitBtn = () => this.fit(item.uid)
+    }
     if (!worn && def?.slot) {
       const target = slotFor(save, item)
       const current = target ? findItem(save, save.equipment[target]) : undefined
@@ -447,6 +532,10 @@ export class InventoryUI {
       b.addEventListener('click', fn)
       row.append(b)
       return b
+    }
+    if (fitBtn) {
+      const fb = btn(`총에 끼우기 ${fitPreview(wornGun!, item).cost}골드`, fitBtn, 'primary', save.gold < fitPreview(wornGun!, item).cost)
+      fb.id = 'inv-fit'
     }
     if (worn) {
       const slot = EQUIP_SLOTS.find((s) => save.equipment[s] === item.uid)
