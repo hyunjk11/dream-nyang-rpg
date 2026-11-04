@@ -10,9 +10,9 @@ import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { REPEAT_ICON, boardOf, claimContract, contractRuns, contractTitle, dropContract, rewardText, runsText, takeContract, type Contract } from '../sim/contracts'
 import { addItem, bagItems, findItem, isEquipped, slotFor } from '../sim/inventory'
 import { formatAffix, ilvText, itemLines, itemName, itemPower, plusOf, sellValue, upgradeMul } from '../sim/loot'
-import { fillCell, ilvRow, nameTitle } from './itemcell'
+import { fillCell, ilvRow, nameTitle, pct } from './itemcell'
 import { buyBack, buyConsumable, buyStock, consumableCount, CONSUMABLES, RESTOCK_COST, restock, sellItem, shopStock, STASH_CAP, stashPut, stashTake, townOf } from '../sim/town'
-import { canPay, changeElement, ELEMENT_COST, elementOf, MAX_PLUS, rerollAffix, rerollAffixCost, rerollChoices, upgradeCost, upgradeGun, type Cost } from '../sim/workshop'
+import { canPay, changeElement, ELEMENT_COST, elementOf, MAX_PLUS, PITY_STEP, rerollAffix, rerollAffixCost, rerollChoices, upFailsOf, upgradeChance, upgradeCost, upgradeGun, type Cost } from '../sim/workshop'
 import { CHAPTER2, CHAPTER_TITLE, chapter2Open, chapterProgress, chaptersOf, claimQuest, fieldOpen, questRewardText, takeQuest } from '../sim/chapters'
 import { BAG_CAP, type MutationResult, type Element, type ItemInstance, type SaveData } from '../sim/types'
 import { compareEquip } from './inventory'
@@ -33,7 +33,10 @@ function traitName(t: Trait): string {
 
 /** Combos this part would switch on if fitted (swapping a same-kind part out). */
 
-export type TownSuccess = 'buy' | 'sell' | 'upgrade' | 'reroll' | 'element' | 'take' | 'claim' | 'stash' | 'mod'
+/** 강화 반짝이 기다림 (ms). */
+export const FORGE_MS = 600
+
+export type TownSuccess = 'buy' | 'sell' | 'upgrade' | 'upfail' | 'reroll' | 'element' | 'take' | 'claim' | 'stash' | 'mod'
 
 export interface TownHost {
   save(): SaveData
@@ -58,7 +61,7 @@ export interface TownHost {
 const TITLE: Record<TownPanel, string> = { shop: '포포 상점', workshop: '키키의 총 공방', board: '퀘스트 게시판', stash: '별하의 보관함', codex: '유니크 도감' }
 const SUB: Record<TownPanel, string> = {
   shop: '하수도에 다녀올 때마다 진열대가 바뀌어.',
-  workshop: '강화는 실패하지 않아. 대신 갈수록 비싸져!',
+  workshop: '+6부터 실패할 수도 · 실패해도 강화 수치는 안 떨어져!',
   board: '의뢰는 하수도에서 진행되고, 돌아오면 여기서 보상을 받아.',
   stash: '가방이 꽉 차면 여기에 넣어 둬.',
   codex: '이름 붙은 총 일곱 자루. 정해진 곳에서만 떨어지고, 못 찾을수록 확률이 올라가.',
@@ -285,6 +288,41 @@ export class TownUI {
     return box
   }
 
+  /** 강화 중 (0.6초 반짝이 기다림): the button is locked so one click is one try. */
+  private forging = false
+
+  /** One upgrade try: pay and roll now, show 0.6 s of sparkle, then the result toast. */
+  private forge(save: SaveData, item: ItemInstance, box: HTMLElement): void {
+    if (this.forging) return
+    const r = upgradeGun(save, item.uid)
+    if (!r.ok) {
+      this.run(r, '', 'upgrade', item)
+      return
+    }
+    this.forging = true
+    this.host.changed()
+    box.classList.add('forging')
+    const btn = box.querySelector<HTMLButtonElement>('#work-upgrade')
+    if (btn) {
+      btn.disabled = true
+      btn.textContent = '반짝반짝…'
+    }
+    this.host.sfx('pop')
+    window.setTimeout(() => {
+      this.forging = false
+      box.classList.remove('forging')
+      if (r.success) {
+        this.host.toast(`반짝! +${plusOf(item)}`)
+        this.render()
+        this.host.success('upgrade', item)
+      } else {
+        this.host.toast(`픽… 실패 · 다음 확률 ${pct(r.nextChance ?? 1)}`)
+        this.render()
+        this.host.success('upfail', item)
+      }
+    }, FORGE_MS)
+  }
+
   private run(r: { ok: boolean; reason?: string }, ok: string, kind: TownSuccess, item?: ItemInstance): void {
     if (!r.ok) {
       this.host.toast(r.reason ?? '할 수 없어.')
@@ -426,8 +464,16 @@ export class TownUI {
       box.append(meter)
       const cost = upgradeCost(item)
       if (cost) {
+        const chance = upgradeChance(item) ?? 1
+        const fails = upFailsOf(item)
         box.append(el('small', '', `총 피해 ×${upgradeMul(plusOf(item)).toFixed(2)} → ×${upgradeMul(plusOf(item) + 1).toFixed(2)} · ${costText(cost)}`))
-        box.append(this.button(`+${plusOf(item) + 1} 강화하기`, () => this.run(upgradeGun(save, item.uid), `${itemName(item)}! 반짝반짝 강화 성공!`, 'upgrade', item), { primary: true, disabled: !canPay(save, cost), id: 'work-upgrade' }))
+        const odds = el('div', `town-odds${chance < 1 ? ' risky' : ''}`)
+        odds.id = 'work-odds'
+        odds.append(el('b', '', `성공 확률 ${pct(chance)}`))
+        if (fails) odds.append(el('span', 'pity', ` (실패 ${fails}번 · +${Math.round(fails * PITY_STEP * 100)}%p 보너스)`))
+        odds.append(el('small', '', chance < 1 ? '실패해도 강화 수치는 안 떨어져 · 골드·재료만 들고, 다음 확률 +10%p' : '실패해도 강화 수치는 안 떨어져 · 이 단계는 꼭 성공해'))
+        box.append(odds)
+        box.append(this.button(this.forging ? '반짝반짝…' : `+${plusOf(item) + 1} 강화하기 (${pct(chance)})`, () => this.forge(save, item, box), { primary: true, disabled: this.forging || !canPay(save, cost), id: 'work-upgrade' }))
       } else box.append(el('small', '', '최고 단계야. 더는 반짝일 수 없어!'))
       right.append(box)
     }

@@ -134,20 +134,20 @@ describe('보관함', () => {
 })
 
 describe('키키 공방', () => {
-  it('강화 비용: 골드 20n+8n², 꿈가루 n, +8부터 별조각', () => {
+  it('강화 비용: +1~+5는 예전처럼 싸고, +8부터 별조각', () => {
     const item = makeItem(WEAPON_IDS[0], 'rare', mulberry32(1), 1)
     expect(upgradeCost(item)).toEqual({ gold: 28, mats: { dream_dust: 1 } })
     item.plus = 7
-    expect(upgradeCost(item)).toEqual({ gold: 20 * 8 + 8 * 64, mats: { dream_dust: 8, star_shard: 1 } })
+    expect(upgradeCost(item)).toEqual({ gold: 1400, mats: { dream_dust: 16, star_shard: 2 } })
     item.plus = MAX_PLUS
     expect(upgradeCost(item)).toBeNull()
   })
 
-  it('강화는 실패하지 않고, +1마다 총 피해가 7%씩 오른다', () => {
+  it('항상 성공하는 굴림이면 +10까지 가고, +1마다 총 피해가 7%씩 오른다', () => {
     const save = richSave()
     const uid = save.equipment.weapon!
     const base = computeStats(save).gun.damage
-    for (let i = 0; i < MAX_PLUS; i += 1) expect(upgradeGun(save, uid).ok).toBe(true)
+    for (let i = 0; i < MAX_PLUS; i += 1) expect(upgradeGun(save, uid, () => 0).success).toBe(true)
     expect(upgradeGun(save, uid).ok).toBe(false)
     const gun = save.items.find((i) => i.uid === uid)!
     expect(gun.plus).toBe(10)

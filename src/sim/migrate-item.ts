@@ -33,6 +33,8 @@ function cleanLevel(v: unknown, fallback: number): number {
 }
 
 export function migrateItem(item: ItemInstance, fallback = 1): ItemInstance {
+  // 강화 실패 누적 (확률 강화): older saves had none, so pity starts at 0.
+  if (item.plus !== undefined || item.upFails !== undefined) item.upFails = Math.max(0, Math.floor(Number(item.upFails) || 0))
   if (item.v === 2) {
     item.itemLevel = cleanLevel(item.itemLevel, fallback)
     return item

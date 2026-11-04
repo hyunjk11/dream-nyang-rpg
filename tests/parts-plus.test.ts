@@ -25,7 +25,7 @@ describe('부품 장착 · 강화 레벨 표시', () => {
     const g = { ...makeItem('gun_water', 'rare', mulberry32(1), 5), plus: 3 }
     const lines = upgradeLines(g)
     expect(lines[0]).toMatch(/^강화 \+3 \/ \+10 · 총 피해 ×/)
-    expect(lines[1]).toMatch(/^다음 \+4: 총 피해 ×[\d.]+ · \d+골드/)
+    expect(lines[1]).toMatch(/^다음 \+4: 총 피해 ×[\d.]+ · 성공 100% · \d+골드/)
     expect(upgradeLines({ ...g, plus: 10 })[1]).toBe('최대 강화 완료!')
   })
   it('부품은 희귀도 단계(1~5)가 강화 레벨로 보인다', () => {

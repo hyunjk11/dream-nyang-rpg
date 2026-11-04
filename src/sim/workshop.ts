@@ -1,6 +1,7 @@
 /**
- * 키키의 총 공방: upgrade a gun (+1..+10), reroll one affix, or swap a gun's element. Every job
- * succeeds (a cute game: no breaking, no downgrades); prices climb with the level instead.
+ * 키키의 총 공방: upgrade a gun (+1..+10), reroll one affix, or swap a gun's element. +1..+5 always
+ * work; from +6 an upgrade can fail (+6 80% … +10 25%). A failure costs only the gold and
+ * materials: the +N never drops, and each failure at that step adds +10%p (pity, `upFails`).
  */
 import { AFFIXES, type AffixSpec } from '../data/affixes'
 import { ITEMS } from '../data/items'
@@ -16,13 +17,68 @@ export interface Cost {
   mats: Record<string, number>
 }
 
-/** Price of taking a gun from +n to +(n+1). */
+/** Success chance of the step to +n (index = n). +1..+5 always succeed. */
+export const UPGRADE_CHANCE = [1, 1, 1, 1, 1, 1, 0.8, 0.65, 0.5, 0.35, 0.25] as const
+/** Each failure at a step adds this much to the next try (reset on success). */
+export const PITY_STEP = 0.1
+
+/** Per-attempt price of the step to +n (index = n). +1..+5 unchanged (cheap); +6..+10 raised so the
+ * expected total to +10 (with chance and pity) is ~3.5x the old always-succeed 4180 gold. */
+const STEP_COST: Array<Cost | null> = [
+  null,
+  { gold: 28, mats: { dream_dust: 1 } },
+  { gold: 72, mats: { dream_dust: 2 } },
+  { gold: 132, mats: { dream_dust: 3 } },
+  { gold: 208, mats: { dream_dust: 4 } },
+  { gold: 300, mats: { dream_dust: 5 } },
+  { gold: 700, mats: { dream_dust: 10 } },
+  { gold: 1000, mats: { dream_dust: 13 } },
+  { gold: 1400, mats: { dream_dust: 16, star_shard: 2 } },
+  { gold: 1800, mats: { dream_dust: 20, star_shard: 3 } },
+  { gold: 2200, mats: { dream_dust: 24, star_shard: 4 } },
+]
+
+/** Failures since the last success (pity). Absent (old saves) = 0. */
+export function upFailsOf(item: ItemInstance): number {
+  return Math.max(0, Math.floor(item.upFails ?? 0))
+}
+
+/** Chance (0..1) that the next upgrade succeeds, pity included; null at +10. */
+export function upgradeChance(item: ItemInstance): number | null {
+  const next = plusOf(item) + 1
+  if (next > MAX_PLUS) return null
+  return Math.min(1, UPGRADE_CHANCE[next] + PITY_STEP * upFailsOf(item))
+}
+
+/** Expected tries for one step with base chance p and the pity ramp. */
+export function expectedTries(p: number): number {
+  let e = 0
+  let alive = 1
+  for (let k = 0; alive > 1e-12; k += 1) {
+    e += alive
+    alive *= 1 - Math.min(1, p + PITY_STEP * k)
+  }
+  return e
+}
+
+/** Expected total cost from +0 to +10 (chance and pity included). */
+export function expectedCostToMax(): { gold: number; mats: Record<string, number> } {
+  const out = { gold: 0, mats: {} as Record<string, number> }
+  for (let n = 1; n <= MAX_PLUS; n += 1) {
+    const c = STEP_COST[n]!
+    const e = expectedTries(UPGRADE_CHANCE[n])
+    out.gold += c.gold * e
+    for (const [m, v] of Object.entries(c.mats)) out.mats[m] = (out.mats[m] ?? 0) + v * e
+  }
+  return out
+}
+
+/** Price of one try at taking a gun from +n to +(n+1). */
 export function upgradeCost(item: ItemInstance): Cost | null {
   const next = plusOf(item) + 1
   if (next > MAX_PLUS) return null
-  const mats: Record<string, number> = { dream_dust: next }
-  if (next >= 8) mats.star_shard = next - 7
-  return { gold: 20 * next + 8 * next * next, mats }
+  const c = STEP_COST[next]!
+  return { gold: c.gold, mats: { ...c.mats } }
 }
 
 export function rerollAffixCost(item: ItemInstance): Cost {
@@ -44,6 +100,11 @@ export interface WorkResult {
   ok: boolean
   reason?: string
   item?: ItemInstance
+  /** Upgrade only: did the try land (false = paid, +N kept, pity up)? */
+  success?: boolean
+  /** Upgrade only: the chance that was rolled, and the next try's chance (null at +10). */
+  chance?: number
+  nextChance?: number | null
 }
 
 /** Items Kiki can work on: whatever is in the bag or worn, plus the stash (guns first). */
@@ -56,16 +117,21 @@ function short(save: SaveData, cost: Cost): string {
   return '재료가 모자라.'
 }
 
-export function upgradeGun(save: SaveData, uid: string): WorkResult {
+export function upgradeGun(save: SaveData, uid: string, rng: () => number = Math.random): WorkResult {
   const item = locate(save, uid)
   if (!item) return { ok: false, reason: '그 물건이 없어.' }
   if (ITEMS[item.defId]?.slot !== 'weapon') return { ok: false, reason: '강화는 총만 할 수 있어.' }
   const cost = upgradeCost(item)
   if (!cost) return { ok: false, reason: '이미 +10이야. 더는 반짝일 수 없어!' }
   if (!canPay(save, cost)) return { ok: false, reason: short(save, cost) }
+  const chance = upgradeChance(item) ?? 1
   pay(save, cost)
-  item.plus = plusOf(item) + 1
-  return { ok: true, item }
+  const success = chance >= 1 || rng() < chance
+  if (success) {
+    item.plus = plusOf(item) + 1
+    item.upFails = 0
+  } else item.upFails = upFailsOf(item) + 1
+  return { ok: true, item, success, chance, nextChance: upgradeChance(item) }
 }
 
 /** Gun damage factor before → after the next upgrade (tooltip). */
