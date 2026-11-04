@@ -231,7 +231,7 @@ export function bagMods(save: SaveData): ItemInstance[] {
 export const TRICK_TINT: Record<TrickId, number> = { star: 0xffe066, cloud: 0xffb3dc, pierce: 0xc9b8ff, sip: 0xff6f9a }
 
 /** Lens / drum colour per part rarity. */
-const PART_TONE: Record<Rarity, number> = { common: 0xdfe8ff, uncommon: 0x9be7c7, rare: 0x8fc8ff, epic: 0xc79bff, legendary: 0xffc65a }
+const PART_TONE: Record<Rarity, number> = { common: 0xdfe8ff, uncommon: 0x7ee08a, rare: 0x6fb2ff, epic: 0xc98bff, legendary: 0xffe066 }
 
 /** The gun model with its parts on: longer barrel, a scope, a drum, chip-tinted tank and tracer. */
 export function gunLookWithMods(base: GunLook, gun: ItemInstance | undefined): GunLook {

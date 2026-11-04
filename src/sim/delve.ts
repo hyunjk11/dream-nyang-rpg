@@ -13,6 +13,7 @@
  *    it, so the town portal offers "이어가기" from that floor (fresh maze, fresh foes). Beating the
  *    boss clears it and unlocks the next depth.
  */
+import { isUnique } from './rarity'
 import { DIFFICULTY } from '../combat/difficulty'
 import { MATERIAL_KO } from '../data/items'
 import { addItem } from './inventory'
@@ -233,7 +234,7 @@ export function floorIntro(plan: FloorPlan): { title: string; sub: string } {
 
 export interface LootLine {
   name: string
-  rarity: Rarity | 'material' | 'potion'
+  rarity: Rarity | 'unique' | 'material' | 'potion'
 }
 
 export type DelveEnd = 'clear' | 'recall' | 'down'
@@ -490,7 +491,7 @@ export class Delve {
   private takeItem(save: SaveData, item: ItemInstance): { heal: number; text: string } {
     const name = itemName(item)
     if (addItem(save, item)) {
-      this.loot.push({ name, rarity: item.rarity })
+      this.loot.push({ name, rarity: isUnique(item) ? 'unique' : item.rarity })
       return { heal: 0, text: `${name} 획득!` }
     }
     const v = sellValue(item)

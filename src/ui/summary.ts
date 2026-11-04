@@ -1,6 +1,6 @@
 /** The run summary card shown in the village after a trip down the dream sewer. */
 import { formatTime, floorLabel, type DelveSummary } from '../sim/delve'
-import { RARITY_COLOR, type Rarity } from '../sim/types'
+import { RARITY_COLOR, UNIQUE_COLOR, type Rarity } from '../sim/types'
 
 const TITLE: Record<DelveSummary['end'], string> = {
   clear: '탐험 완료!',
@@ -80,7 +80,7 @@ export function showSummary(s: DelveSummary, onClose: () => void): void {
   const loot = s.loot.length
     ? groupLoot(s.loot)
         .map((l) => {
-          const color = l.rarity === 'potion' ? '#ffb8d6' : l.rarity === 'material' ? '#b8f0ff' : RARITY_COLOR[l.rarity as Rarity]
+          const color = l.rarity === 'potion' ? '#ffb8d6' : l.rarity === 'material' ? '#b8f0ff' : l.rarity === 'unique' ? UNIQUE_COLOR : RARITY_COLOR[l.rarity as Rarity]
           return `<li style="color:${color}">${esc(l.name)}</li>`
         })
         .join('')

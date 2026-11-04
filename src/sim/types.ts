@@ -167,14 +167,18 @@ export const RARITY_KO: Record<Rarity, string> = {
   legendary: '전설',
 }
 
-/** White → blue → yellow → violet → orange, the loot-game ladder in pastel. */
+/** 보통 white → 매직 green → 희귀 blue → 영웅 purple → 전설 yellow (유니크 orange is UNIQUE_COLOR). */
 export const RARITY_COLOR: Record<Rarity, string> = {
   common: '#f3ece4',
-  uncommon: '#7fb8ff',
-  rare: '#ffe066',
-  epic: '#d59bff',
-  legendary: '#ffa45c',
+  uncommon: '#7ee08a',
+  rare: '#6fb2ff',
+  epic: '#c98bff',
+  legendary: '#ffe066',
 }
+
+/** 유니크: the fixed named legendaries (data/legends.ts) sit above random 전설 in orange. */
+export const UNIQUE_COLOR = '#ff9a3c'
+export const UNIQUE_KO = '유니크'
 
 export const SLOT_KO: Record<EquipSlot, string> = {
   weapon: '총',

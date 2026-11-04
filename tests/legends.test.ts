@@ -76,11 +76,11 @@ describe('고정 전설 아이템', () => {
     }
   })
 
-  it('이름은 접두사 없이 고정 이름, 설명에 고정 전설·출처가 나온다', () => {
+  it('이름은 접두사 없이 고정 이름, 설명에 유니크·출처가 나온다', () => {
     const g = makeLegend('leg_dunbar', 5)
     expect(itemName(g)).toBe('꿈결 던바')
     const lines = itemLines(g).join('\n')
-    expect(lines).toContain('고정 전설')
+    expect(lines).toContain('★ 유니크')
     expect(lines).toContain('출처: 깊이 3 보스')
   })
 

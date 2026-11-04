@@ -3,9 +3,9 @@ import { ITEMS } from '../data/items'
 import { QUESTS, QUEST_ORDER, type ObjectiveDef, type QuestDef, type QuestRewards } from '../data/quests'
 import { makeItem } from './loot'
 import { addItem } from './inventory'
+import { itemRarityKo } from './rarity'
 import { gainGold, gainXp, healFull } from './stats'
 import {
-  RARITY_KO,
   emptyResult,
   mergeResult,
   type MutationResult,
@@ -40,7 +40,7 @@ export function rewardText(rewards: QuestRewards): string {
   if (rewards.mochiPoints) bits.push(`모찌 포인트 ${rewards.mochiPoints}`)
   if (rewards.items) {
     bits.push(
-      rewards.items.map((item) => `${RARITY_KO[item.rarity]} ${ITEMS[item.defId]?.name ?? item.defId}`).join(', '),
+      rewards.items.map((item) => `${itemRarityKo(item)} ${ITEMS[item.defId]?.name ?? item.defId}`).join(', '),
     )
   }
   return bits.join(' · ')
@@ -72,7 +72,7 @@ export function grantRewards(save: SaveData, rewards: QuestRewards, rng: () => n
   for (const spec of rewards.items ?? []) {
     const item = makeItem(spec.defId, spec.rarity, rng, save.level)
     addItem(save, item, true)
-    result.toasts.push(`${RARITY_KO[item.rarity]} ${ITEMS[item.defId]?.name ?? item.defId} 획득`)
+    result.toasts.push(`${itemRarityKo(item)} ${ITEMS[item.defId]?.name ?? item.defId} 획득`)
   }
   if (rewards.consume) {
     for (const [id, count] of Object.entries(rewards.consume)) {
