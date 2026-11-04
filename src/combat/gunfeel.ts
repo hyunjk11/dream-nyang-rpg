@@ -81,7 +81,7 @@ export class Gun {
 
   /**
    * Advance by dt with the trigger held or not; returns how many shots leave the barrel this
-   * frame (0, 1 or 2 on a long frame, so cadence holds at low fps). Burst guns fire `burst`
+   * frame (0 to 4 on a long frame, so cadence holds at low fps). Burst guns fire `burst`
    * shots `gap` apart, then rest `burstRest`.
    */
   update(dt: number, trigger: boolean): number {
@@ -93,7 +93,7 @@ export class Gun {
     const heatPer = this.overdrive > 0 ? 0 : f.heatPerShot
     let fired = 0
     if (trigger && !this.overheated) {
-      while (this.cooldown <= 0 && fired < 2) {
+      while (this.cooldown <= 0 && fired < 4) {
         fired += 1
         this.shots += 1
         if (f.burst > 0) {

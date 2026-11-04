@@ -97,3 +97,12 @@ describe('보조 손 · 쌍권총', () => {
     expect(bad.equipment.offhand).toBeUndefined()
   })
 })
+
+describe('쌍권총 발사 리듬', () => {
+  it('느린 프레임에도 한 프레임에 여러 발이 나가 연사 속도가 유지된다 (쌍권총이 프레임 상한에 막히지 않게)', async () => {
+    const { Gun } = await import('../src/combat/gunfeel')
+    const g = new Gun()
+    g.setFeel(g.feel, 1.7)
+    expect(g.update(0.2, true)).toBeGreaterThan(2)
+  })
+})
