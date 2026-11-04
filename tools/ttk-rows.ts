@@ -15,8 +15,8 @@ import { EXPLORE } from '../src/world/dungeon/layout'
 import type { ItemInstance } from '../src/sim/types'
 
 export const STAGES = [
-  { name: '1장 미로 1층', plan: () => areaPlan('maze', 1), lv: 5, ilv: 3 },
-  { name: '1장 미로 3층', plan: () => areaPlan('maze', 3), lv: 7, ilv: 4 },
+  { name: '2장 꿈 미로 1층', plan: () => areaPlan('maze', 1), lv: 5, ilv: 3 },
+  { name: '2장 꿈 미로 3층', plan: () => areaPlan('maze', 3), lv: 7, ilv: 4 },
   { name: '1장 하수도 보스', plan: () => floorPlan(1, 4), lv: 8, ilv: 5 },
   { name: '몽실 들판', plan: () => fieldPlan(1, { kills: 0 } as never), lv: 9, ilv: 6 },
   { name: '2장 구름 다락 1층', plan: () => areaPlan('loft', 1), lv: 10, ilv: 7 },
