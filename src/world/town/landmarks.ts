@@ -29,6 +29,7 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { addOutline, applyToon, toon } from '../../core/materials'
+import { POINT_MAX_PX } from '../../core/safeframe'
 import { PLACES, VILLAGE_ONLY, type Place, type PlaceKind } from './places'
 
 const loader = new GLTFLoader()
@@ -234,7 +235,13 @@ function portalSparks(): Points {
   }
   const geo = new BufferGeometry()
   geo.setAttribute('position', new BufferAttribute(pos, 3))
-  return new Points(geo, new PointsMaterial({ color: 0xffd8ff, size: 0.09, transparent: true, opacity: 0.85, blending: AdditiveBlending, depthWrite: false }))
+  const mat = new PointsMaterial({ color: 0xffd8ff, size: 0.09, transparent: true, opacity: 0.85, blending: AdditiveBlending, depthWrite: false })
+  // Stock points divide by depth with no cap: right at the lens (depth → 0) the sprite size blows up
+  // (Inf on some drivers). Same guard as the other point sprites (core/safeframe POINT_MAX_PX).
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace('#include <fog_vertex>', `if (!(-mvPosition.z > 0.05) || !(gl_PointSize >= 0.0)) gl_PointSize = 0.0;\n  gl_PointSize = min(gl_PointSize, ${POINT_MAX_PX}.0);\n#include <fog_vertex>`)
+  }
+  return new Points(geo, mat)
 }
 
 export interface Npc {

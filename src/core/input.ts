@@ -82,7 +82,11 @@ const refuse = () => {
 if (typeof document !== 'undefined') {
   document.addEventListener('pointerlockchange', () => {
     lockedAt = performance.now()
-    if (document.pointerLockElement) everLocked = true
+    if (document.pointerLockElement) {
+      everLocked = true
+      // A refusal was only for that try (no gesture yet, a cooldown): a granted lock clears it.
+      lockRefused = false
+    }
     // Losing the lock (Esc, a tab switch) asks for a fresh "클릭해서 계속".
     else resumed = false
   })
@@ -178,7 +182,7 @@ export function lockState(): { locked: boolean; refused: boolean; everLocked: bo
 
 /** A key or click while playing without the lock: ask again (keys and clicks are user gestures). */
 function retryLock(): void {
-  if (!view || !aiming || shoulder.locked || lockRefused || cursor.free) return
+  if (!view || !aiming || shoulder.locked || cursor.free) return
   if (performance.now() - lockAsked < 600) return
   requestLock(view)
 }
@@ -243,7 +247,11 @@ export function installInput(canvas: HTMLCanvasElement): void {
         // Same rule as the button: this click resumes, whatever the browser says about the lock.
         resumed = true
         requestLock(canvas)
-      } else pad.fire = true
+      } else {
+        pad.fire = true
+        // Refused before (no gesture yet, a cooldown): this click is a fresh gesture, ask again.
+        if (!shoulder.locked) retryLock()
+      }
       return
     }
     // Fingers: the right part of the screen is the look pad (the stick and buttons sit on top).

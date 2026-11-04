@@ -1,3 +1,4 @@
+import landmarksSrc from '../src/world/town/landmarks.ts?raw'
 import { describe, expect, it } from 'vitest'
 import { GUARD_GRID, GUARD_PROBE_SHADER, HDR_MAX, NONFINITE_GLSL, SANITIZE_SHADER, guardMean, guardVerdict, safeHdr } from '../src/core/safeframe'
 import { aimHintWanted, cursorLook } from '../src/core/cursor'
@@ -61,8 +62,16 @@ describe('플레이 중 마우스 커서', () => {
     expect(aimHintWanted(base)).toBe(true)
     expect(aimHintWanted({ ...base, locked: true })).toBe(false)
     expect(aimHintWanted({ ...base, relock: true })).toBe(false)
-    expect(aimHintWanted({ ...base, refused: true })).toBe(false)
+    expect(aimHintWanted({ ...base, refused: true })).toBe(true)
     expect(aimHintWanted({ ...base, pending: true })).toBe(false)
     expect(aimHintWanted({ ...base, free: true })).toBe(false)
+  })
+})
+
+describe('점 스프라이트 크기 가드', () => {
+  it('마을 포털 반짝이도 렌즈 바로 앞에서 크기가 터지지 않게 막는다', () => {
+    const src = landmarksSrc
+    expect(src).toContain('min(gl_PointSize')
+    expect(src).toContain('-mvPosition.z > 0.05')
   })
 })

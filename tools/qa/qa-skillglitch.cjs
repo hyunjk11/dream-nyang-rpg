@@ -47,6 +47,20 @@ function detector() {
 ;(async () => {
   const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] })
   const ctx = await b.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: DPR })
+  // FAKE100=1: virtual clock, every rendered frame = 10 ms of game time (a 100 FPS player's GPU), so
+  // short-lived skill effects get the same number of frames on screen as on the real machine.
+  if (process.env.FAKE100) await ctx.addInitScript(() => {
+    let t = 1000
+    const real = performance.now.bind(performance)
+    const t0 = real()
+    performance.now = () => t
+    const raf = window.requestAnimationFrame.bind(window)
+    window.requestAnimationFrame = (cb) => raf(() => cb(t))
+    // advance once per real frame (one tick per animation frame, not per callback)
+    const tick = () => { t += 10; window.__vf = (window.__vf || 0) + 1; raf(tick) }
+    raf(tick)
+    window.__realNow = () => real() - t0
+  })
   await ctx.addInitScript(detector)
   await ctx.addInitScript(() => {
     for (const C of [window.WebGL2RenderingContext, window.WebGLRenderingContext]) {
@@ -117,7 +131,8 @@ function detector() {
       await p.keyboard.up('KeyW')
       await p.evaluate(() => { const s = window.__slice; for (const id of Object.keys(s.skills.cooldown)) s.skills.cooldown[id] = 0 })
       for (const k of ['Digit4', 'Digit2', 'Digit1', 'Digit3']) await p.keyboard.press(k)
-      for (let q = 0; q < 3; q++) {
+      if (process.env.FAKE100) { const f0 = await p.evaluate(() => window.__vf); await p.waitForFunction((f0) => window.__vf > f0 + 70, f0, { timeout: 120000 }) }
+      for (let q = 0; q < (process.env.NOSCAN ? 0 : 3); q++) {
         await p.waitForTimeout(q === 0 ? 60 : 200)
         const h = await p.evaluate(() => window.__slice.stage.hdrScan())
         if (!h) continue

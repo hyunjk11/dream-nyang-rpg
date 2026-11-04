@@ -39,9 +39,9 @@ export function cursorLook(s: { armed: boolean; touch: boolean; free: boolean })
   return s.armed && !s.free ? 'aim' : 'free'
 }
 
-/** The tiny "클릭하면 조준" hint: playing, no lock, the browser can lock, and the big resume button is not up. Pure. */
+/** The tiny "클릭하면 조준" hint: playing, no lock (refused too: the next click asks again), not just asked, and the big resume button is not up. Pure. */
 export function aimHintWanted(s: { armed: boolean; touch: boolean; free: boolean; locked: boolean; refused: boolean; relock: boolean; pending: boolean }): boolean {
-  return cursorLook(s) === 'aim' && !s.locked && !s.refused && !s.relock && !s.pending
+  return cursorLook(s) === 'aim' && !s.locked && !s.relock && !s.pending
 }
 
 export function loadAltMode(): AltMode {
