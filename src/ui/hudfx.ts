@@ -13,10 +13,58 @@ interface Num {
   vx: number
   punch: number
   tilt: number
+  /** Full lifetime (crit / skill / snipe live longer), the running amount and its kind. */
+  max: number
+  amount: number
+  kind: NumberKind
+  /** Unscaled box (px), measured once per text change; 0 = not measured yet. */
+  bw: number
+  bh: number
 }
 
-const NUMS = 28
+/** Pool size = the most numbers on screen at once (oldest recycled first). */
+export const NUMS = 16
 const NUM_LIFE = 0.62
+
+/**
+ * Screen-space limits for a damage number, whatever the camera does: at most NUM_CLAMP.h of the
+ * viewport height (bigH for crit / skill / snipe), NUM_CLAMP.w of its width, pop peak NUM_CLAMP.pop.
+ * Closer than near m to the camera it is hidden, fading in up to fade m.
+ */
+export const NUM_CLAMP = { h: 0.06, bigH: 0.09, w: 0.3, pop: 1.3, near: 1.2, fade: 2.0, mergeGap: 0.3, mergeDist: 0.9 }
+
+/** Compact Korean damage text: 860 · 4.8천 · 1.2만 · 123만 · 1.2억 (no digit wall, fixed width). */
+export function formatDamage(amount: number): string {
+  const n = Math.max(0, Math.round(amount))
+  const one = (v: number, unit: string): string => `${v >= 100 ? Math.round(v) : Number(v.toFixed(1))}${unit}`
+  if (n < 1000) return String(n)
+  if (n < 10_000) return one(n / 1000, '천')
+  if (n < 100_000_000) return one(n / 10_000, '만')
+  return one(n / 100_000_000, '억')
+}
+
+/** Big kinds get the 9% height allowance; the rest 6%. */
+export function bigNumber(kind: NumberKind): boolean {
+  return kind === 'crit' || kind === 'skill' || kind === 'snipe' || kind === 'word'
+}
+
+/** Largest scale that keeps a w×h px box inside the screen clamp for viewport vw×vh. */
+export function numberScaleCap(w: number, h: number, vw: number, vh: number, big: boolean): number {
+  if (!(w > 0) || !(h > 0)) return 1
+  return Math.min((vh * (big ? NUM_CLAMP.bigH : NUM_CLAMP.h)) / h, (vw * NUM_CLAMP.w) / w)
+}
+
+/** Pop-in scale at age t (0..1 of its life): a short punch, never above NUM_CLAMP.pop. */
+export function numberPop(t: number, punch: number): number {
+  const p = t < 0.15 ? 1 + (1 - t / 0.15) * punch : 1
+  return Math.min(NUM_CLAMP.pop, p)
+}
+
+/** Opacity from the camera distance: hidden right at the lens, faded in by NUM_CLAMP.fade m. */
+export function nearFade(dist: number): number {
+  if (dist <= NUM_CLAMP.near) return 0
+  return Math.min(1, (dist - NUM_CLAMP.near) / (NUM_CLAMP.fade - NUM_CLAMP.near))
+}
 
 /**
  * Running damage tally: droplets on the same foe within TALLY.gap s of each other stack into one
@@ -72,6 +120,7 @@ export class HudFx {
   readonly streak: TallyState = newTally()
   private readonly tallyAt = new Vector3()
   private tallyText = ''
+  private readonly tallyBox: { el: HTMLElement; bw: number; bh: number } = { el: null as unknown as HTMLElement, bw: 0, bh: 0 }
 
   constructor(hud: HTMLElement | null) {
     this.cross = (hud?.querySelector('#crosshair') as HTMLElement | null) ?? null
@@ -91,7 +140,7 @@ export class HudFx {
       el.className = 'dmg'
       el.style.display = 'none'
       hud.append(el)
-      this.nums.push({ el, at: new Vector3(), life: 0, live: false, vx: 0, punch: 0.7, tilt: 0 })
+      this.nums.push({ el, at: new Vector3(), life: 0, live: false, vx: 0, punch: 0.7, tilt: 0, max: NUM_LIFE, amount: 0, kind: 'n', bw: 0, bh: 0 })
     }
   }
 
@@ -130,19 +179,47 @@ export class HudFx {
 
   number(amount: number, at: Vector3, kind: NumberKind): void {
     if (!this.nums.length) return
+    // Rapid hits of one kind on the same spot (a skill's ticks, a pellet spread) roll into one number.
+    for (const m of this.nums) {
+      if (!m.live || m.kind !== kind || m.max - m.life > NUM_CLAMP.mergeGap) continue
+      if (Math.hypot(m.at.x - at.x, m.at.z - at.z) > NUM_CLAMP.mergeDist) continue
+      m.amount += amount
+      m.life = m.max
+      this.setNumText(m)
+      return
+    }
     const n = this.nums[this.next]
     this.next = (this.next + 1) % this.nums.length
     n.at.copy(at)
     n.at.x += (Math.random() - 0.5) * 0.35
     n.at.y += Math.random() * 0.2
-    n.life = NUM_LIFE * (kind === 'snipe' ? 1.6 : kind === 'crit' || kind === 'skill' ? 1.25 : 1)
+    n.max = NUM_LIFE * (kind === 'snipe' ? 1.6 : kind === 'crit' || kind === 'skill' ? 1.25 : 1)
+    n.life = n.max
     n.live = true
     n.vx = (Math.random() - 0.5) * 1.4
     n.punch = numberPunch(kind)
     n.tilt = kind === 'crit' ? (Math.random() - 0.5) * 16 : (Math.random() - 0.5) * 6
-    n.el.textContent = kind === 'crit' || kind === 'snipe' || kind === 'skill' ? `${amount}!` : String(amount)
-    n.el.className = `dmg ${kind}`
+    n.amount = amount
+    n.kind = kind
+    // Kind classes are prefixed (k-skill, not skill): the skill tree's .skill card rule once
+    // matched these and stretched every skill number into a full-width white bar.
+    n.el.className = `dmg k-${kind}`
     n.el.style.display = 'block'
+    this.setNumText(n)
+  }
+
+  private setNumText(n: Num): void {
+    const text = formatDamage(n.amount)
+    n.el.textContent = n.kind === 'crit' || n.kind === 'snipe' || n.kind === 'skill' ? `${text}!` : text
+    n.bw = 0
+    n.bh = 0
+  }
+
+  /** The number's unscaled box, measured lazily once per text (offset* ignores the transform). */
+  private measure(n: { el: HTMLElement; bw: number; bh: number }): void {
+    if (n.bw > 0) return
+    n.bw = n.el.offsetWidth
+    n.bh = n.el.offsetHeight
   }
 
   /** A shot word (탕!) floating up from `at`, drawn like a damage number. */
@@ -157,9 +234,14 @@ export class HudFx {
     n.vx = 0
     n.punch = numberPunch('word')
     n.tilt = -8
+    n.max = n.life
+    n.kind = 'word'
+    n.amount = 0
     n.el.textContent = text
-    n.el.className = 'dmg word'
+    n.el.className = 'dmg k-word'
     n.el.style.display = 'block'
+    n.bw = 0
+    n.bh = 0
   }
 
   /** Stack a landed hit into the running total over its target. */
@@ -183,16 +265,21 @@ export class HudFx {
       el.style.display = 'none'
       return
     }
-    const text = `${s.total.toLocaleString('ko-KR')}${s.done ? '!' : ''} <small>×${s.hits}</small>`
+    const text = `${formatDamage(s.total)}${s.done ? '!' : ''} <small>×${s.hits}</small>`
     if (text !== this.tallyText) {
       this.tallyText = text
       el.innerHTML = text
       el.classList.toggle('done', s.done)
+      this.tallyBox.bw = 0
     }
     const pop = s.idle < 0.08 ? 1.12 - s.idle : s.done ? 1.25 : 1
     el.style.display = 'block'
-    el.style.opacity = String(s.done ? Math.min(1, (TALLY.hold - s.idle) / 0.3) : 1)
-    el.style.transform = `translate(${((this.tmp.x * 0.5 + 0.5) * w).toFixed(1)}px, ${((-this.tmp.y * 0.5 + 0.5) * h).toFixed(1)}px) translate(-50%, -50%) scale(${pop.toFixed(2)})`
+    const fade = nearFade(camera.position.distanceTo(this.tallyAt))
+    el.style.opacity = String(fade * (s.done ? Math.min(1, (TALLY.hold - s.idle) / 0.3) : 1))
+    this.tallyBox.el = el
+    this.measure(this.tallyBox)
+    const scale = Math.min(pop, numberScaleCap(this.tallyBox.bw, this.tallyBox.bh, w, h, true))
+    el.style.transform = `translate(${((this.tmp.x * 0.5 + 0.5) * w).toFixed(1)}px, ${((-this.tmp.y * 0.5 + 0.5) * h).toFixed(1)}px) translate(-50%, -50%) scale(${scale.toFixed(2)})`
   }
 
   update(dt: number, camera: Camera): void {
@@ -219,11 +306,17 @@ export class HudFx {
         n.el.style.display = 'none'
         continue
       }
-      const t = Math.max(0, 1 - n.life / NUM_LIFE)
-      const pop = t < 0.15 ? 1 + (1 - t / 0.15) * n.punch : 1
+      const fade = nearFade(camera.position.distanceTo(n.at))
+      if (fade <= 0) {
+        n.el.style.display = 'none'
+        continue
+      }
+      const t = Math.max(0, 1 - n.life / n.max)
       n.el.style.display = 'block'
-      n.el.style.transform = `translate(${((this.tmp.x * 0.5 + 0.5) * w).toFixed(1)}px, ${((-this.tmp.y * 0.5 + 0.5) * h).toFixed(1)}px) translate(-50%, -50%) scale(${pop.toFixed(2)}) rotate(${n.tilt.toFixed(1)}deg)`
-      n.el.style.opacity = String(Math.min(1, n.life / 0.25))
+      this.measure(n)
+      const scale = Math.min(numberPop(t, n.punch), numberScaleCap(n.bw, n.bh, w, h, bigNumber(n.kind)))
+      n.el.style.transform = `translate(${((this.tmp.x * 0.5 + 0.5) * w).toFixed(1)}px, ${((-this.tmp.y * 0.5 + 0.5) * h).toFixed(1)}px) translate(-50%, -50%) scale(${scale.toFixed(2)}) rotate(${n.tilt.toFixed(1)}deg)`
+      n.el.style.opacity = String(fade * Math.min(1, n.life / 0.25))
     }
   }
 

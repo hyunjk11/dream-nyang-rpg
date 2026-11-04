@@ -10,6 +10,7 @@ import {
   RARITY_KO,
   SLOT_KO,
   STAT_KO,
+  UNIQUE_KO,
   type Affix,
   type EquipSlot,
   type ItemInstance,
@@ -311,9 +312,9 @@ export function itemLines(item: ItemInstance): string[] {
   const lines: string[] = []
   if (def?.slot) lines.push(SLOT_KO[def.slot])
   if (def?.mod) lines.push(`총 개조 부품 · ${modLabel(item)}`)
-  lines.push(RARITY_KO[item.rarity])
+  lines.push(def?.legend ? UNIQUE_KO : RARITY_KO[item.rarity])
   const legend = def?.legend ? LEGEND_BY_ID[item.defId] : undefined
-  if (legend) lines.push(`★ 고정 전설 · ${legend.signature}`, `출처: ${legend.where}`)
+  if (legend) lines.push(`★ 유니크 · ${legend.signature}`, `출처: ${legend.where}`)
   for (const [key, value] of Object.entries(implicitStats(item)) as [StatKey, number][]) lines.push(formatStat(key, value))
   for (const affix of item.affixes) lines.push(formatAffix(affix))
   const trick = def?.mod ? MOD_SPECS[item.defId]?.trick : undefined

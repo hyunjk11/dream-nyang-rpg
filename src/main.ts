@@ -53,7 +53,8 @@ import { findItem } from './sim/inventory'
 import { ilvText, itemName, makeItem, type Drop } from './sim/loot'
 import { skillSvg } from './ui/skillicons'
 import { Help, hintHtml } from './ui/help'
-import { RARITY_COLOR, type ItemInstance } from './sim/types'
+import { type ItemInstance } from './sim/types'
+import { isUnique, itemColor } from './sim/rarity'
 import { InventoryUI, compareEquip, dpsOf } from './ui/inventory'
 import { TownUI, type TownPanel, type TownSuccess } from './ui/town'
 import { activeContracts, contractEvent, contractLine, type ContractEvent } from './sim/contracts'
@@ -483,7 +484,7 @@ function applyBuild(): void {
   hero.guard = stats.armor
   const gunItem: ItemInstance | undefined = findItem(game.save, game.save.equipment.weapon)
   const look = gunLookWithMods(legendOf(gunItem)?.look ?? GUN_PROFILES[stats.weaponKind].look, gunItem)
-  const gem = gunItem && gunItem.rarity !== 'common' ? hexOf(RARITY_COLOR[gunItem.rarity]) : null
+  const gem = gunItem && gunItem.rarity !== 'common' ? hexOf(itemColor(gunItem)) : null
   shooter.setLoadout({
     profile: stats.gun,
     damage: stats.shotDamage,
@@ -1661,7 +1662,7 @@ function legendDrop(ev: LegendEvent, depth: number, floor: number): Drop[] {
   const def = legendOf(item)
   chime('legend_drop')
   // After the chest's own "보물 상자를 열었어!" banner, so this one stays on screen.
-  window.setTimeout(() => zoneBanner('★ 고정 전설이 떨어졌어!', `${def?.name ?? ''} · 하얀 금빛 기둥을 찾아 주워`), 700)
+  window.setTimeout(() => zoneBanner('★ 유니크가 떨어졌어!', `${def?.name ?? ''} · 주황빛 기둥을 찾아 주워`), 700)
   lastLegend = { id: item.defId, at: performance.now(), picked: false }
   return [{ kind: 'item', amount: 1, item }]
 }
@@ -1675,7 +1676,7 @@ function legendPicked(item: ItemInstance): void {
   lastLegend = { id: item.defId, at: performance.now(), picked: true, first }
   if (first) {
     chime('contract')
-    toast(`전설 도감 등록! ${legendOf(item)?.name} · ${rows.filter((r) => r.found).length}/${rows.length}`, 'reward')
+    toast(`유니크 도감 등록! ${legendOf(item)?.name} · ${rows.filter((r) => r.found).length}/${rows.length}`, 'reward')
   }
 }
 
@@ -1692,8 +1693,8 @@ function lootToast(item: ItemInstance): void {
   const box = document.getElementById('loot-toasts')
   if (!box) return
   const el = document.createElement('div')
-  el.className = `loot-toast r-${item.rarity}`
-  el.style.setProperty('--rar', RARITY_COLOR[item.rarity])
+  el.className = `loot-toast r-${isUnique(item) ? 'unique' : item.rarity}`
+  el.style.setProperty('--rar', itemColor(item))
   el.dataset.uid = item.uid
   el.innerHTML = `<b></b><small></small>`
   ;(el.firstChild as HTMLElement).textContent = itemName(item)

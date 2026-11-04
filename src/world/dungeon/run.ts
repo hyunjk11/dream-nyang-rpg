@@ -32,7 +32,7 @@ import { TPS, type AimTarget, type RayFn, type TpsView } from '../../core/tps'
 import { Shooter, type ShotProcs, type ShotWorld } from '../../combat/shooter'
 import { blast, SKILL_POWER, SKILL_REF_MUL, type SkillBody, type SkillWorld } from '../../combat/skills'
 import { applyProcs, chill, ELEMENTS, procBursts } from '../../combat/elements'
-import { RARITY_COLOR } from '../../sim/types'
+import { itemColor } from '../../sim/rarity'
 import { collideCircle, rayHit } from './walls'
 import { HORDE, Horde, type HordeFoe } from './horde'
 import { HordeView } from './horde-view'
@@ -1116,7 +1116,7 @@ export class DungeonRun {
       if (r.heal > 0) hero.hp = Math.min(hero.maxHp, hero.hp + Math.round(hero.maxHp * r.heal))
       this.host.gun?.('tick', 0.5, drop.kind === 'gold' ? 1.6 : 1.2)
       if (r.text) {
-        const color = drop.kind === 'gold' ? '#ffd35a' : drop.kind === 'potion' ? '#ff9ec8' : drop.kind === 'item' && drop.item ? RARITY_COLOR[drop.item.rarity] : '#b8f0ff'
+        const color = drop.kind === 'gold' ? '#ffd35a' : drop.kind === 'potion' ? '#ff9ec8' : drop.kind === 'item' && drop.item ? itemColor(drop.item) : '#b8f0ff'
         this.host.float?.(r.text, p.clone().setY(1.9), color)
       }
     }

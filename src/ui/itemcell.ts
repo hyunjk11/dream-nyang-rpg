@@ -5,7 +5,8 @@
 import { ITEMS } from '../data/items'
 import { powerVsWorn } from '../sim/inventory'
 import { ilvText, itemLines, itemName, itemNameParts, itemPower } from '../sim/loot'
-import { RARITY_COLOR, RARITY_KO, type ItemInstance, type SaveData } from '../sim/types'
+import { type ItemInstance, type SaveData } from '../sim/types'
+import { isUnique, itemColor, itemRarityKo } from '../sim/rarity'
 import { iconSvg } from './icons'
 
 function span(cls: string, text: string): HTMLElement {
@@ -18,7 +19,9 @@ function span(cls: string, text: string): HTMLElement {
 /** Fill a cell button with an item (the caller handles clicks and empties). */
 export function fillCell(b: HTMLElement, item: ItemInstance, save: SaveData | null): void {
   const def = ITEMS[item.defId]
-  b.style.setProperty('--rar', RARITY_COLOR[item.rarity])
+  b.style.setProperty('--rar', itemColor(item))
+  if (isUnique(item)) b.dataset.unique = '1'
+  else delete b.dataset.unique
   b.dataset.rarity = item.rarity
   b.dataset.uid = item.uid
   b.classList.add('item')
@@ -45,7 +48,7 @@ export function fillCell(b: HTMLElement, item: ItemInstance, save: SaveData | nu
 /** Hover card text: name, rarity line, then the item's stat lines (first line is the title). */
 export function itemTip(item: ItemInstance): string {
   const lines = itemLines(item).slice(2)
-  return [itemName(item), `${RARITY_KO[item.rarity]} · 파워 ${itemPower(item)} · ${ilvText(item.itemLevel)}`, ...lines].join('\n')
+  return [itemName(item), `${itemRarityKo(item)} · 파워 ${itemPower(item)} · ${ilvText(item.itemLevel)}`, ...lines].join('\n')
 }
 
 /** Item title with the prefix and suffix words coloured (detail cards, tooltips). */
@@ -56,7 +59,7 @@ export function nameTitle(tag: 'h3' | 'h4', item: ItemInstance): HTMLElement {
   if (p.prefix) h.append(span('pre', p.prefix), ' ')
   if (p.suffix) h.append(span('suf', p.suffix), ' ')
   const base = span('base', p.base)
-  base.style.color = RARITY_COLOR[item.rarity]
+  base.style.color = itemColor(item)
   // Pale rarities (일반 white) need a soft outline to read on the pastel cards.
   h.dataset.rarity = item.rarity
   h.append(base)

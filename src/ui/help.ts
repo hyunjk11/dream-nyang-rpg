@@ -73,7 +73,7 @@ export class Help {
     const mats = Object.entries(MATERIAL_KO)
       .map(([id, name]) => `<dt><b class="mat mat-${id}">${name}</b></dt><dd>${MATERIAL_HELP[id] ?? ''}</dd>`)
       .join('')
-    this.root.innerHTML = `<div class="help-card"><h2>도움말</h2><div class="help-cols"><section><h3>조작</h3><dl>${keys}</dl><h3>편의 기능</h3><dl class="help-qol">${qol}</dl></section><section><h3>재료</h3><dl class="help-mats">${mats}</dl><h3>장비 칸 읽기</h3><p>테두리 색 = 희귀도 (일반·고급·희귀·영웅·전설). 왼쪽 위 숫자 = 파워, ▲▼ = 입은 장비보다 좋음/나쁨, 오른쪽 아래 iLv = 아이템 레벨 (깊을수록, 층이 높을수록, 엘리트·보스일수록 높아).</p></section></div><button type="button" class="help-close">닫기 (H)</button></div>`
+    this.root.innerHTML = `<div class="help-card"><h2>도움말</h2><div class="help-cols"><section><h3>조작</h3><dl>${keys}</dl><h3>편의 기능</h3><dl class="help-qol">${qol}</dl></section><section><h3>재료</h3><dl class="help-mats">${mats}</dl><h3>장비 칸 읽기</h3><p>테두리 색 = 희귀도 (보통 흰색·매직 초록·희귀 파랑·영웅 보라·전설 노랑·유니크 주황). 왼쪽 위 숫자 = 파워, ▲▼ = 입은 장비보다 좋음/나쁨, 오른쪽 아래 iLv = 아이템 레벨 (깊을수록, 층이 높을수록, 엘리트·보스일수록 높아).</p></section></div><button type="button" class="help-close">닫기 (H)</button></div>`
     this.root.querySelector('.help-close')?.addEventListener('click', () => this.toggle(false))
     parent.append(this.root)
     window.addEventListener('keydown', (event) => {

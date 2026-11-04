@@ -20,6 +20,7 @@ import { iconSvg } from './icons'
 import { COMBOS, MAX_TRICKS, TRICK_KO, type ComboSpec } from '../data/mods'
 import { attachMod, bagMods, detachMod, fitBlock, fitCost, gunCombos, gunMods, gunTraits, isMod, MAX_MOD_SLOTS, MOD_SLOT_ILV, modKind, modLabel, modSlots, modUpgradeCost, swapIndex, upgradeMod, type Trait } from '../sim/mods'
 import { RARITY_COLOR, RARITY_KO } from '../sim/types'
+import { itemColor, itemRarityKo } from '../sim/rarity'
 import type { LegendSource } from '../data/legends'
 import { codexRows, legendAffixes, legendChance } from '../sim/legends'
 
@@ -59,7 +60,7 @@ export interface TownHost {
   chapterClaimed?(result: MutationResult, cleared: number): void
 }
 
-const TITLE: Record<TownPanel, string> = { shop: '포포 상점', workshop: '키키의 총 공방', board: '퀘스트 게시판', stash: '별하의 보관함', codex: '전설 도감' }
+const TITLE: Record<TownPanel, string> = { shop: '포포 상점', workshop: '키키의 총 공방', board: '퀘스트 게시판', stash: '별하의 보관함', codex: '유니크 도감' }
 const SUB: Record<TownPanel, string> = {
   shop: '하수도에 다녀올 때마다 진열대가 바뀌어.',
   workshop: '강화는 실패하지 않아. 대신 갈수록 비싸져!',
@@ -162,10 +163,10 @@ export class TownUI {
       wallet.append(' · ', tag)
     }
     if (this.panel !== 'codex') {
-      const codex = el('button', 'town-close town-codex-btn', '전설 도감')
+      const codex = el('button', 'town-close town-codex-btn', '유니크 도감')
       codex.type = 'button'
       codex.id = 'town-codex'
-      codex.title = '고정 전설 모음'
+      codex.title = '유니크 (이름 있는 고정 전설) 모음'
       codex.addEventListener('click', () => this.open('codex'))
       head.append(codex)
     }
@@ -529,10 +530,10 @@ export class TownUI {
       b.id = `work-mod-part-${i}`
       b.draggable = true
       b.dataset.uid = p.uid
-      b.style.setProperty('--rar', RARITY_COLOR[p.rarity])
+      b.style.setProperty('--rar', itemColor(p))
       b.innerHTML = iconSvg(ITEMS[p.defId]?.icon, 22)
       b.append(
-        el('span', '', `${ITEMS[p.defId]?.name ?? p.defId} · ${RARITY_KO[p.rarity]}`),
+        el('span', '', `${ITEMS[p.defId]?.name ?? p.defId} · ${itemRarityKo(p)}`),
         el('small', '', `${modLabel(p)} · ${p.affixes.map(formatAffix).join(' · ')}`),
         el('small', gain.length && !block ? 'mod-gain' : '', block ?? (gain.length ? `✦ ${gain.map((c) => c.name).join(' · ')} · ` : '') + `${swap ? '바꾸기' : '끼우기'} ${fitCost(p)}골드`),
       )
@@ -666,7 +667,7 @@ export class TownUI {
     body.append(left, right)
     const rows = codexRows(save)
     const found = rows.filter((r) => r.found).length
-    const hh = el('h3', '', '고정 전설 ')
+    const hh = el('h3', '', '유니크 ')
     hh.append(el('small', '', `${found}/${rows.length}`))
     left.append(hh)
     const grid = el('div', 'codex-grid')

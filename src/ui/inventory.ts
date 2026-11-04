@@ -14,7 +14,8 @@ import { fillCell, ilvRow, nameTitle } from './itemcell'
 import { dismantleOwned, sellOwned, tryEquip, tryUnequip } from '../sim/mutate'
 import { buildOf, learn, learnBlock, rank, respec, respecCost } from '../sim/skilltree'
 import { computeStats, type ComputedStats } from '../sim/stats'
-import { BAG_CAP, EQUIP_SLOTS, RARITY_KO, SLOT_KO, type EquipSlot, type ItemInstance, type SaveData } from '../sim/types'
+import { BAG_CAP, EQUIP_SLOTS, SLOT_KO, type EquipSlot, type ItemInstance, type SaveData } from '../sim/types'
+import { itemRarityKo } from '../sim/rarity'
 import { LEVEL_CAP } from '../data/tree'
 import { skillSvg } from './skillicons'
 import { bestUpgrades, junkIds, junkPartIds, junkToast, needsConfirm, sortBag } from '../sim/qol'
@@ -300,7 +301,7 @@ export class InventoryUI {
     const junk = [...junkIds(save), ...junkPartIds(save)]
     const gold = junk.reduce((sum, id) => sum + sellValue(findItem(save, id)!), 0)
     const town = this.host.inTown()
-    add('inv-junk', town ? `잡동사니 판매${junk.length ? ` ${junk.length}개 +${gold}` : ''}` : '잡동사니 판매 (마을에서)', '잡동사니 판매\n일반·고급 장비 중 ▲가 아닌 것과, 총에 끼우지 않은 일반·고급 부품을 한 번에 팔아. 희귀 이상·전설·특수 부품·총에 낀 부품은 절대 안 팔아.', () => this.sellJunk(), !town || !junk.length)
+    add('inv-junk', town ? `잡동사니 판매${junk.length ? ` ${junk.length}개 +${gold}` : ''}` : '잡동사니 판매 (마을에서)', '잡동사니 판매\n보통·매직 장비 중 ▲가 아닌 것과, 총에 끼우지 않은 보통·매직 부품을 한 번에 팔아. 희귀 이상·유니크·특수 부품·총에 낀 부품은 절대 안 팔아.', () => this.sellJunk(), !town || !junk.length)
   }
 
   /** Sort the bag (QA hook too). */
@@ -367,7 +368,7 @@ export class InventoryUI {
       this.confirm = null
       this.render()
     }, 4000)
-    this.host.toast(`${RARITY_KO[item.rarity]} 장비야. 정말 ${action === 'sell' ? '팔려면' : '분해하려면'} 한 번 더 눌러.`)
+    this.host.toast(`${itemRarityKo(item)} 장비야. 정말 ${action === 'sell' ? '팔려면' : '분해하려면'} 한 번 더 눌러.`)
     this.host.sfx('ui')
     this.render()
     return false
@@ -416,7 +417,7 @@ export class InventoryUI {
     const def = ITEMS[item.defId]
     const worn = isEquipped(save, item.uid)
     box.append(nameTitle('h3', item))
-    box.append(el('p', 'inv-sub', `${RARITY_KO[item.rarity]} · ${ilvText(item.itemLevel)} · 파워 ${itemPower(item)}${def?.gun ? ` · ${GUN_KO[def.gun]}` : ''}`))
+    box.append(el('p', 'inv-sub', `${itemRarityKo(item)} · ${ilvText(item.itemLevel)} · 파워 ${itemPower(item)}${def?.gun ? ` · ${GUN_KO[def.gun]}` : ''}`))
     if (def?.description) box.append(el('p', 'inv-desc', def.description))
     const ul = el('ul', 'inv-lines')
     for (const line of itemLines(item).slice(2, -1)) ul.append(el('li', '', line))

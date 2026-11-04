@@ -26,7 +26,7 @@ import {
 import { toonGradient } from '../../core/materials'
 import { itemName, type Drop } from '../../sim/loot'
 import { ITEMS } from '../../data/items'
-import { RARITY_COLOR } from '../../sim/types'
+import { RARITY_COLOR, UNIQUE_COLOR } from '../../sim/types'
 
 interface Piece {
   drop: Drop
@@ -49,7 +49,7 @@ interface Piece {
 /** Beam height per rarity: common gets only a soft ring, legendary a tall pillar. */
 /** 고정 전설 pillar height and tint. */
 export const LEGEND_BEAM = 7.5
-export const LEGEND_TAG = '#fff0a0'
+export const LEGEND_TAG = UNIQUE_COLOR
 export const BEAM_HEIGHT: Record<string, number> = { common: 0, uncommon: 1.4, rare: 2.4, epic: 3.4, legendary: 5 }
 
 /** Pickups beyond this are folded into the oldest coin pile (no runaway mesh count). */
@@ -220,7 +220,7 @@ export class LootView {
 
   private beamFor(drop: Drop): Mesh {
     const rarity = drop.item?.rarity ?? 'common'
-    // 고정 전설: a taller, white-gold pillar so it reads from across the room.
+    // 유니크: a taller, orange pillar so it reads from across the room.
     const fixed = !!drop.item && !!ITEMS[drop.item.defId]?.legend
     const h = fixed ? LEGEND_BEAM : BEAM_HEIGHT[rarity]
     const color = new Color(fixed ? LEGEND_TAG : RARITY_COLOR[rarity]).multiplyScalar(1.4)
@@ -266,14 +266,15 @@ export class LootView {
   }
 
   private material(drop: Drop): Material {
-    const key = drop.kind === 'item' ? `item:${drop.item?.rarity ?? 'common'}` : drop.kind === 'material' ? `mat:${drop.matId}` : drop.kind
+    const uniq = drop.kind === 'item' && !!drop.item && !!ITEMS[drop.item.defId]?.legend
+    const key = drop.kind === 'item' ? `item:${uniq ? 'unique' : (drop.item?.rarity ?? 'common')}` : drop.kind === 'material' ? `mat:${drop.matId}` : drop.kind
     let m = this.mats.get(key)
     if (m) return m
     if (drop.kind === 'gold') m = new MeshBasicMaterial({ color: new Color(0xffd35a).multiplyScalar(1.5) })
     else if (drop.kind === 'potion') m = new MeshBasicMaterial({ color: new Color(0xff7fb0).multiplyScalar(1.5) })
     else if (drop.kind === 'material') m = new MeshBasicMaterial({ color: new Color(drop.matId === 'toy_part' ? 0xc9b8ff : 0x9fe8ff).multiplyScalar(1.6) })
     else {
-      const c = new Color(RARITY_COLOR[drop.item?.rarity ?? 'common'])
+      const c = new Color(uniq ? UNIQUE_COLOR : RARITY_COLOR[drop.item?.rarity ?? 'common'])
       m = new MeshToonMaterial({ color: c, emissive: c, emissiveIntensity: 0.6, gradientMap: toonGradient() })
     }
     this.mats.set(key, m)
