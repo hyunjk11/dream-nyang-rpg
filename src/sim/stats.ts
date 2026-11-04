@@ -75,6 +75,8 @@ export function gearSum(items: ItemInstance[]): Partial<Record<StatKey, number>>
 export function equippedItems(save: SaveData): ItemInstance[] {
   const out: ItemInstance[] = []
   for (const slot of Object.keys(save.equipment) as EquipSlot[]) {
+    // 보조 손: the off-hand gun is its own hand (sim/hands.ts), not part of the main view.
+    if (slot === 'offhand') continue
     const item = findItem(save, save.equipment[slot])
     if (item && ITEMS[item.defId]) out.push(item)
   }

@@ -2,6 +2,7 @@
  * Bring an older save up to stage 3: the skill-tree block, 3D-scaled items (v: 2) and a trip
  * left open by a reload (its run gold is banked as if she had recalled). Safe to run twice.
  */
+import { fixHands } from './hands'
 import { ITEMS } from '../data/items'
 import { buildOf } from './skilltree'
 import { delveOf, settleOpenRun, type OpenRun } from './delve'
@@ -35,6 +36,8 @@ export function migrateSave(save: SaveData): Migration {
   // Mochi's old collar slot stays as it was (not part of Byeolha's stats panel).
   if (save.equipment?.collar) eq.collar = save.equipment.collar
   save.equipment = eq
+  // 쌍권총: an old save's mirrored dual pistol is just the main hand; a bad off hand goes.
+  fixHands(save)
   // No difficulty setting any more: an old 'difficulty' / 'diff' field in the save or its settings goes.
   const loose = save as unknown as Record<string, unknown>
   delete loose.difficulty

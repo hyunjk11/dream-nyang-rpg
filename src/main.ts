@@ -48,6 +48,7 @@ import { ACTIVES, TREE_BY_ID, hotbarName } from './data/tree'
 import { GUN_PROFILES } from './data/guns'
 import { rank } from './sim/skilltree'
 import { computeStats, gainXp, type ComputedStats } from './sim/stats'
+import { handStats, offGun, pairRate } from './sim/hands'
 import { bossXp, killXp, nestXp, objectiveXp, townKillXp } from './sim/xp'
 import { xpToNext } from './sim/formulas'
 import { findItem } from './sim/inventory'
@@ -476,7 +477,8 @@ function hexOf(css: string): number {
 /** Level, gear and tree → hero hp/speed/regen/armour, the gun's feel, model and tracer colour. */
 function applyBuild(): void {
   const prevMax = hero.maxHp
-  stats = computeStats(game.save)
+  const hands = handStats(game.save)
+  stats = hands.main
   hero.maxHp = stats.maxHp
   if (stats.maxHp > prevMax && hero.alive) hero.hp = Math.min(stats.maxHp, hero.hp + (stats.maxHp - prevMax))
   hero.hp = Math.min(hero.hp, hero.maxHp)
@@ -484,26 +486,33 @@ function applyBuild(): void {
   hero.regenMul = stats.regenMul
   hero.regenDelay = stats.regenDelay
   hero.guard = stats.armor
-  const gunItem: ItemInstance | undefined = findItem(game.save, game.save.equipment.weapon)
-  const look = gunLookWithMods(legendOf(gunItem)?.look ?? GUN_PROFILES[stats.weaponKind].look, gunItem)
-  const gem = gunItem && gunItem.rarity !== 'common' ? hexOf(itemColor(gunItem)) : null
-  shooter.setLoadout({
-    profile: stats.gun,
-    damage: stats.shotDamage,
-    critChance: stats.critChance,
-    critMul: stats.critMul,
-    pierce: stats.pierce,
-    lifesteal: stats.lifesteal,
-    sparkle: stats.sparkle,
-    ice: stats.ice,
-    candy: stats.candy,
-    starShot: stats.starShot,
-    cloud: stats.cloud,
-    combos: gunCombos(gunItem).map((c) => c.id),
-    fireRate: stats.fireRate,
-    tint: gem && gunItem && (gunItem.rarity === 'epic' || gunItem.rarity === 'legendary') ? gem : look.tracer,
-  })
-  hero.setGunLook(stats.weaponKind, look, gem)
+  // 쌍권총: each hand's gun makes its own droplet; the main hand also drives skills.
+  const handOf = (st: ComputedStats, gunItem: ItemInstance | undefined) => {
+    const look = gunLookWithMods(legendOf(gunItem)?.look ?? GUN_PROFILES[st.weaponKind].look, gunItem)
+    const gem = gunItem && gunItem.rarity !== 'common' ? hexOf(itemColor(gunItem)) : null
+    const load = {
+      profile: st.gun,
+      damage: st.shotDamage,
+      critChance: st.critChance,
+      critMul: st.critMul,
+      pierce: st.pierce,
+      lifesteal: st.lifesteal,
+      sparkle: st.sparkle,
+      ice: st.ice,
+      candy: st.candy,
+      starShot: st.starShot,
+      cloud: st.cloud,
+      combos: gunCombos(gunItem).map((c) => c.id),
+      fireRate: st.fireRate,
+      tint: gem && gunItem && (gunItem.rarity === 'epic' || gunItem.rarity === 'legendary') ? gem : look.tracer,
+    }
+    return { look, gem, load }
+  }
+  const main = handOf(stats, findItem(game.save, game.save.equipment.weapon))
+  const offItem = hands.off ? offGun(game.save) : undefined
+  const off = hands.off && offItem ? handOf(hands.off, offItem) : null
+  shooter.setLoadout({ ...main.load, fireRate: pairRate(stats, hands.off), off: off?.load })
+  hero.setGunLook(stats.weaponKind, main.look, main.gem, off && hands.off ? { kind: hands.off.weaponKind, look: off.look, gem: off.gem } : undefined)
   const worn = (slot: 'hat' | 'outfit' | 'shoes') => {
     const item = findItem(game.save, game.save.equipment[slot])
     return item ? { id: item.defId, rarity: item.rarity } : undefined
