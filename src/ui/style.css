@@ -859,3 +859,19 @@ body.compact .set-group { width: auto; }
 #quest-body details.qdone div { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 12px; opacity: 0.75; }
 #quest-body .qfoot { display: block; margin-top: 8px; color: #a090b0; font-size: 11px; text-align: center; }
 .toast.quest.fin { border: 2px solid #ffd36b; }
+/* feat/parts-and-plus: 강화 +N badge, 개조 칸 dots, part 단계, bag socket strip. */
+.inv-cell .plus-badge { position: absolute; right: 2px; top: 2px; padding: 0 4px; border-radius: 6px; background: #2a7a40; color: #fff; font: normal 10px "Jua", sans-serif; line-height: 13px; pointer-events: none; }
+.inv-cell .plus-badge.tier { background: color-mix(in srgb, var(--rar) 55%, #4a3358); }
+.inv-cell .sock-badge { position: absolute; left: 3px; bottom: 1px; font-size: 7px; letter-spacing: 1px; color: #5a3a78; pointer-events: none; }
+.inv-cell[data-cmp] .plus-badge { top: 14px; }
+.town-grid .inv-cell .plus { display: none; }
+.inv-socks { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.inv-sock { min-width: 72px; padding: 4px 6px; border-radius: 10px; border: 2px dashed #c9b3d8; background: #fbf6fd; font: 11px "Jua", sans-serif; color: #7a5a8a; text-align: left; cursor: pointer; }
+.inv-sock.on { border-style: solid; border-color: var(--rar, #c9b3d8); background: color-mix(in srgb, var(--rar, #fff) 18%, white); color: #4a3358; }
+.inv-sock.target { outline: 3px solid #2a9a56; outline-offset: 1px; }
+.inv-sock.locked { opacity: 0.45; cursor: default; }
+.inv-fit { margin: 4px 0; font-size: 12px; color: #4a3358; }
+.inv-fit .gain { color: #2a7a40; }
+.inv-fit .lose { color: #b03a5a; }
+.mod-slot.target { outline: 3px solid #2a9a56; outline-offset: 1px; }
+.inv-cell.item.fits { box-shadow: 0 0 0 3px #2a9a56; }

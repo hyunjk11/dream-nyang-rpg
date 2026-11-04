@@ -148,10 +148,10 @@ export function itemNameParts(item: ItemInstance): { prefix: string; suffix: str
   return { prefix: item.affixes[0]?.name ?? '', suffix, base: def?.name ?? item.defId, plus: plus ? `+${plus}` : '' }
 }
 
-/** "힘찬 바람의 별빛 물총 +3". */
+/** "+3 힘찬 바람의 별빛 물총": the 강화 level leads, like a loot game. */
 export function itemName(item: ItemInstance): string {
   const p = itemNameParts(item)
-  return [p.prefix, p.suffix, p.base, p.plus].filter(Boolean).join(' ')
+  return [p.plus, p.prefix, p.suffix, p.base].filter(Boolean).join(' ')
 }
 
 /** Item power per stat point (hp 1, 1% armour 6, ...): one number to compare any two items. */

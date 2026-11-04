@@ -222,6 +222,48 @@ export function upgradeMod(save: SaveData, modUid: string): ModResult {
   return { ok: true, mod, gun: at.gun }
 }
 
+/** 부품 강화 단계: a part levels up by rarity (보통 1 … 전설 5). */
+export function partTier(mod: ItemInstance): { now: number; max: number } {
+  return { now: Math.max(1, RARITIES.indexOf(mod.rarity) + 1), max: RARITIES.length }
+}
+
+/** The 조합 a part would newly switch on in this gun (after its swap, if any). */
+export function newCombos(gun: ItemInstance, part: ItemInstance): ComboSpec[] {
+  const now = new Set(gunCombos(gun).map((c) => c.id))
+  const mods = gunMods(gun)
+  const i = swapIndex(mods, part)
+  const next = i >= 0 ? mods.map((m, k) => (k === i ? part : m)) : [...mods, part]
+  return gunCombos({ ...gun, mods: next }).filter((c) => !now.has(c.id))
+}
+
+/** The 조합 a part's swap-out would switch off. */
+export function lostCombos(gun: ItemInstance, part: ItemInstance): ComboSpec[] {
+  const mods = gunMods(gun)
+  const i = swapIndex(mods, part)
+  if (i < 0) return []
+  const after = new Set(gunCombos({ ...gun, mods: mods.map((m, k) => (k === i ? part : m)) }).map((c) => c.id))
+  return gunCombos(gun).filter((c) => !after.has(c.id))
+}
+
+export interface FitPreview {
+  /** Why it can't go in (null = it fits). */
+  block: string | null
+  /** Socket it lands in (a swap keeps the slot; a new part takes the next empty one). */
+  slot: number
+  /** The part that comes back to the bag on a swap. */
+  swap: ItemInstance | null
+  cost: number
+  gain: ComboSpec[]
+  lose: ComboSpec[]
+}
+
+/** What fitting this part into this gun would do, before paying: socket, swap, gold, 조합 ±. */
+export function fitPreview(gun: ItemInstance, part: ItemInstance): FitPreview {
+  const mods = gunMods(gun)
+  const i = swapIndex(mods, part)
+  return { block: fitBlock(gun, part), slot: i >= 0 ? i : mods.length, swap: i >= 0 ? mods[i] : null, cost: fitCost(part), gain: newCombos(gun, part), lose: lostCombos(gun, part) }
+}
+
 /** Parts in the bag (for the gunsmith list). */
 export function bagMods(save: SaveData): ItemInstance[] {
   return bagItems(save).filter(isMod)

@@ -25,13 +25,13 @@ describe('장비 구분: 아이콘과 이름', () => {
     }
   })
 
-  it('접두어와 접미어가 이름에 붙고, 강화 수치는 맨 뒤에 온다', () => {
+  it('접두어와 접미어가 이름에 붙고, 강화 수치는 맨 앞에 온다 (+3 …)', () => {
     const item: ItemInstance = { ...makeItem('gun_water', 'rare', mulberry32(3), 5), plus: 3 }
     const parts = itemNameParts(item)
     expect(parts.base).toBe('별빛 물총')
     expect(parts.prefix.length).toBeGreaterThan(0)
     expect(parts.suffix).toMatch(/의$/)
-    expect(itemName(item)).toBe(`${parts.prefix} ${parts.suffix} 별빛 물총 +3`)
+    expect(itemName(item)).toBe(`+3 ${parts.prefix} ${parts.suffix} 별빛 물총`)
   })
 
   it('상점 이름은 아이템 표의 이름과 같다', () => {
