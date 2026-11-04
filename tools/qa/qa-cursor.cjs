@@ -42,7 +42,14 @@ const st = (p) => p.evaluate(() => {
     for (let i = 0; i < 3; i++) { await p.evaluate(() => window.__slice.talk.close()); await p.waitForTimeout(250) }
     await p.evaluate(() => { const s = window.__slice; for (let k = 0; k < 40 && !s.chapters.guide.done; k++) { const ids = ['move', 'shoot', 'dash', 'kill', 'skill', 'equip', 'candy', 'shop', 'workshop', 'board', 'sewer', 'recall', 'boss']; s.guideHit({ type: ids[s.chapters.guide.step], amount: 999, depth: 1 }) } })
     await p.waitForTimeout(600); await p.click('#chapter-clear-ok').catch(() => {}); await p.waitForTimeout(400)
-  } else for (let i = 0; i < 4; i++) { await p.keyboard.press('Escape'); await p.waitForTimeout(300) }
+  } else {
+    // Prod build (no __slice): read through the intro talk with real Enter presses like a player.
+    for (let i = 0; i < 40; i++) {
+      const open = await p.evaluate(() => { const d = document.getElementById('dialog'); return !!d && !d.classList.contains('hidden') && getComputedStyle(d).display !== 'none' })
+      if (!open) break
+      await p.keyboard.press('Enter'); await p.waitForTimeout(350)
+    }
+  }
   // 1) Real click on the world.
   await p.mouse.click(640, 400); await p.waitForTimeout(900)
   let s = await st(p)

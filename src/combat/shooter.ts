@@ -16,6 +16,7 @@ import {
   type AimTarget, type RayFn, type TpsView,
 } from '../core/tps'
 import { Gun, hitStopFor, rollDamage, spreadDir } from './gunfeel'
+import { firingHand } from '../actors/holds'
 import { GUN_PROFILES, falloffAt, type GunProfile } from '../data/guns'
 import { GunFx } from './gunfx'
 import { HudFx } from '../ui/hudfx'
@@ -45,6 +46,10 @@ export class ShoulderRig {
   near = false
   fovKick = 0
   shake = 0
+  /** Lens shoved back along the view (m) by a heavy shot; settles fast. */
+  punch = 0
+  /** ⚙ 화면 흔들림: 1 = on, 0 = off (shake and shot shove both scale by it). */
+  shakeScale = 1
   /** Last look came from a finger (touch gets a gentle pull toward foes). */
   touch = false
   /** ⚙ 자동 조준: the wide AUTO_AIM cone instead of the mild assist. */
@@ -82,15 +87,19 @@ export class ShoulderRig {
     c.lookAt(cam.x + cam.fx, cam.y + cam.fy, cam.z + cam.fz)
     this.fovKick *= Math.exp(-dt * 14)
     this.shake *= Math.exp(-dt * 22)
+    this.punch *= Math.exp(-dt * 16)
     const fov = TPS.fov + this.fovKick
     if (Math.abs(c.fov - fov) > 0.01) {
       c.fov = fov
       c.updateProjectionMatrix()
     }
-    if (this.shake > 0.001) {
-      c.position.x += (Math.random() - 0.5) * this.shake
-      c.position.y += (Math.random() - 0.5) * this.shake
+    const shake = this.shake * this.shakeScale
+    if (shake > 0.001) {
+      c.position.x += (Math.random() - 0.5) * shake
+      c.position.y += (Math.random() - 0.5) * shake
     }
+    const punch = this.punch * this.shakeScale
+    if (punch > 0.0005) c.position.addScaledVector(c.getWorldDirection(this.f), -punch)
     c.updateMatrixWorld()
     // See-through when she stands in front of the crosshair (looking down past her head).
     const want = overlapsHer(cam.x, cam.y, cam.z, cam.fx, cam.fy, cam.fz, px, py, pz)
@@ -178,6 +187,8 @@ export interface ShotProcs {
   candy?: boolean
   /** Shove scale for this droplet (gun identity: shotgun big, 연사 small). */
   knock?: number
+  /** Seconds the foe reels from it (sniper / shotgun; the water pistols do not stagger). */
+  stagger?: number
 }
 
 export interface ShotWorld extends AimWorld {
@@ -195,8 +206,10 @@ export interface ShooterHost {
   vfx: Vfx
   hud: HTMLElement | null
   sfx: (cue: 'shoot_water', gain?: number) => void
-  gun?: (cue: GunCue, gain?: number, pitch?: number) => void
+  gun?: (cue: GunCue, gain?: number, pitch?: number, pan?: number) => void
   hitStop?: (seconds: number) => void
+  /** Slow-motion beat for an elite or boss kill (world at `scale` speed for `seconds`). */
+  slowmo?: (seconds: number, scale: number) => void
   /** Lifesteal: heal her by this many hp. */
   heal?: (hp: number) => void
   /** Phones and software GL: fewer stars and clouds alive at once. */
@@ -246,7 +259,7 @@ export interface ShotTrace {
 export class Shooter {
   readonly rig: ShoulderRig
   readonly gun = new Gun()
-  readonly gunFx = new GunFx()
+  readonly gunFx: GunFx
   readonly hudFx: HudFx
   /** Ricochet stars and cotton-candy clouds. */
   readonly juice: Juice
@@ -274,6 +287,7 @@ export class Shooter {
   constructor(host: ShooterHost, parent: Object3D, yaw = 0, pitch = 0.1) {
     this.host = host
     this.rig = new ShoulderRig(host.camera, yaw, pitch)
+    this.gunFx = new GunFx(!!host.lowPower)
     this.hudFx = new HudFx(host.hud)
     this.juice = new Juice({
       vfx: host.vfx,
@@ -328,7 +342,9 @@ export class Shooter {
     const gun = this.gun
     const l = this.loadout
     const p = l.profile
-    const tip = hero.muzzle.getWorldPosition(this.tip)
+    // Dual pistols alternate hands; two-handed guns always fire from the one barrel.
+    const hand = firingHand(hero.holdStyle, gun.shots)
+    const tip = hero.muzzleFor(gun.shots).getWorldPosition(this.tip)
     const aim = new Vector3().copy(this.rig.aim).sub(tip).normalize()
     const sfx = this.host.gun
     let anyHit = false
@@ -346,6 +362,7 @@ export class Shooter {
       const roll = rollDamage(Math.random(), l.damage, l.critChance + (gun.overdrive > 0 ? this.overdriveCrit : 0), l.critMul)
       const procs: ShotProcs = {
         knock: p.knock,
+        stagger: p.stagger,
         sparkle: l.sparkle > 0 && Math.random() < l.sparkle,
         ice: l.ice > 0 && Math.random() < l.ice,
         candy: l.candy > 0 && Math.random() < l.candy,
@@ -395,14 +412,17 @@ export class Shooter {
     this.last = { from: tip.clone(), to: lastEnd.clone(), aim: this.rig.aim.clone(), hit: anyHit, ndcX: ndc.x, ndcY: ndc.y }
     this.fired += 1
     if (anyHit) this.landed += 1
-    this.gunFx.shot(tip, firstDir, camera, gun.shots)
-    hero.recoil()
+    this.gunFx.shot(tip, firstDir, camera, gun.shots, 0xc8f0ff, p.casing, p.light, p.pellets > 1 ? 1.35 : p.voice === 'crack' ? 1.6 : 1)
+    hero.recoil(hand)
+    // Heavy guns shove the lens back along the view (water pistols barely).
+    this.rig.punch = Math.min(0.22, this.rig.punch + p.punch)
     // Each gun kicks its own way: the 연사 gun barely twitches, the sniper throws the view up.
     kick(this.rig.view, p.kickUp * (1 + gun.bloom * 0.6), (Math.random() - 0.5) * 2 * p.kickSide)
     const feel = fireFeel(p)
     this.rig.fovKick = Math.min(feel.fovCap, this.rig.fovKick + p.fovKick)
     this.rig.shake = Math.min(feel.shakeCap, this.rig.shake + p.fireShake)
-    if (sfx) for (const [cue, gain, pitch] of gunVoice(p.voice, gun.heat, gun.shots, Math.random())) sfx(cue, gain, pitch)
+    const pan = hero.holdStyle.dual ? (hand === 'left' ? -0.35 : 0.35) : 0
+    if (sfx) for (const [cue, gain, pitch] of gunVoice(p.voice, gun.heat, gun.shots, Math.random())) sfx(cue, gain, pitch, pan)
     else this.host.sfx('shoot_water', 0.8)
     // 탕! — the sniper's shot word pops over the muzzle.
     if (p.voice === 'crack') this.hudFx.word('탕!', tip)
@@ -429,7 +449,15 @@ export class Shooter {
       if (hit.floor) this.gunFx.splat(hit.floor, { x: 0, y: 1, z: 0 }, hit.tone === 'elite' ? 0xffd27a : 0xff9fd2, hit.tone === 'elite' ? 1.5 : 0.9)
       sfx?.('pop', hit.tone === 'elite' ? 1 : 0.75, (Math.random() - 0.5) * 0.2)
       if (hit.tone === 'elite') sfx?.('thunk', 1)
-    } else sfx?.(roll.crit ? 'crit' : 'tick', hit.tone === 'boss' ? 0.8 : 0.7)
+      // Loot fountain: a spray of candy sparks up out of the body.
+      this.host.vfx.burst(end, hit.tone === 'elite' ? 0xffd86b : 0xffc2ea, { count: hit.tone === 'elite' ? 18 : 8, speed: 2.4, up: 5.5, life: 0.75, size: 0.13, shape: 1, gravity: 11, drag: 0.6, additive: false })
+    } else if (!hit.kill) sfx?.(roll.crit ? 'crit' : 'tick', hit.tone === 'boss' ? 0.8 : 0.7)
+    if (hit.kill) {
+      // Kill confirm ding (every kill), and a slow-mo beat on the big ones.
+      sfx?.('confirm', hit.tone === 'n' ? 0.6 : 1, hit.tone === 'boss' ? -0.3 : 0)
+      const slow = killSlowmo(hit.tone)
+      if (slow) this.host.slowmo?.(slow.seconds, slow.scale)
+    }
     // A light lens shake on the big ones (crits, elite kills); chip hits stay steady for aiming.
     const big = bigHitShake({ crit: roll.crit, kill: hit.kill, elite: hit.tone === 'elite', boss: hit.tone === 'boss' })
     if (big > 0) this.rig.shake = Math.max(this.rig.shake, big)
@@ -497,6 +525,7 @@ export class Shooter {
     this.juice.reset()
     this.rig.fovKick = 0
     this.rig.shake = 0
+    this.rig.punch = 0
   }
 
   dispose(): void {
@@ -510,6 +539,13 @@ export class Shooter {
   }
 }
 
+/** Slow-mo on an elite or boss kill (regular kills only get the hit-stop). Pure. */
+export function killSlowmo(tone: ShotHit['tone']): { seconds: number; scale: number } | null {
+  if (tone === 'boss') return { seconds: 0.6, scale: 0.25 }
+  if (tone === 'elite') return { seconds: 0.32, scale: 0.4 }
+  return null
+}
+
 /** Caps on the per-shot camera punch: heavy guns may kick harder (comfort stays capped). */
 export function fireFeel(p: Pick<GunProfile, 'voice'>): { fovCap: number; shakeCap: number } {
   if (p.voice === 'crack') return { fovCap: 3.4, shakeCap: 0.08 }
@@ -521,11 +557,15 @@ export function fireFeel(p: Pick<GunProfile, 'voice'>): { fovCap: number; shakeC
 /** The sounds one shot makes: [cue, gain, pitch] — each gun has its own voice. */
 export function gunVoice(voice: GunProfile['voice'], heat: number, shots: number, r: number): [GunCue, number, number][] {
   const j = (r - 0.5) * 0.25
-  if (voice === 'crack') return [['shot', 1.6, -0.55], ['snap', 1.3, -0.15 + j * 0.3], ['thunk', 1, -0.5], ['tail', 1.2, -0.3]]
-  if (voice === 'boom') return [['shot', 1.4, -0.4], ['thunk', 0.9, -0.2], ['puff', 0.8, j]]
-  if (voice === 'burst') return [['shot', 1, 0.12 + heat * 0.1], ['snap', 0.75, 0.1 + j], ...(shots % 3 === 0 ? [['tail', 0.8, 0] as [GunCue, number, number]] : [])]
-  // 두두두: light and high, a tail every few drops.
-  return [['shot', 0.8, 0.18 + heat * 0.1 + j * 0.4], ['snap', 0.45, 0.2 + j], ...(shots % 5 === 0 ? [['tail', 0.7, 0.1] as [GunCue, number, number]] : [])]
+  // Layers: transient (snap) → body (shot / boom) → tail (tail / echo / puff).
+  // 저격 탕!: a hard crack, a deep boom under it and the echo rolling back off the walls.
+  if (voice === 'crack') return [['snap', 1.4, -0.1 + j * 0.2], ['boom', 1.1, -0.15], ['shot', 1.2, -0.6], ['echo', 1, j * 0.2]]
+  // 산탄 펑: a fat low boom with a soapy puff tail.
+  if (voice === 'boom') return [['snap', 1, -0.35], ['boom', 1, 0.15 + j * 0.3], ['puff', 0.9, j], ['tail', 0.7, -0.4]]
+  // 별 점사: bright mid crack, a tail on every third.
+  if (voice === 'burst') return [['snap', 0.8, 0.1 + j], ['shot', 1, 0.12 + heat * 0.1], ...(shots % 3 === 0 ? [['tail', 0.8, 0] as [GunCue, number, number]] : [])]
+  // 물총 두두두: short, light and high, no heavy body, a tail every few drops.
+  return [['snap', 0.4, 0.3 + j], ['shot', 0.7, 0.28 + heat * 0.1 + j * 0.4], ...(shots % 6 === 0 ? [['tail', 0.6, 0.15] as [GunCue, number, number]] : [])]
 }
 
 /** Seconds a tracer streak stays on screen. */

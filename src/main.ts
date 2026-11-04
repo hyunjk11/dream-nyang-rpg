@@ -312,11 +312,12 @@ const shooter = new Shooter(
     vfx,
     hud: crosshair?.parentElement ?? null,
     sfx: (cue, gain) => audio.sfx(cue, gain),
-    gun: (cue, gain, pitch) => gunSfx(cue, gain, pitch),
+    gun: (cue, gain, pitch, pan) => gunSfx(cue, gain, pitch, pan),
     lowPower: stage.mobile,
     hitStop: (seconds) => {
       hitStop.request(seconds)
     },
+    slowmo: (seconds, scale) => hitStop.slow(seconds, scale),
     heal: (hp) => {
       if (hero.alive) hero.hp = Math.min(hero.maxHp, hero.hp + hp)
     },
@@ -325,6 +326,7 @@ const shooter = new Shooter(
 )
 const rig = shooter.rig
 rig.autoAim = qol.autoAim
+rig.shakeScale = qol.shake ? 1 : 0
 const aim = rig.aim
 let townColliders: CameraCollider[] = []
 const townTargets: AimTarget[] = []
@@ -1202,7 +1204,12 @@ paintQuality()
 const autoCandyBtn = document.getElementById('auto-candy')
 const autoSellBtn = document.getElementById('auto-sell')
 const autoAimBtn = document.getElementById('auto-aim')
+const shakeBtn = document.getElementById('shake-toggle')
 const paintQol = () => {
+  if (shakeBtn) {
+    shakeBtn.textContent = `화면 흔들림: ${qol.shake ? '켬' : '끔'}`
+    shakeBtn.setAttribute('aria-pressed', String(qol.shake))
+  }
   if (autoAimBtn) {
     autoAimBtn.textContent = `자동 조준: ${qol.autoAim ? '켬' : '끔'}`
     autoAimBtn.setAttribute('aria-pressed', String(qol.autoAim))
@@ -1217,6 +1224,13 @@ const paintQol = () => {
   }
 }
 paintQol()
+shakeBtn?.addEventListener('click', () => {
+  qol.shake = !qol.shake
+  rig.shakeScale = qol.shake ? 1 : 0
+  saveQol()
+  paintQol()
+  audio.sfx('ui')
+})
 autoCandyBtn?.addEventListener('click', () => {
   qol.autoCandy = !qol.autoCandy
   saveQol()
@@ -2493,12 +2507,12 @@ const floatAt = new Vector3()
 /** A sewer foe or boss orb landed on her. */
 let gunSound: GunSound | null = null
 /** Synth gun layer on the shared sfx bus, built the first time audio is live. */
-function gunSfx(cue: GunCue, gain?: number, pitch?: number): void {
+function gunSfx(cue: GunCue, gain?: number, pitch?: number, pan?: number): void {
   if (audio.master <= 0.001) return
   const c = audio.context()
   if (!c) return
   gunSound ??= new GunSound(c.ctx, c.bus)
-  gunSound.play(cue, gain, pitch)
+  gunSound.play(cue, gain, pitch, pan)
 }
 
 function sewerHurt(amount: number, from: Vector3): void {

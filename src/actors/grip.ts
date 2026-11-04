@@ -24,7 +24,7 @@ export interface Grip {
  * with the palms toward the thighs): the barrel continues the forearm->hand line, the palm presses
  * on the grip's +X side, and the grip sits a little past the wrist joint, inside the fist.
  */
-export function calibrateGrip(root: Object3D, fore: Object3D, hand: Object3D, reach = 0.045): Grip {
+export function calibrateGrip(root: Object3D, fore: Object3D, hand: Object3D, reach = 0.045, mirror = false): Grip {
   root.updateMatrixWorld(true)
   const handPos = hand.getWorldPosition(new Vector3())
   const forePos = fore.getWorldPosition(new Vector3())
@@ -35,7 +35,11 @@ export function calibrateGrip(root: Object3D, fore: Object3D, hand: Object3D, re
   if (p.lengthSq() < 1e-6 || Math.abs(p.clone().normalize().dot(f)) > 0.9) p = new Vector3(0, -1, 0)
   p.normalize().addScaledVector(f, -p.dot(f)).normalize()
   const up = new Vector3().crossVectors(f, p).normalize()
-  const gunWorld = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(p, up, f))
+  // Left hand (mirror): the palm faces the other way, so the same rule would hold the toy upside
+  // down. Turning both side axes keeps the basis right-handed with the barrel still along f.
+  const side = mirror ? p.clone().negate() : p
+  const top = mirror ? up.clone().negate() : up
+  const gunWorld = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(side, top, f))
   const handQ = hand.getWorldQuaternion(new Quaternion())
   const handScale = Math.max(1e-6, hand.getWorldScale(new Vector3()).x)
   const rotation = handQ.clone().invert().multiply(gunWorld)

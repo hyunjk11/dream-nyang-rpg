@@ -9,6 +9,7 @@ import {
   CylinderGeometry,
   Group,
   LoopOnce,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshToonMaterial,
@@ -28,6 +29,7 @@ import type { WeaponKind } from '../sim/types'
 import { KNOCK, MOVE, gaitBlend, gaitRate, knockDecay, legYaw, turnToward } from '../core/motion'
 import { DIFFICULTY } from '../combat/difficulty'
 import { Wear, type WearLook } from './wear'
+import { firingHand, holdFor, settleKick, type HoldStyle } from './holds'
 
 const loader = new GLTFLoader()
 loader.setMeshoptDecoder(MeshoptDecoder)
@@ -47,6 +49,8 @@ export class Hero {
   readonly object = new Group()
   private alpha = 1
   readonly muzzle = new Object3D()
+  /** Muzzle of the left-hand pistol (dual hold). */
+  readonly muzzleL = new Object3D()
   readonly aimPoint = new Vector3()
   /** From level, tree and gear (applyBuild); 150 at level 1 with no gear. */
   maxHp: number = DIFFICULTY.hero.maxHp
@@ -92,6 +96,17 @@ export class Hero {
   private grip: Grip | null = null
   private rightHand: Object3D | null = null
   private arm: ArmRig | null = null
+  /** Left arm: the off hand on the foregrip (two-handed) or the second pistol (dual). */
+  private armL: ArmRig | null = null
+  private leftHand: Object3D | null = null
+  private gunL: Group | null = null
+  private gripL: Grip | null = null
+  /** How she holds the equipped gun (actors/holds). */
+  private style: HoldStyle = holdFor('water')
+  private recoilL = 0
+  private readonly chestAt = new Vector3()
+  private readonly fwdAt = new Vector3()
+  private readonly rightAt = new Vector3()
   private readonly hold: HoldPose = clonePose(HOLD_POSES.idle)
   private holdState: HoldState = 'idle'
   private twist = 0
@@ -146,6 +161,9 @@ export class Hero {
       const bindHand = findNamed(model, 'RightHand')
       const bindFore = findNamed(model, 'RightForeArm')
       const grip = bindHand && bindFore ? calibrateGrip(this.object, bindFore, bindHand) : null
+      const bindHandL = findNamed(model, 'LeftHand')
+      const bindForeL = findNamed(model, 'LeftForeArm')
+      const gripL = bindHandL && bindForeL ? calibrateGrip(this.object, bindForeL, bindHandL, 0.045, true) : null
       this.bindWear(model, {
         head: findNamed(model, 'Head'),
         neck: findNamed(model, 'Spine02') ?? findNamed(model, 'Neck'),
@@ -180,8 +198,11 @@ export class Hero {
       this.head = findNamed(model, 'Head')
       this.spines = ['Spine02', 'Spine01', 'Spine'].map((name) => findNamed(model, name)).filter((bone): bone is Object3D => !!bone)
       this.arm = ArmRig.from(model, gltf.animations, this.mixer)
+      this.armL = ArmRig.from(model, gltf.animations, this.mixer, 'Left')
+      this.leftHand = findNamed(model, 'LeftHand')
       if (grip && this.rightHand) this.holdGun(this.rightHand, grip)
       else this.attachGun(this.rightHand ?? model)
+      if (grip && gripL && this.leftHand) this.holdGunL(this.leftHand, gripL)
       this.modelLabel = '메쉬 모델'
       this.measureGaitOffsets(model)
       this.startLocomotion()
@@ -224,6 +245,19 @@ export class Hero {
     hand.add(gun)
     this.gun = gun
     this.grip = grip
+  }
+
+  /** The second water pistol in her left hand (shown only for the dual hold). */
+  private holdGunL(hand: Object3D, grip: Grip): void {
+    const gun = createToyGun(this.muzzleL, ...this.gunLook)
+    gun.position.copy(grip.offset)
+    gun.quaternion.copy(grip.rotation)
+    gun.scale.setScalar((GUN_SIZE / grip.handScale) * this.gunSize)
+    gun.visible = this.style.dual
+    gun.name = 'gun-left'
+    hand.add(gun)
+    this.gunL = gun
+    this.gripL = grip
   }
 
   update(dt: number, input: HeroInput): void {
@@ -333,7 +367,8 @@ export class Hero {
     const hold: HoldState = this.dashing ? 'dash' : this.hitT > 0.2 ? 'hit' : next === 'idle' && this.shootT > 0 ? 'shoot' : (next as HoldState)
     this.holdState = hold
     this.blendHold(HOLD_POSES[hold], dt)
-    this.recoilT = Math.max(0, this.recoilT - dt * 9)
+    this.recoilT = settleKick(this.recoilT, dt, this.style.settle)
+    this.recoilL = settleKick(this.recoilL, dt, this.style.settle)
     if (!this.usingClips && this.puppet) {
       this.puppet.pose(this.walkPhase, this.moving || this.dashing, this.running || this.dashing, this.hitT, upper)
     }
@@ -454,6 +489,25 @@ export class Hero {
     if (!gun) return
     buildToyGun(gun, this.muzzle, kind, look, gem)
     if (this.grip) gun.scale.setScalar((GUN_SIZE / this.grip.handScale) * look.size)
+    this.style = holdFor(kind)
+    const left = this.gunL
+    if (left) {
+      if (this.style.dual) {
+        buildToyGun(left, this.muzzleL, kind, look, gem)
+        if (this.gripL) left.scale.setScalar((GUN_SIZE / this.gripL.handScale) * look.size)
+      }
+      left.visible = this.style.dual
+    }
+  }
+
+  /** How she holds the equipped gun (QA and the report). */
+  get holdStyle(): HoldStyle {
+    return this.style
+  }
+
+  /** Where shot number n leaves: dual pistols alternate right/left; every other hold fires the one gun. */
+  muzzleFor(n: number): Object3D {
+    return this.gunL && this.gunL.visible && firingHand(this.style, n) === 'left' ? this.muzzleL : this.muzzle
   }
 
   /** Which base the gun in her hand is (QA). */
@@ -461,9 +515,15 @@ export class Hero {
     return (this.gun?.userData.kind as string) ?? 'water'
   }
 
-  /** Kick the gun back a touch on every shot. */
-  recoil(): void {
-    this.recoilT = 1
+  /** Kick on every shot: the firing hand for dual pistols, the whole two-handed pose otherwise. */
+  recoil(hand: 'right' | 'left' = 'right'): void {
+    if (hand === 'left' && this.style.dual) this.recoilL = 1
+    else this.recoilT = 1
+  }
+
+  /** Recoil envelopes (QA): right/main and left. */
+  get recoilNow(): { right: number; left: number } {
+    return { right: this.recoilT, left: this.recoilL }
   }
 
   /** Current hold state, for QA hooks and tests. */
@@ -484,7 +544,11 @@ export class Hero {
     h.twist += (target.twist - h.twist) * k
   }
 
-  /** Spine twist toward the aim, then two-bone IK so the right hand holds the gun in front of her chest. */
+  /**
+   * Spine twist toward the aim, then two-bone IK so the right hand holds the gun in front of her
+   * chest. Two-handed guns sit nearer her centre line with the left hand on the foregrip; dual
+   * pistols put the second gun in the left hand, mirrored, each hand with its own kick.
+   */
   private poseUpperBody(aimYaw: number): void {
     if (!this.alive) return
     if (this.spines.length) {
@@ -495,37 +559,77 @@ export class Hero {
     const chest = this.spine
     if (!arm || !chest) return
     this.object.updateMatrixWorld(true)
-    const chestPos = chest.getWorldPosition(_v1)
+    const st = this.style
+    const chestPos = chest.getWorldPosition(this.chestAt)
     const frameYaw = this.yaw + this.twist + wrapAngle(aimYaw - this.yaw - this.twist) * 0.35
-    const fwd = _v2.set(Math.sin(frameYaw), 0, Math.cos(frameYaw))
-    const right = _v3.set(-fwd.z, 0, fwd.x)
+    const fwd = this.fwdAt.set(Math.sin(frameYaw), 0, Math.cos(frameYaw))
+    const right = this.rightAt.set(-fwd.z, 0, fwd.x)
     const kick = this.recoilT * this.recoilT
     const r = this.hold.reach
     // Hold poses are tuned in metres for a 0.5 m arm; the chibi arm is shorter, so scale them.
     const k = arm.span / ARM_REFERENCE
+    const side = st.centre ? st.reach.right : r.right
     const target = _v4
       .copy(chestPos)
-      .addScaledVector(fwd, (r.fwd - kick * 0.06) * k)
-      .addScaledVector(right, r.right * k)
-    target.y += (r.up + kick * 0.02) * k
+      .addScaledVector(fwd, (r.fwd + st.reach.fwd - kick * st.kickBack) * k)
+      .addScaledVector(right, side * k)
+    target.y += (r.up + st.reach.up + kick * st.kickBack * 0.25) * k
     arm.solve(target, fwd, right)
-    if (this.grip) this.orientHand(aimYaw, kick)
+    if (this.grip && this.rightHand) this.orientHand(this.rightHand, this.grip, this.muzzle, aimYaw, kick, 0.18)
+    const armL = this.armL
+    const hand = this.leftHand
+    if (!armL || !hand) return
+    if (st.twoHanded && this.gun && this.grip) this.supportHand(armL, fwd, right)
+    else if (st.dual && this.gunL?.visible && this.gripL) {
+      const kickL = this.recoilL * this.recoilL
+      const left = _v4
+        .copy(chestPos)
+        .addScaledVector(fwd, (r.fwd + st.reach.fwd - kickL * st.kickBack) * k)
+        .addScaledVector(right, -side * k)
+      left.y += (r.up + st.reach.up + kickL * st.kickBack * 0.25) * k
+      armL.solve(left, fwd, right)
+      this.orientHand(hand, this.gripL, this.muzzleL, aimYaw, kickL, -0.18)
+    }
+  }
+
+  /**
+   * Off hand on the foregrip: a point part-way down the barrel (just under it), palm up and the
+   * fingers wrapping across, so both hands ride the gun when it kicks.
+   */
+  private supportHand(armL: ArmRig, fwd: Vector3, right: Vector3): void {
+    const gun = this.gun
+    const hand = this.leftHand
+    if (!gun || !hand) return
+    gun.updateWorldMatrix(true, false)
+    const gunQ = gun.getWorldQuaternion(_q1)
+    const barrel = _v1.set(0, 0, 1).applyQuaternion(gunQ)
+    const top = _v2.set(0, 1, 0).applyQuaternion(gunQ)
+    // Barrel's right (as she looks down it) = barrel × up; fingers reach across, a little forward.
+    const across = _v3.crossVectors(barrel, top).normalize()
+    const fingers = across.multiplyScalar(0.85).addScaledVector(barrel, 0.4).normalize()
+    const palm = top.addScaledVector(fingers, -top.dot(fingers)).normalize()
+    const grab = this.muzzle.position.clone().multiplyScalar(this.style.fore)
+    grab.y -= 0.035
+    gun.localToWorld(grab)
+    // The bone sits at the wrist: back off by the palm length so the palm, not the wrist, is on the grip.
+    const reach = armL.palmLength
+    const wrist = grab.addScaledVector(fingers, -reach * 0.55).addScaledVector(palm, -reach * 0.35)
+    armL.solve(wrist, fwd, right)
+    armL.orient(fingers, palm)
   }
 
   /** Turn the wrist so the hand-held barrel points along the aim, or rests in a low ready when she isn't shooting. */
-  private orientHand(aimYaw: number, kick: number): void {
-    const hand = this.rightHand
-    const grip = this.grip
-    if (!hand || !grip || !hand.parent) return
+  private orientHand(hand: Object3D, grip: Grip, muzzle: Object3D, aimYaw: number, kick: number, restYaw: number): void {
+    if (!hand.parent) return
     hand.updateWorldMatrix(true, false)
-    const at = this.muzzle.getWorldPosition(_v1)
+    const at = muzzle.getWorldPosition(_v1)
     const toAim = _v2.copy(this.aimPoint).sub(at)
     const flat = Math.hypot(toAim.x, toAim.z)
     const facing = this.yaw + this.twist
     const yaw = barrelYaw(flat > 0.25 ? Math.atan2(toAim.x, toAim.z) : aimYaw, facing, this.alive)
-    const pitchDeg = aimPitchDeg(toAim.y, flat, this.hold.pitch) + kick * 9
+    const pitchDeg = aimPitchDeg(toAim.y, flat, this.hold.pitch) + this.style.pitch * this.ready + kick * this.style.kickUp
     const aimQ = barrelQuaternion(yaw, (pitchDeg * Math.PI) / 180, _q1)
-    const restQ = barrelQuaternion(facing + 0.18, REST_PITCH, _q2)
+    const restQ = barrelQuaternion(facing + restYaw, REST_PITCH, _q2)
     const gunWorld = restQ.slerp(aimQ, this.ready)
     const handWorld = handForGun(gunWorld, grip, _q3)
     const parentQ = hand.parent.getWorldQuaternion(_q4).invert()
@@ -873,20 +977,27 @@ class ArmRig {
   private thumb = new Vector3(1, 0, 0)
   private palm = new Vector3(0, 0, 1)
 
+  /** Real palm normal in hand space (toward her thigh in the bind pose), for the off-hand grab. */
+  private palmIn = new Vector3(0, 0, 1)
+  /** Wrist to mid-palm (m), measured from the bind pose. */
+  palmLength = 0.06
+
   constructor(
     private shoulder: Object3D,
     private upper: Object3D,
     private fore: Object3D,
     private hand: Object3D,
+    /** +1 right arm, -1 left arm (the elbow hangs out to that side). */
+    private sign = 1,
   ) {}
 
-  static from(model: Object3D, clips: AnimationClip[], mixer: AnimationMixer): ArmRig | null {
-    const shoulder = findNamed(model, 'RightShoulder')
-    const upper = findNamed(model, 'RightArm')
-    const fore = findNamed(model, 'RightForeArm')
-    const hand = findNamed(model, 'RightHand')
+  static from(model: Object3D, clips: AnimationClip[], mixer: AnimationMixer, side: 'Right' | 'Left' = 'Right'): ArmRig | null {
+    const shoulder = findNamed(model, `${side}Shoulder`)
+    const upper = findNamed(model, `${side}Arm`)
+    const fore = findNamed(model, `${side}ForeArm`)
+    const hand = findNamed(model, `${side}Hand`)
     if (!shoulder || !upper || !fore || !hand) return null
-    const rig = new ArmRig(shoulder, upper, fore, hand)
+    const rig = new ArmRig(shoulder, upper, fore, hand, side === 'Right' ? 1 : -1)
     const clip = findClip(clips, 'Walk_Forward_While_Shooting') ?? findClip(clips, 'Cowboy_Quick_Draw')
     if (clip) {
       const probe = mixer.clipAction(clip)
@@ -908,6 +1019,15 @@ class ArmRig {
     const seed = Math.abs(rig.fingers.z) < 0.8 ? new Vector3(0, 0, 1) : new Vector3(1, 0, 0)
     rig.thumb.crossVectors(rig.fingers, seed).normalize()
     rig.palm.crossVectors(rig.thumb, rig.fingers).normalize()
+    // Bind pose (A-pose): palms face the thighs, i.e. toward her centre line.
+    const root = model.getWorldPosition(new Vector3())
+    const hp = hand.getWorldPosition(new Vector3())
+    const inward = new Vector3(root.x - hp.x, 0, root.z - hp.z)
+    if (inward.lengthSq() > 1e-8) {
+      const local = inward.normalize().applyQuaternion(handQ)
+      rig.palmIn.copy(local.addScaledVector(rig.fingers, -local.dot(rig.fingers))).normalize()
+    }
+    rig.palmLength = Math.max(0.03, Math.min(0.09, rig.span * 0.16))
     return rig
   }
 
@@ -928,8 +1048,8 @@ class ArmRig {
     const d = Math.min(Math.max(toT.length(), Math.abs(l1 - l2) + 0.01), (l1 + l2) * 0.985)
     const dir = toT.normalize()
     const goal = a.clone().addScaledVector(dir, d)
-    // Elbow hint: down, out to her right, slightly back.
-    const pole = new Vector3(0, -1, 0).addScaledVector(right, 0.7).addScaledVector(fwd, -0.25)
+    // Elbow hint: down, out to her side (right arm right, left arm left), slightly back.
+    const pole = new Vector3(0, -1, 0).addScaledVector(right, 0.7 * this.sign).addScaledVector(fwd, -0.25)
     pole.addScaledVector(dir, -pole.dot(dir)).normalize()
     const along = (l1 * l1 - l2 * l2 + d * d) / (2 * d)
     const h = Math.sqrt(Math.max(0, l1 * l1 - along * along))
@@ -943,6 +1063,20 @@ class ArmRig {
     const want = fwd.clone().multiplyScalar(0.75).add(goal.clone().sub(this.fore.getWorldPosition(new Vector3())).normalize().multiplyScalar(0.25)).normalize()
     const twist = new Quaternion().setFromUnitVectors(fingers, want)
     const world = handQ.premultiply(twist)
+    const parentQ = this.fore.getWorldQuaternion(new Quaternion()).invert()
+    this.hand.quaternion.copy(parentQ.multiply(world))
+    this.hand.updateWorldMatrix(false, true)
+  }
+
+  /** Set the hand's world turn from where the fingers and the (real) palm should face. */
+  orient(fingersWorld: Vector3, palmWorld: Vector3): void {
+    const f = fingersWorld.clone().normalize()
+    const p = palmWorld.clone().addScaledVector(f, -palmWorld.dot(f)).normalize()
+    const want = new Matrix4().makeBasis(new Vector3().crossVectors(f, p), f, p)
+    const lf = this.fingers
+    const lp = this.palmIn.clone().addScaledVector(lf, -this.palmIn.dot(lf)).normalize()
+    const local = new Matrix4().makeBasis(new Vector3().crossVectors(lf, lp), lf, lp)
+    const world = new Quaternion().setFromRotationMatrix(want.multiply(local.invert()))
     const parentQ = this.fore.getWorldQuaternion(new Quaternion()).invert()
     this.hand.quaternion.copy(parentQ.multiply(world))
     this.hand.updateWorldMatrix(false, true)

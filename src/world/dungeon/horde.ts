@@ -95,6 +95,8 @@ export interface HordeFoe {
   dying: number
   /** 0..1 fresh hit, decays. */
   hurt: number
+  /** Seconds left reeling from a heavy shot (sniper / shotgun stagger): barely moves, knockback carries. */
+  stun: number
   /** Melee: wind-up timer (>0 while winding) and cooldown after a swing. */
   windup: number
   cooldown: number
@@ -137,6 +139,14 @@ export type SightFn = (ax: number, az: number, bx: number, bz: number) => boolea
 export const CHILL_SLOW = ELEMENTS.slow
 
 /** BFS distances (in tiles) from one target tile, rebuilt when the target moves. */
+/** Speed left to a staggered foe (the shove of the shot carries it instead). */
+export const STUN_SPEED = 0.1
+
+/** Seconds a heavy shot staggers a foe: elites keep 40%, never past half a second. Pure. */
+export function staggerFor(stagger: number, elite: boolean): number {
+  return Math.min(0.5, Math.max(0, stagger) * (elite ? 0.4 : 1))
+}
+
 export class FlowField {
   readonly dist: Int32Array
   tx = -1
@@ -372,6 +382,7 @@ export class Horde {
       age: 0,
       dying: 0,
       hurt: 0,
+      stun: 0,
       windup: 0,
       // First swing staggered too (a pack that arrives together must not swing as one).
       cooldown: 0.3 + ((this.nextId * 0.618) % 1) * 0.9,
@@ -413,6 +424,7 @@ export class Horde {
     for (let i = this.foes.length - 1; i >= 0; i -= 1) {
       const f = this.foes[i]
       f.hurt = Math.max(0, f.hurt - dt * 5)
+      f.stun = Math.max(0, f.stun - dt)
       if (f.dying > 0) {
         f.dying += dt
         if (f.dying >= DIE_TIME) this.foes.splice(i, 1)
@@ -477,11 +489,12 @@ export class Horde {
     return best ? { foe: best, t: bt } : null
   }
 
-  /** Hurt a foe; a push along (px, pz). Returns true on the killing blow. */
-  damage(f: HordeFoe, amount: number, px = 0, pz = 0): boolean {
+  /** Hurt a foe; a push along (px, pz); `stagger` seconds of reeling (elites shrug most of it off). Returns true on the killing blow. */
+  damage(f: HordeFoe, amount: number, px = 0, pz = 0, stagger = 0): boolean {
     if (f.dying > 0) return false
     f.hp -= amount
     f.hurt = 1
+    if (stagger > 0) f.stun = Math.max(f.stun, staggerFor(stagger, f.elite))
     const push = f.elite ? 0.6 : 1.6
     f.vx += px * push
     f.vz += pz * push
@@ -631,6 +644,7 @@ export class Horde {
     if (d < f.radius + 0.75) want = 0
     if (f.windup > 0) want *= 0.15
     if (f.age < SPAWN_TIME) want *= 0.5
+    if (f.stun > 0) want *= STUN_SPEED
     want *= speedMul(f)
     const wx = gl > 1e-4 ? (gx / gl) * want : 0
     const wz = gl > 1e-4 ? (gz / gl) * want : 0

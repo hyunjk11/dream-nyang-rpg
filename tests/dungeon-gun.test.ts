@@ -60,7 +60,7 @@ describe('두두두 연사 손맛', () => {
     expect(rollDamage(0.5)).toEqual({ amount: Math.round(GUN.damage), crit: false })
     expect(hitStopFor({})).toBe(0)
     expect(hitStopFor({ kill: true })).toBeGreaterThan(0)
-    expect(hitStopFor({ kill: true })).toBeLessThan(0.03)
+    expect(hitStopFor({ kill: true })).toBeLessThanOrEqual(0.08)
     expect(hitStopFor({ elite: true })).toBeGreaterThan(0)
     expect(hitStopFor({ elite: true, kill: true })).toBeGreaterThan(hitStopFor({ elite: true }))
     expect(hitStopFor({ boss: true, kill: true })).toBeGreaterThan(0.1)

@@ -40,6 +40,14 @@ export interface GunProfile {
   tracerLife: number
   /** Damage falls off with range (shotgun): full up to `near` m, down to `min`× at `far` m. */
   falloff?: { near: number; far: number; min: number }
+  /** Camera shoved back along the view per shot (m): the 탕! you feel in your shoulder. */
+  punch: number
+  /** Seconds a foe it hits stops in its tracks (heavy guns stagger). */
+  stagger: number
+  /** What flies out of the gun: water droplets, star shells, fat bubble shells, or one long star shell. */
+  casing: 'drop' | 'star' | 'shell' | 'long'
+  /** Muzzle light pop strength (0..1 of the capped flash light). */
+  light: number
   /** Sound voice: 두두두 spray, 펑 boom, 탕탕탕 burst, or the sniper's 탕! crack. */
   voice: 'spray' | 'boom' | 'burst' | 'crack'
   /** Damage numbers: the sniper's are huge (탕! 1234). */
@@ -73,6 +81,7 @@ export const GUN_PROFILES: Record<WeaponKind, GunProfile> = {
     fovKick: 0.22,
     tracerW: 0.75,
     tracerLife: 0.8,
+    punch: 0.012, stagger: 0, casing: 'drop', light: 0.35,
     voice: 'spray',
     bigNumbers: false,
     blurb: '두두두 연사 · 한 발은 가볍게, 쏟아붓기',
@@ -96,12 +105,13 @@ export const GUN_PROFILES: Record<WeaponKind, GunProfile> = {
     critMul: 1.7,
     pierce: 0,
     knock: 0.75,
-    stop: 0.02,
+    stop: 0.035,
     fireShake: 0.05,
     fovKick: 2.2,
     tracerW: 1.5,
     tracerLife: 1.1,
     falloff: { near: 7, far: 15, min: 0.35 },
+    punch: 0.11, stagger: 0.22, casing: 'shell', light: 0.9,
     voice: 'boom',
     bigNumbers: false,
     blurb: '펑! 근거리 산탄 · 가까울수록 아프고 괴물을 밀쳐 냄',
@@ -131,6 +141,7 @@ export const GUN_PROFILES: Record<WeaponKind, GunProfile> = {
     fovKick: 0.5,
     tracerW: 1,
     tracerLife: 1,
+    punch: 0.035, stagger: 0.07, casing: 'star', light: 0.55,
     voice: 'burst',
     bigNumbers: false,
     blurb: '탕탕탕 3점사 · 정확하고 치명타가 잘 터짐',
@@ -154,11 +165,12 @@ export const GUN_PROFILES: Record<WeaponKind, GunProfile> = {
     critMul: 2.4,
     pierce: 4,
     knock: 2.2,
-    stop: 0.06,
+    stop: 0.075,
     fireShake: 0.07,
     fovKick: 3.2,
     tracerW: 3,
     tracerLife: 4,
+    punch: 0.16, stagger: 0.38, casing: 'long', light: 1,
     voice: 'crack',
     bigNumbers: true,
     blurb: '탕! 한 방 저격 · 느리지만 아주 세고 줄줄이 꿰뚫음',

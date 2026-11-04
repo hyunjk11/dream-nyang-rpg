@@ -434,6 +434,14 @@ export class HordeView {
         dying: f.dying > 0 ? Math.min(1, f.dying / DIE_TIME) : 0,
       })
       if (look.hover !== undefined && look.pose === 'bat') pose.y += look.hover - FOE_SPECS.bat.hover
+      // Staggered by a heavy shot: knocked back on its heels, squashed and wobbling.
+      if (f.stun > 0 && f.dying <= 0) {
+        const s = Math.min(1, f.stun * 3)
+        pose.lean -= 0.45 * s
+        pose.sy *= 1 - 0.14 * s
+        pose.sx *= 1 + 0.08 * s
+        pose.roll += Math.sin(time * 38) * 0.12 * s
+      }
       this.e.set(pose.lean, f.yaw + (f.dying > 0 ? f.dying * 14 : 0), pose.roll)
       this.q.setFromEuler(this.e)
       this.p.set(f.x, pose.y * scale, f.z)
