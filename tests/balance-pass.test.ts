@@ -39,7 +39,7 @@ describe('밸런스 패스: 구역별 희귀 총 처치 시간 (스킬 없이, �
   })
   it('몹 체력은 구역이 깊어질수록 오른다 (미로 1층 < 2장 시계탑 < 달빛 둥지)', () => {
     const hp = (a: string) => rows.find((r) => r.area === a)!.normalHp
-    expect(hp('1장 미로 1층')).toBeLessThan(hp('2장 시계탑 2층'))
+    expect(hp('2장 꿈 미로 1층')).toBeLessThan(hp('2장 시계탑 2층'))
     expect(hp('2장 시계탑 2층')).toBeLessThan(hp('2장 달빛 둥지 보스'))
   })
 })
