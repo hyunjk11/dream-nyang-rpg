@@ -719,7 +719,7 @@ function waypointFor(id: string): Waypoint | null {
   }
   const c = activeContracts(game.save).find((k) => k.id === id)
   if (!c) return null
-  return { id, label: `의뢰 · ${contractLine(c).replace(/ (\d|완료).*$/, '')}`, goal: goalForContract(c.kind, c.status === 'done', !!run) }
+  return { id, label: `🔁 반복 · ${contractLine(c).replace(/ (\d|완료).*$/, '')}`, goal: goalForContract(c.kind, c.status === 'done', !!run) }
 }
 
 /** Where a goal sits in the town (the board, the 별문, or the return portal). */
@@ -890,7 +890,7 @@ function openQuests(tab?: QuestGroup): void {
 function contractHit(e: ContractEvent): void {
   const done = contractEvent(game.save, e)
   for (const _ of done) {
-    toast('의뢰 완료! 마을 게시판에서 보상을 받아.', 'quest')
+    toast('🔁 반복 의뢰 완료! 마을 게시판에서 보상을 받아.', 'quest')
     chime('contract')
   }
   paintContracts()

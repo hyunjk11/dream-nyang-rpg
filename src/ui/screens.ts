@@ -201,7 +201,7 @@ export function openQuestLog(save: SaveData, onClose: () => void, onPin?: (id: s
     const book = questBook(save)
     const done = questArchive(save)
     const pins = pinsOf(save)
-    const groups: QuestGroup[] = ['main', 'story', 'bounty']
+    const groups: QuestGroup[] = ['main', 'story', 'bounty', 'repeat']
     const tabs = groups
       .map((g) => {
         const n = book.filter((q) => q.group === g).length
@@ -213,13 +213,14 @@ export function openQuestLog(save: SaveData, onClose: () => void, onPin?: (id: s
       .map((q) => {
         const pin = q.group === 'main' ? '' : `<button type="button" class="qpin${pins.includes(q.id) ? ' on' : ''}" data-pin="${escHtml(q.id)}" aria-pressed="${pins.includes(q.id)}">${pins.includes(q.id) ? '📌 고정됨' : '📌 고정'}</button>`
         const state = q.ready ? `<em class="qready">완료 · ${escHtml(q.turnIn)}</em>` : q.prog ? `<em>${escHtml(q.prog)}</em>` : ''
-        return `<article class="q ${q.group}${q.ready ? ' done' : ''}"><h3>${escHtml(q.title)}${pin}</h3><small class="qarea">📍 ${escHtml(q.area)}</small><p>${escHtml(q.line)}${state}</p>${q.reward ? `<small>보상: ${escHtml(q.reward)}</small>` : ''}${!q.ready && q.turnIn ? `<small class="qturn">${escHtml(q.turnIn)}</small>` : ''}</article>`
+        const runs = q.repeat ? `<small class="qrepeat">🔁 반복 의뢰 · 끝내도 게시판에 또 붙어${q.runs ? ` · 완료 ${q.runs}회` : ''}</small>` : ''
+        return `<article class="q ${q.group}${q.ready ? ' done' : ''}"><h3>${escHtml(q.title)}${pin}</h3>${runs}<small class="qarea">📍 ${escHtml(q.area)}</small><p>${escHtml(q.line)}${state}</p>${q.reward ? `<small>보상: ${escHtml(q.reward)}</small>` : ''}${!q.ready && q.turnIn ? `<small class="qturn">${escHtml(q.turnIn)}</small>` : ''}</article>`
       })
       .join('')
     const old = done.filter((d) => d.group === at)
     const archive = old.length ? `<details class="qdone"><summary>완료한 퀘스트 ${old.length}개</summary>${old.map((d) => `<div><b>${escHtml(d.title)}</b><small>${escHtml(d.note)}</small></div>`).join('')}</details>` : ''
-    const empty = live.length ? '' : `<p class="qempty">${at === 'bounty' ? '맡은 의뢰가 없어. 마을 게시판에서 받아 봐.' : '지금 진행 중인 이야기가 없어.'}</p>`
-    body.innerHTML = `<div class="qtabs" role="tablist">${tabs}</div><div class="qlist" role="tabpanel">${cards}${empty}${archive}</div><small class="qfoot">HUD에는 메인 + 고정·완료한 것 최대 ${TRACK_CAP}개가 보여</small>`
+    const empty = live.length ? '' : `<p class="qempty">${at === 'repeat' ? '맡은 🔁 반복 의뢰가 없어. 마을 게시판 아래쪽에서 받아 봐.' : at === 'bounty' ? '맡은 의뢰가 없어. 마을 게시판에서 받아 봐.' : '지금 진행 중인 이야기가 없어.'}</p>`
+    body.innerHTML = `<div class="qtabs" role="tablist">${tabs}</div><div class="qlist" role="tabpanel">${cards}${empty}${archive}</div><small class="qfoot">HUD에는 메인 + 고정·완료한 것 최대 ${TRACK_CAP}개가 보여 · 이야기가 🔁 반복보다 먼저</small>`
   }
   paint()
   body.onclick = (e) => {

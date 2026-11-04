@@ -912,3 +912,55 @@ body.compact .set-group { width: auto; }
 .fast-card button.salvage { background: #ffc7a8; }
 .fast-card button.cancel { min-height: 44px; font-size: 15px; background: #e8e0ec; }
 .fast-card button:disabled { opacity: 0.45; }
+/* feat/ui-audit-repeat: 🔁 반복 의뢰 (teal: apart from the story pink/violet and the 의뢰 amber). */
+#contract-hud > div.q.repeat { border-left-color: #4fb8a8; background: rgba(240, 252, 249, 0.92); }
+#contract-hud > div.q.repeat b { background: #dff5f0; color: #2a7a6c; }
+#quest-body article.q.repeat { border-left-color: #4fb8a8; }
+#quest-body .qrepeat { display: block; color: #2a7a6c; font-size: 12px; }
+.town-repeat-head { display: flex; flex-direction: column; gap: 2px; margin: 10px 0 2px; padding: 6px 12px; border-radius: 14px; background: #e9f8f4; }
+.town-repeat-head b { font: 400 16px "Jua", sans-serif; color: #2a7a6c; }
+.town-repeat-head small { font-size: 12px; color: #4a7a70; }
+.town-contract.repeat { border-left: 5px solid #4fb8a8; }
+.town-contract .repeat-badge { align-self: flex-start; padding: 1px 8px; border-radius: 999px; background: #dff5f0; color: #2a7a6c; font: 400 12px "Jua", sans-serif; }
+
+/* ==== feat/ui-audit-repeat: UI 점검 수정 (1280x720 · 360x640 실제 화면 기준) ==== */
+/* A1 좁은 화면 가방: 장비 칸 → 가방 칸 → 상세 → 능력치 (가방이 능력치 목록 아래로 밀려 스크롤해야 보였다). */
+@media (max-width: 820px) {
+  #inv-bag .inv-left { display: contents; }
+  #inv-bag #inv-slots { order: 1; }
+  #inv-bag .inv-mid { order: 2; }
+  #inv-bag .inv-right { order: 3; }
+  #inv-bag #inv-stats { order: 4; margin-top: 0; }
+}
+/* A2 좁은 화면: 닫기가 혼자 한 줄을 차지하던 것 → 머리줄 오른쪽 위 고정 (40px). */
+@media (max-width: 600px) {
+  .inv-card header, .town-card header { position: relative; padding-right: 58px; }
+  #inv-close, .town-card #town-close { position: absolute; top: 0; right: 0; min-width: 52px; min-height: 40px; margin: 0; }
+}
+/* A3 터치 대상 40px 이상 (휴대폰·태블릿). */
+body.touch #gear { width: 40px; height: 40px; line-height: 40px; }
+body.touch #quest-chip { min-height: 40px; padding: 6px 12px; }
+body.touch #bag-btn, body.touch #candy { min-height: 40px; }
+body.touch #quest-body .qtab { min-height: 44px; }
+body.touch #quest-body .qpin { min-height: 40px; padding: 4px 12px; }
+body.touch #quest-body details.qdone summary { padding: 10px 0; }
+body.touch #quest-close, body.touch #summary-close { min-height: 44px; min-width: 120px; }
+body.touch .settings input[type="range"] { height: 32px; }
+body.touch .inv-bulk .bulk-r { min-height: 36px; padding: 0 4px; }
+body.touch .inv-bulk .bulk-r input { width: 20px; height: 20px; }
+/* 데스크톱에서도 너무 작던 것: 📌 고정(21px), 개조 빼기(22px), 마을로(33px). */
+#quest-body .qpin { min-height: 28px; }
+.town-card [id^="work-mod-out-"] { min-height: 30px; min-width: 44px; }
+#summary-close { min-width: 120px; min-height: 40px; }
+/* A4 대비: 흰 글씨 + 연분홍(#ff8cc6, 2.1:1) → 진한 분홍 (4.6:1). */
+#quest-body .qtab.on { background: #c8418a; border-color: #c8418a; }
+#contract-hud > div.q.main b { background: #c8418a; }
+/* 희귀도 글자는 밝은 바탕에서 흐렸다 (매직 1.6:1): 같은 색을 진하게 섞어 쓴다. */
+.inv-bulk .bulk-r { color: color-mix(in srgb, var(--rar) 55%, #3a2448); text-shadow: none; }
+/* 연보라 안내 글씨 (3.5:1) → 한 단계 진하게 (5:1 이상). */
+.town-sub, #quest-body .qfoot, #quest-body .qturn, .inv-card h3 small, p.inv-empty, .inv-sub { color: #6f4f80; }
+#quest-body .qfoot { font-size: 12px; }
+/* A5 장비 칸 이름 9px → 10px, 진하게. */
+.inv-cell .slot-name { font-size: 10px; color: #7a5a88; }
+/* A6 공격 버튼 글자: 하늘색 위 흰 글씨가 안 보였다. */
+#fire { color: #23506e; }

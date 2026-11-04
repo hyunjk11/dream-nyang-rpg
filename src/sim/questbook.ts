@@ -11,7 +11,7 @@
  * it in and what it pays. The HUD tracker shows at most TRACK_CAP rows (main + pins / ready ones).
  */
 import { CHAPTER2, GUIDE, chapter2Open, chapter3Open, fieldOpen, chaptersOf, guideStep, questRewardText, type ChapterQuestDef } from './chapters'
-import { activeContracts, rewardText as contractReward, type Contract } from './contracts'
+import { REPEAT_ICON, activeContracts, contractRuns, rewardText as contractReward, type Contract } from './contracts'
 import { AREAS, MAZE_CHAIN, STORY, dreamOf, mazeOpen, mongsilOpen, type StoryQuest } from './dreamstory'
 import { objectiveLine, rewardText as islandReward } from './quests'
 import { QUESTS, QUEST_ORDER } from '../data/quests'
@@ -19,9 +19,9 @@ import { townOf } from './town'
 import type { SaveData } from './types'
 import { placeLabel, type PlaceId } from './places'
 
-export type QuestGroup = 'main' | 'story' | 'bounty'
+export type QuestGroup = 'main' | 'story' | 'bounty' | 'repeat'
 
-export const GROUP_KO: Record<QuestGroup, string> = { main: '메인', story: '이야기', bounty: '의뢰' }
+export const GROUP_KO: Record<QuestGroup, string> = { main: '메인', story: '이야기', bounty: '의뢰', repeat: '🔁 반복' }
 
 export interface QuestEntry {
   id: string
@@ -38,6 +38,10 @@ export interface QuestEntry {
   reward: string
   /** Where it happens, in the places.ts scheme ("2장 · 몽실 들판"). */
   area: string
+  /** 🔁 Comes back after it is turned in (board contracts). */
+  repeat?: boolean
+  /** Times this repeatable was turned in. */
+  runs?: number
 }
 
 /** Rows the HUD tracker shows at once (main + 2). */
@@ -121,7 +125,7 @@ export function questBook(save: SaveData): QuestEntry[] {
   }
   for (const k of activeContracts(save)) {
     const ready = k.status === 'done'
-    out.push({ id: k.id, group: 'bounty', title: BOUNTY_TITLE[k.kind], line: `깊이 ${k.depth} 이상에서`, prog: ready ? '완료' : `${k.progress}/${k.goal}`, ready, turnIn: BOARD, reward: contractReward(k.reward), area: placeLabel('sewer', `깊이 ${k.depth}+`) })
+    out.push({ id: k.id, group: 'repeat', repeat: true, runs: contractRuns(save, k.kind), title: `${REPEAT_ICON} ${BOUNTY_TITLE[k.kind]}`, line: `깊이 ${k.depth} 이상에서`, prog: ready ? '완료' : `${k.progress}/${k.goal}`, ready, turnIn: BOARD, reward: contractReward(k.reward), area: placeLabel('sewer', `깊이 ${k.depth}+`) })
   }
   return out
 }
@@ -146,10 +150,13 @@ export function togglePin(save: SaveData, id: string): { ok: boolean; pinned: bo
   return { ok: true, pinned: true }
 }
 
-/** What the HUD shows: main, then pinned, then ready-to-turn-in, then the rest; capped. */
+/**
+ * What the HUD shows: main, then pinned, then ready-to-turn-in, then the rest; capped.
+ * Story / chapter quests win the rows over 🔁 repeatables (a pinned repeatable comes after them).
+ */
 export function trackedQuests(book: QuestEntry[], pins: string[], cap = TRACK_CAP): { shown: QuestEntry[]; more: number } {
   const [main, ...rest] = book
-  const rank = (q: QuestEntry) => (pins.includes(q.id) ? 0 : q.ready ? 1 : 2)
+  const rank = (q: QuestEntry) => (q.repeat ? 3 : 0) + (pins.includes(q.id) ? 0 : q.ready ? 1 : 2)
   const sorted = rest.map((q, i) => ({ q, i })).sort((a, b) => rank(a.q) - rank(b.q) || a.i - b.i).map((x) => x.q)
   const shown = [main, ...sorted].filter(Boolean).slice(0, cap)
   return { shown, more: Math.max(0, book.length - shown.length) }
@@ -174,6 +181,6 @@ export function questArchive(save: SaveData): DoneEntry[] {
   }
   for (const id of QUEST_ORDER) if (save.quests[id]?.status === 'turnedIn' && QUESTS[id]) out.push({ group: 'story', title: QUESTS[id].title, note: '보고 완료' })
   const n = townOf(save).contractsDone
-  if (n) out.push({ group: 'bounty', title: `하수도 의뢰 ${n}개`, note: '보상 받음' })
+  if (n) out.push({ group: 'repeat', title: `${REPEAT_ICON} 하수도 반복 의뢰 ${n}회`, note: '보상 받음' })
   return out
 }

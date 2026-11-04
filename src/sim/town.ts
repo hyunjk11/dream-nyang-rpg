@@ -56,10 +56,12 @@ export interface TownSave {
   boardAt: number
   /** Contracts finished so far (for the id salt and stats). */
   contractsDone: number
+  /** 🔁 반복 의뢰: times each kind was turned in (the '완료 n회' badge). */
+  contractRuns: Record<string, number>
 }
 
 export function freshTown(): TownSave {
-  return { scrolls: 0, stock: [], stockAt: -1, buyback: [], stash: [], contracts: [], boardAt: -1, contractsDone: 0 }
+  return { scrolls: 0, stock: [], stockAt: -1, buyback: [], stash: [], contracts: [], boardAt: -1, contractsDone: 0, contractRuns: {} }
 }
 
 const int = (v: unknown, min: number, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.floor(v)) : fallback)
@@ -82,6 +84,7 @@ export function townOf(save: SaveData): TownSave {
     contracts: Array.isArray(raw.contracts) ? raw.contracts.filter((c) => c && typeof c.id === 'string') : [],
     boardAt: int(raw.boardAt, -1, -1),
     contractsDone: int(raw.contractsDone, 0, 0),
+    contractRuns: Object.fromEntries(Object.entries(raw.contractRuns && typeof raw.contractRuns === 'object' ? raw.contractRuns : {}).map(([k, v]) => [k, int(v, 0, 0)])),
   }
   save.town = t
   normalized.add(t)
