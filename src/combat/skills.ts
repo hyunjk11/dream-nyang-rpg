@@ -79,7 +79,7 @@ export const SKILL_GEAR = { min: 1, max: 1.15 }
  * kit to ×0.8 (elite ~26%, boss ~14%: under the 30–40% / 15–25% promise). Now gear only ever
  * helps, and never past these.
  */
-export const SKILL_CAP = { elite: 0.4, boss: 0.25 }
+export const SKILL_CAP = { elite: 0.18, boss: 0.06 }
 export function skillGear(damageMul: number, refMul = 1): number {
   return Math.max(SKILL_GEAR.min, Math.min(SKILL_GEAR.max, damageMul / Math.max(0.1, refMul)))
 }
@@ -92,7 +92,7 @@ export const SKILL_REF_MUL: Record<number, number> = { 0: 1.1, 1: 1.5, 2: 2.1, 3
  * "스킬도 총알 한발 수준도 안 돼"): on normals the number was just their max HP (a 374-HP slime read
  * 393 next to a geared crit of 500+). Elites and the boss still stop at SKILL_CAP.
  */
-export const SKILL_SHOTS = 8
+export const SKILL_SHOTS = 3
 export function skillBite(b: Pick<SkillBody, 'tone' | 'maxHp'>, kind: SkillKind, rank: number, gear: number, share = 1, floor = 0): number {
   const t = SKILL_BITE[kind]
   if (b.tone === 'n') return Math.max(Math.ceil(b.maxHp * t.n * share), Math.round(floor * share))

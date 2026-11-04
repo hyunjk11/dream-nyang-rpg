@@ -125,7 +125,7 @@ export const GUN_PROFILES: Record<WeaponKind, GunProfile> = {
     burstRest: 0.3,
     pellets: 1,
     /** Was 17: with the star proc and burst crits it out-damaged the water gun 2:1. */
-    damage: 13,
+    damage: 21,
     spreadMin: 0.002,
     spreadMax: 0.014,
     bloomPerShot: 0.12,
@@ -154,7 +154,7 @@ export const GUN_PROFILES: Record<WeaponKind, GunProfile> = {
     burst: 0,
     burstRest: 0,
     pellets: 1,
-    damage: 88,
+    damage: 130,
     spreadMin: 0.0005,
     spreadMax: 0.003,
     bloomPerShot: 0.6,

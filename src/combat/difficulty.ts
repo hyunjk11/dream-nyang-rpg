@@ -23,7 +23,7 @@ export const DIFFICULTY = {
      * died in 0.1-0.4 s. Now a regular foe takes about 2-3 s of sustained fire from a typical player at
      * its depth (starter water gun on depth 1 floor 1: ~3 s), a knight ~5 s.
      */
-    hp: 9,
+    hp: 8.6,
     /** Was 0.62: tougher foes hit a little softer, so a fight lasts longer without being deadlier. */
     /** Was 0.36: fights last ~8× longer, so each swing lands softer and less often (cooldown 1.45 → 2.1 s). 0.18 → 0.15 to smooth depth 3. */
     damage: 0.15,
@@ -59,7 +59,7 @@ export const DIFFICULTY = {
   },
   /** The sewer boss (multipliers on BOSS). */
   /** hp was 2 (a ~10 s boss): now ~60-90 s of fire from a typical player at that depth. */
-  boss: { hp: 20, damage: 0.55, orbSpeed: 0.95, ringCount: 0.85 },
+  boss: { hp: 15, damage: 0.55, orbSpeed: 0.95, ringCount: 0.85 },
   /**
    * The delve: depth (act) → floors 1..3 + a boss floor. Depth 1, floor 1 is exactly the old
    * sewer (all multipliers 1, wave roster from wave 1); everything after creeps up gently.
@@ -68,10 +68,10 @@ export const DIFFICULTY = {
     /** Normal floors per depth before the boss floor. */
     floors: 3,
     /** Foe hp / damage growth per extra floor inside a depth (hp +50%: gear and levels grow fast; damage +4%). */
-    hpPerFloor: 0.5,
+    hpPerFloor: 0.08,
     damagePerFloor: 0.04,
     /** ...and per extra depth: hp ×2.35 each depth (geometric, like the gear), damage +8% (was 14%: depth 3 was a wall in the sim). */
-    hpDepthGrowth: 2.35,
+    hpDepthGrowth: 1.3,
     damagePerDepth: 0.08,
     /** Floors start this many waves further into the roster (floor 1 of depth 1 = wave 1). */
     wavesPerFloor: 1,
@@ -94,7 +94,7 @@ export const DIFFICULTY = {
     /** Nest pipe hp (×foe hp scale). Roughly five slimes of water. */
     nestHp: 2000,
     /** Boss hp growth per depth (×1.75 each, geometric) and damage growth (+20%). */
-    bossHpGrowth: 1.75,
+    bossHpGrowth: 1.17,
     bossDamagePerDepth: 0.2,
     /** Gold drop growth per depth. */
     goldPerDepth: 0.35,

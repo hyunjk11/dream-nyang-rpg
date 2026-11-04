@@ -127,7 +127,7 @@ export interface FieldNeeds {
 }
 
 /** Field foes use depth 1 floor 2; its bloom is a smaller boss than the delve's (chapter-2 gear). */
-export const FIELD_BOSS_HP = 0.6
+export const FIELD_BOSS_HP = 1.05
 function fieldScale(): FloorScale {
   const s = floorScale(1, 2)
   return { ...s, boss: { ...s.boss, hp: FIELD_BOSS_HP } }
