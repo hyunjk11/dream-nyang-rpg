@@ -117,7 +117,7 @@ describe('아이템 레벨 (iLv)', () => {
     const a = { ...makeItem('gun_water', 'rare', () => 0.3, 3), itemLevel: undefined } as unknown as ItemInstance
     save.items.push(a)
     const b = { ...makeItem('gun_water', 'rare', () => 0.4, 3), uid: 'stash-b', itemLevel: -2 } as ItemInstance
-    save.town = { scrolls: 0, stock: [], stockAt: -1, buyback: [], stash: [b], contracts: [], boardAt: -1, contractsDone: 0 }
+    save.town = { scrolls: 0, stock: [], stockAt: -1, buyback: [], stash: [b], contracts: [], boardAt: -1, contractsDone: 0, contractRuns: {} }
     migrateSave(save)
     expect(save.items.find((i) => i.uid === a.uid)?.itemLevel).toBe(5)
     expect(townOf(save).stash[0].itemLevel).toBe(5)

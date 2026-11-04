@@ -7,7 +7,7 @@
  * Every change goes through sim/ (town, workshop, contracts); the host re-applies the build.
  */
 import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
-import { boardOf, claimContract, contractTitle, dropContract, rewardText, takeContract, type Contract } from '../sim/contracts'
+import { REPEAT_ICON, boardOf, claimContract, contractRuns, contractTitle, dropContract, rewardText, runsText, takeContract, type Contract } from '../sim/contracts'
 import { addItem, bagItems, findItem, isEquipped, slotFor } from '../sim/inventory'
 import { formatAffix, ilvText, itemLines, itemName, itemPower, plusOf, sellValue, upgradeMul } from '../sim/loot'
 import { fillCell, ilvRow, nameTitle } from './itemcell'
@@ -572,13 +572,17 @@ export class TownUI {
     body.append(list)
     this.renderChapter(save, list)
     const board = boardOf(save)
+    const head = el('div', 'town-repeat-head')
+    head.id = 'board-repeat-head'
+    head.append(el('b', '', `${REPEAT_ICON} 반복 의뢰 · 하수도`), el('small', '', '끝내고 보상을 받아도 다음 원정 뒤 새로 붙어. 이야기 퀘스트가 HUD 에 먼저 보여.'))
+    list.append(head)
     board.forEach((c, i) => list.append(this.contractCard(save, c, i)))
     const foot = el('div', 'inv-actions')
     foot.append(this.button('이야기 퀘스트 보기', () => {
       this.close()
       this.host.openStory()
     }, { id: 'board-story' }))
-    foot.append(el('small', 'town-sub', `완료한 의뢰 ${townOf(save).contractsDone}개 · 맡지 않은 의뢰는 하수도에 다녀오면 바뀌어.`))
+    foot.append(el('small', 'town-sub', `${REPEAT_ICON} 반복 의뢰 완료 ${townOf(save).contractsDone}회 · 맡지 않은 의뢰는 하수도에 다녀오면 바뀌어.`))
     list.append(foot)
   }
 
@@ -633,10 +637,12 @@ export class TownUI {
   }
 
   private contractCard(save: SaveData, c: Contract, i: number): HTMLElement {
-    const card = el('div', `town-contract s-${c.status}`)
+    const card = el('div', `town-contract repeat s-${c.status}`)
     card.dataset.id = c.id
     card.dataset.kind = c.kind
-    card.append(el('b', '', contractTitle(c)))
+    const runs = runsText(contractRuns(save, c.kind))
+    card.append(el('span', 'repeat-badge', `${REPEAT_ICON} 반복${runs ? ` · ${runs}` : ''}`))
+    card.append(el('b', '', `${REPEAT_ICON} ${contractTitle(c)}`))
     card.append(el('small', '', `보상: ${rewardText(c.reward)}`))
     const bar = el('div', 'town-bar')
     const fill = el('span')
@@ -644,13 +650,13 @@ export class TownUI {
     bar.append(fill)
     card.append(bar, el('small', 'town-prog', `${c.progress}/${c.goal}`))
     const row = el('div', 'inv-actions')
-    if (c.status === 'offered') row.append(this.button('맡기', () => this.run(takeContract(save, c.id), '의뢰를 맡았어! 하수도에서 진행돼.', 'take'), { primary: true, id: `board-take-${i}` }))
+    if (c.status === 'offered') row.append(this.button('맡기', () => this.run(takeContract(save, c.id), `${REPEAT_ICON} 반복 의뢰를 맡았어! 하수도에서 진행돼.`, 'take'), { primary: true, id: `board-take-${i}` }))
     else if (c.status === 'active') row.append(this.button('그만두기', () => this.run({ ok: dropContract(save, c.id) }, '의뢰를 게시판에 돌려놨어.', 'take'), { id: `board-drop-${i}` }))
     else if (c.status === 'done')
       row.append(
         this.button('보상 받기', () => {
           const r = claimContract(save, c.id)
-          this.run(r, `의뢰 완료! ${rewardText(c.reward)}`, 'claim')
+          this.run(r, `${REPEAT_ICON} 반복 의뢰 완료! ${rewardText(c.reward)} · ${runsText(contractRuns(save, c.kind))}`, 'claim')
         }, { primary: true, id: `board-claim-${i}` }),
       )
     else row.append(el('small', 'town-sub', '보상을 받았어. 다음 원정 뒤 새 의뢰가 붙어.'))

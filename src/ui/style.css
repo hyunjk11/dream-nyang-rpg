@@ -912,3 +912,13 @@ body.compact .set-group { width: auto; }
 .fast-card button.salvage { background: #ffc7a8; }
 .fast-card button.cancel { min-height: 44px; font-size: 15px; background: #e8e0ec; }
 .fast-card button:disabled { opacity: 0.45; }
+/* feat/ui-audit-repeat: 🔁 반복 의뢰 (teal: apart from the story pink/violet and the 의뢰 amber). */
+#contract-hud > div.q.repeat { border-left-color: #4fb8a8; background: rgba(240, 252, 249, 0.92); }
+#contract-hud > div.q.repeat b { background: #dff5f0; color: #2a7a6c; }
+#quest-body article.q.repeat { border-left-color: #4fb8a8; }
+#quest-body .qrepeat { display: block; color: #2a7a6c; font-size: 12px; }
+.town-repeat-head { display: flex; flex-direction: column; gap: 2px; margin: 10px 0 2px; padding: 6px 12px; border-radius: 14px; background: #e9f8f4; }
+.town-repeat-head b { font: 400 16px "Jua", sans-serif; color: #2a7a6c; }
+.town-repeat-head small { font-size: 12px; color: #4a7a70; }
+.town-contract.repeat { border-left: 5px solid #4fb8a8; }
+.town-contract .repeat-badge { align-self: flex-start; padding: 1px 8px; border-radius: 999px; background: #dff5f0; color: #2a7a6c; font: 400 12px "Jua", sans-serif; }

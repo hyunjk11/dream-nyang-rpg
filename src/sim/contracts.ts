@@ -155,6 +155,7 @@ export function claimContract(save: SaveData, id: string): { ok: boolean; reason
   if (c.status !== 'done') return { ok: false, reason: '아직 끝나지 않은 의뢰야.', result: emptyResult() }
   c.status = 'claimed'
   t.contractsDone += 1
+  t.contractRuns[c.kind] = (t.contractRuns[c.kind] ?? 0) + 1
   save.gold += c.reward.gold
   for (const [m, n] of Object.entries(c.reward.mats)) save.materials[m] = (save.materials[m] ?? 0) + n
   const result = gainXp(save, c.reward.xp)
@@ -168,6 +169,17 @@ export function dropContract(save: SaveData, id: string): boolean {
   c.status = 'offered'
   c.progress = 0
   return true
+}
+
+/** 🔁 Board contracts come back after every trip: the repeatable quests. */
+export const REPEAT_ICON = '🔁'
+/** Times this kind of contract was turned in. */
+export function contractRuns(save: SaveData, kind: ContractKind): number {
+  return townOf(save).contractRuns[kind] ?? 0
+}
+/** "완료 3회" (or '' before the first). */
+export function runsText(n: number): string {
+  return n > 0 ? `완료 ${n}회` : ''
 }
 
 export function contractTitle(c: Pick<Contract, 'kind' | 'depth' | 'goal'>): string {

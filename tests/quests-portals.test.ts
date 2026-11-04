@@ -9,7 +9,7 @@ import { floorLabel, portalChoices } from '../src/sim/delve'
 import { rng } from '../src/world/dungeon/maze'
 import type { SaveData } from '../src/sim/types'
 
-const ORDER = { main: 0, story: 1, bounty: 2 } as const
+const ORDER = { main: 0, story: 1, bounty: 2, repeat: 3 } as const
 function mongsilSave(): SaveData {
   const s = freshSave()
   skipGuide(s)
