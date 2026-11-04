@@ -487,7 +487,8 @@ export class InventoryUI {
     const picked = this.pickR[act]
     for (const r of BULK_RARITIES) {
       const label = el('label', 'bulk-r')
-      label.style.setProperty('--rar', RARITY_COLOR[r])
+      // 보통 is near-white in the ladder: give its checkbox label a readable grey.
+      label.style.setProperty('--rar', r === 'common' ? '#8a7a90' : RARITY_COLOR[r])
       const box = el('input')
       box.type = 'checkbox'
       box.checked = picked.includes(r)
