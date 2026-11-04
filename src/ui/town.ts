@@ -51,6 +51,8 @@ export interface TownHost {
   viewed?(panel: TownPanel): void
   /** A chapter quest was turned in (rewards to show; the chapter it cleared, or 0). */
   chapterClaimed?(result: MutationResult, cleared: number): void
+  /** ⚡ 가방 판매 모드 / 분해 모드: close the panel, open the bag in that mode. */
+  openBag?(mode: 'sell' | 'salvage'): void
 }
 
 const TITLE: Record<TownPanel, string> = { shop: '포포 상점', workshop: '키키의 총 공방', board: '퀘스트 게시판', stash: '별하의 보관함', codex: '유니크 도감' }
@@ -336,6 +338,7 @@ export class TownUI {
     const bagHead = el('h3', '', '팔기 · 내 가방 ')
     bagHead.append(el('small', '', `${bag.length}/${BAG_CAP}`))
     left.append(bagHead)
+    if (this.host.openBag) left.append(this.button('⚡ 가방 판매 모드로 (누르면 바로 판매 · 일괄 판매)', () => this.host.openBag?.('sell'), { primary: true, id: 'shop-fastsell' }))
     left.append(bag.length ? this.grid(bag, 'bag') : el('p', 'inv-empty', '팔 물건이 없어. (착용 중인 장비는 가방에서 먼저 벗어 줘)'))
 
     const back = townOf(save).buyback
@@ -406,6 +409,7 @@ export class TownUI {
     left.append(el('h3', '', '맡길 물건 (착용 중 → 가방 → 보관함)'))
     left.append(this.grid(items, 'work'))
     left.append(el('p', 'inv-empty', '강화: 총만 · 옵션 재굴림: 모든 장비 · 속성 변경: 속성 옵션이 붙은 총'))
+    if (this.host.openBag) left.append(this.button('⚡ 가방 분해 모드로 (누르면 바로 분해 · 보통 전부 분해)', () => this.host.openBag?.('salvage'), { warn: true, id: 'work-fastsalvage' }))
     const item = this.picked?.from === 'work' ? items.find((i) => i.uid === this.picked?.key) : undefined
     if (!item) {
       right.append(el('p', 'inv-empty', '물건을 골라 줘.'))

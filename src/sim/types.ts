@@ -59,6 +59,8 @@ export interface ItemInstance {
   plus?: number
   /** 총 개조: mod parts slotted into this gun (absent = none; old saves). */
   mods?: ItemInstance[]
+  /** 🔒 잠금: fast sell / salvage (one click, modes, bulk) leave it alone. */
+  locked?: boolean
 }
 
 export type QuestStatus = 'inactive' | 'active' | 'completed' | 'turnedIn'
