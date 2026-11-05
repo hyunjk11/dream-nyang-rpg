@@ -32,7 +32,9 @@ import type { Action, MutationResult } from './sim/types'
 import { Vfx } from './core/vfx'
 import { HitStop } from './core/hitstop'
 import { AUTO_RISE, LAST_GATE_KEY, QOL_KEY, autoSellPick, loadQol, markLast, shouldAutoCandy, type QolPrefs } from './sim/qol'
-import { huntAllowed, planHunt, stepAim, type HuntDrop, type HuntFoe, type HuntPlan, type HuntSkill, type HuntSkillKind } from './sim/autohunt'
+import { huntAllowed, huntIsTown, planHunt, stepAim, type HuntDrop, type HuntFoe, type HuntPlan, type HuntSkill, type HuntSkillKind } from './sim/autohunt'
+import type { HuntGrid } from './sim/huntpath'
+import { tileCentre, walkable, worldToTile } from './world/dungeon/maze'
 import { DETAIL, Quality } from './core/quality'
 import type { DungeonRun } from './world/dungeon/run'
 import { Portal } from './world/dungeon/portal'
@@ -2198,9 +2200,20 @@ let lastHuntDash = -1e12
 
 /** Village, 몽실, and a floor parked behind the return portal are not hunting grounds. */
 function inSafeTown(): boolean {
-  if (run?.parked) return true
-  if (inMongsil()) return true
-  return !run && game.zone === 'village'
+  return huntIsTown({ parked: !!run?.parked, mongsil: inMongsil(), inRun: !!run, village: game.zone === 'village' })
+}
+
+/** Live maze tiles, so 자동 사냥 steps around corners instead of pushing into a wall. */
+function huntGrid(): HuntGrid | null {
+  if (!run || run.parked) return null
+  const maze = run.maze
+  return {
+    w: maze.w,
+    h: maze.h,
+    open: (x, y) => walkable(maze, x, y),
+    toTile: (x, z) => worldToTile(maze, x, z),
+    toWorld: (x, y) => tileCentre(maze, x, y),
+  }
 }
 
 function huntGate(): boolean {
@@ -2284,6 +2297,8 @@ function takeHunt(dt: number): HuntPlan | null {
     hp: hero.hp,
     maxHp: hero.maxHp,
     kind: stats.weaponKind,
+    paired: !!offGun(game.save),
+    grid: huntGrid(),
     foes: seen.foes,
     drops: seen.drops,
     skills: skillsNow,

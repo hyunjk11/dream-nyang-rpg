@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { HUNT_ENGAGE, HUNT_LOOT, aimAt, autoHuntAfterKey, huntAllowed, planHunt, standoff, stepAim, type HuntQuery, type HuntSkill } from '../src/sim/autohunt'
+import { engageFor } from '../src/data/guns'
+import { HUNT_ENGAGE, HUNT_LOOT, aimAt, autoHuntAfterKey, huntAllowed, huntIsTown, planHunt, stepAim, type HuntQuery, type HuntSkill } from '../src/sim/autohunt'
+import type { HuntGrid } from '../src/sim/huntpath'
 
 function query(over: Partial<HuntQuery> = {}): HuntQuery {
   return {
@@ -20,6 +22,27 @@ function query(over: Partial<HuntQuery> = {}): HuntQuery {
     manualZ: 0,
     sinceDash: 10,
     ...over,
+  }
+}
+
+/** 4 m tiles. Wall on (1,1) so the diagonal from (0,0) to (2,2) is blocked. */
+function cornerGrid(): HuntGrid {
+  return {
+    w: 4,
+    h: 4,
+    open: (x, y) => x >= 0 && y >= 0 && x < 4 && y < 4 && !(x === 1 && y === 1),
+    toTile: (x, z) => ({ x: Math.floor(x / 4), y: Math.floor(z / 4) }),
+    toWorld: (x, y) => ({ x: x * 4 + 2, z: y * 4 + 2 }),
+  }
+}
+
+function openRow(n: number): HuntGrid {
+  return {
+    w: n,
+    h: 3,
+    open: (x, y) => x >= 0 && y >= 0 && x < n && y < 3,
+    toTile: (x, z) => ({ x: Math.floor(x / 4), y: Math.floor(z / 4) }),
+    toWorld: (x, y) => ({ x: x * 4 + 2, z: y * 4 + 2 }),
   }
 }
 
@@ -51,14 +74,16 @@ describe('자동 사냥', () => {
     expect(autoHuntAfterKey(true, 'KeyR', false)).toBe(true)
   })
 
-  it('가까운 괴물 쪽으로 다가가 방아쇠를 당기고, 너무 멀면 쏘지 않는다', () => {
-    const near = planHunt(query({ foes: [{ x: 12, z: 0, r: 0.4, hp: 20, priority: 0 }] }))
+  it('가까운 괴물 쪽으로 다가가 방아쇠를 당기고, 사거리 밖은 쫓지 않는다', () => {
+    const water = engageFor('water', false)
+    const near = planHunt(query({ foes: [{ x: water.sweet + 4, z: 0, r: 0.4, hp: 20, priority: 0 }] }))
     expect(near.fire).toBe(true)
     expect(dot(near.wishX, near.wishZ, 1, 0)).toBeGreaterThan(0.7)
     expect(near.running).toBe(true)
-    const far = planHunt(query({ foes: [{ x: 0, z: 32, r: 0.4, hp: 20, priority: 0 }] }))
-    expect(far.fire).toBe(false)
-    expect(dot(far.wishX, far.wishZ, 0, 1)).toBeGreaterThan(0.7)
+    const past = planHunt(query({ foes: [{ x: 0, z: water.far + 8, r: 0.4, hp: 20, priority: 0 }] }))
+    expect(past.fire).toBe(false)
+    expect(past.wishX).toBe(0)
+    expect(past.wishZ).toBe(0)
     const gone = planHunt(query({ foes: [{ x: HUNT_ENGAGE + 5, z: 0, r: 0.4, hp: 20, priority: 0 }] }))
     expect(gone.fire).toBe(false)
     expect(gone.wishX).toBe(0)
@@ -73,13 +98,10 @@ describe('자동 사냥', () => {
     }))
     const aim = aimAt(0, 0, 8, 10)
     expect(picked.aimYaw).toBeCloseTo(aim.yaw, 5)
-    const dart = standoff('dart')
-    expect(dart.kite).toBeGreaterThan(standoff('water').kite)
-    expect(dart.fire).toBeGreaterThan(standoff('bubble').fire)
     const kite = planHunt(query({ kind: 'dart', foes: [{ x: 4, z: 0, r: 0.4, hp: 40, priority: 0 }] }))
     expect(kite.fire).toBe(true)
     expect(dot(kite.wishX, kite.wishZ, 1, 0)).toBeLessThan(-0.5)
-    const shotgun = planHunt(query({ kind: 'bubble', foes: [{ x: 7, z: 0, r: 0.4, hp: 20, priority: 0 }] }))
+    const shotgun = planHunt(query({ kind: 'bubble', foes: [{ x: 11, z: 0, r: 0.4, hp: 20, priority: 0 }] }))
     expect(shotgun.fire).toBe(true)
     expect(dot(shotgun.wishX, shotgun.wishZ, 1, 0)).toBeGreaterThan(0.5)
   })
@@ -98,8 +120,8 @@ describe('자동 사냥', () => {
     const far = planHunt(query({ drops: [{ x: HUNT_LOOT + 2, z: 0 }] }))
     expect(far.wishX).toBe(0)
     const fight = planHunt(query({
-      foes: [{ x: 8, z: 0, r: 0.4, hp: 10, priority: 0 }],
-      drops: [{ x: 1, z: 0 }],
+      foes: [{ x: engageFor('water').sweet + 6, z: 0, r: 0.4, hp: 10, priority: 0 }],
+      drops: [{ x: 6, z: 0 }],
     }))
     expect(fight.fire).toBe(true)
     expect(dot(fight.wishX, fight.wishZ, 1, 0)).toBeGreaterThan(0.5)
@@ -144,6 +166,68 @@ describe('자동 사냥', () => {
       foes: [{ x: 5, z: 0, r: 0.4, hp: 10, priority: 1 }],
     }))
     expect(cooling.skill).toBe(-1)
+  })
+
+  it('사거리는 engageFor 하나다: sweet에 머물고 far 밖은 안 쫓는다', () => {
+    const dual = engageFor('water', true)
+    const solo = engageFor('water', false)
+    const dart = engageFor('dart')
+    const bubble = engageFor('bubble')
+    expect(dual.sweet).toBeLessThan(solo.sweet)
+    expect(dual.far).toBeLessThan(solo.far)
+    expect(bubble.sweet).toBeLessThan(solo.sweet)
+    expect(dart.sweet).toBeGreaterThan(solo.sweet)
+    expect(dart.far).toBeGreaterThan(bubble.far)
+    const paired = planHunt(query({ kind: 'water', paired: true, foes: [{ x: 9, z: 0, r: 0.4, hp: 10, priority: 0 }] }))
+    const alone = planHunt(query({ kind: 'water', foes: [{ x: 9, z: 0, r: 0.4, hp: 10, priority: 0 }] }))
+    expect(dot(paired.wishX, paired.wishZ, 1, 0)).toBeGreaterThan(0.5)
+    expect(Math.abs(dot(alone.wishX, alone.wishZ, 1, 0))).toBeLessThan(0.35)
+    const hold = planHunt(query({ kind: 'dart', foes: [{ x: 22, z: 0, r: 0.4, hp: 40, priority: 0 }] }))
+    expect(hold.fire).toBe(true)
+    expect(Math.abs(dot(hold.wishX, hold.wishZ, 1, 0))).toBeLessThan(0.35)
+    const reach = planHunt(query({ kind: 'dart', foes: [{ x: 34, z: 0, r: 0.4, hp: 40, priority: 0 }] }))
+    expect(dot(reach.wishX, reach.wishZ, 1, 0)).toBeGreaterThan(0.5)
+  })
+
+  it('미로 모서리에서는 벽 타일이 아니라 열린 칸으로 걷고, 벽 너머는 쏘지 않는다', () => {
+    const grid = cornerGrid()
+    const plan = planHunt(query({
+      kind: 'bubble',
+      px: 2,
+      pz: 2,
+      grid,
+      foes: [{ x: 10, z: 10, r: 0.4, hp: 20, priority: 0 }],
+    }))
+    expect(plan.fire).toBe(false)
+    expect(Math.min(Math.abs(plan.wishX), Math.abs(plan.wishZ))).toBeLessThan(0.2)
+    const step = grid.toTile(2 + plan.wishX * 4, 2 + plan.wishZ * 4)
+    expect(grid.open(step.x, step.y)).toBe(true)
+    expect(step.x === 1 && step.y === 1).toBe(false)
+  })
+
+  it('던전에서는 far 밖의 무리까지 길을 따라가고, 열린 땅에서는 그 밖에서 멈춘다', () => {
+    const grid = openRow(16)
+    const seek = planHunt(query({
+      kind: 'bubble',
+      px: 2,
+      pz: 2,
+      grid,
+      foes: [{ x: 40, z: 2, r: 0.4, hp: 20, priority: 0 }],
+    }))
+    expect(seek.fire).toBe(false)
+    expect(seek.wishX).toBeGreaterThan(0.5)
+    const idle = planHunt(query({ kind: 'bubble', foes: [{ x: 40, z: 0, r: 0.4, hp: 20, priority: 0 }] }))
+    expect(idle.wishX).toBe(0)
+    expect(idle.fire).toBe(false)
+  })
+
+  it('싸우는 중인 런은 마을이 아니고, 세워 둔 층·몽실·마을은 쉰다', () => {
+    expect(huntIsTown({ parked: false, mongsil: false, inRun: true, village: false })).toBe(false)
+    expect(huntIsTown({ parked: false, mongsil: false, inRun: true, village: true })).toBe(false)
+    expect(huntIsTown({ parked: true, mongsil: false, inRun: true, village: false })).toBe(true)
+    expect(huntIsTown({ parked: false, mongsil: true, inRun: true, village: false })).toBe(true)
+    expect(huntIsTown({ parked: false, mongsil: false, inRun: false, village: true })).toBe(true)
+    expect(huntAllowed({ on: true, alive: true, talking: false, menu: false, town: huntIsTown({ parked: false, mongsil: false, inRun: true, village: false }), recalling: false })).toBe(true)
   })
 
   it('시선은 목표 쪽으로만 조금씩 돈다', () => {
