@@ -17,7 +17,7 @@ import { buildOf, learn, learnBlock, rank, respec, respecCost } from '../sim/ski
 import { computeStats, type ComputedStats } from '../sim/stats'
 import { BAG_CAP, EQUIP_SLOTS, RARITY_COLOR, RARITY_KO, SLOT_KO, type Rarity, type EquipSlot, type ItemInstance, type SaveData } from '../sim/types'
 import { itemRarityKo } from '../sim/rarity'
-import { attachMod, detachMod, fitPreview, gunMods, isGun, isMod, MAX_MOD_SLOTS, modLabel, modSlots } from '../sim/mods'
+import { attachMod, detachMod, fitPreview, gunMods, HAND_KO, isGun, isMod, MAX_MOD_SLOTS, modLabel, modSlots, partTarget, wornGun, type PartHand } from '../sim/mods'
 import { iconSvg } from './icons'
 import { LEVEL_CAP } from '../data/tree'
 import { skillSvg } from './skillicons'
@@ -124,6 +124,8 @@ export class InventoryUI {
   private undoStack: UndoEntry[] = []
   /** The bag item under the mouse (S / X / C hotkeys act on it). */
   private hover: string | null = null
+  /** Which worn gun bag parts go into (주 손 / 보조 손). Tapping a gun or a hand chip sets it. */
+  partHand: PartHand = 'weapon'
   private pickR = loadPick()
   private longTimer = 0
   private longFired = false
@@ -257,6 +259,8 @@ export class InventoryUI {
         return
       }
       this.picked = item.uid
+      const hand = (['weapon', 'offhand'] as const).find((s) => save.equipment[s] === item.uid)
+      if (hand && isGun(item)) this.partHand = hand
       this.host.sfx('ui')
       this.render()
     })
@@ -314,24 +318,37 @@ export class InventoryUI {
       return
     }
     const item = findItem(save, id)
-    if (isMod(item)) this.fit(id)
+    if (isMod(item)) this.fit(id, this.partHand)
     // 쌍권총: right-click a one-handed gun while the main hand holds one → into the off hand.
     else if (item && oneHanded(item) && oneHanded(findItem(save, save.equipment.weapon))) this.equip(id, 'offhand')
     else if (item && ITEMS[item.defId]?.slot) this.equip(id)
   }
 
-  /** 총 개조 from the bag: fit a part into the worn gun (same kind swaps back to the bag). */
-  fit(partUid: string): void {
+  /**
+   * 총 개조 from the bag. `hand` is strict: a tap on 보조 손 never silently lands on the main gun.
+   * The toast always names the hand and the gun, or says why it didn't fit.
+   */
+  fit(partUid: string, hand: PartHand = this.partHand): void {
     const save = this.host.save()
-    const gun = findItem(save, save.equipment.weapon)
     const part = findItem(save, partUid)
-    if (!gun || !part) return
-    const r = attachMod(save, gun.uid, partUid)
+    if (!part || !isMod(part)) {
+      this.host.toast('가방에 그 부품이 없어.')
+      return
+    }
+    this.partHand = hand
+    const target = partTarget(save, hand, true)
+    if (!target.gun) {
+      this.host.toast(target.note ?? '총을 먼저 차 줘.')
+      this.render()
+      return
+    }
+    const r = attachMod(save, target.gun.uid, partUid)
     if (!r.ok) this.host.toast(r.reason ?? '못 끼워.')
     else {
-      this.host.toast(r.swapped ? `${itemName(part)} 장착! ${itemName(r.swapped)}은(는) 가방으로.` : `${itemName(part)} 장착! 총이 달라졌어.`)
+      const where = `${HAND_KO[target.hand]} ${itemName(target.gun)}`
+      this.host.toast(r.swapped ? `${where}에 ${itemName(part)} 장착! ${itemName(r.swapped)}은(는) 가방으로.` : `${where}에 ${itemName(part)} 장착!`)
       this.host.sfx('pop')
-      this.picked = gun.uid
+      this.picked = target.gun.uid
       this.host.changed()
     }
     this.render()
@@ -384,13 +401,13 @@ export class InventoryUI {
     if (slot) {
       if (worn === slot) return
       const def = findItem(save, id)
-      if (slot === 'weapon' && isMod(def)) {
-        this.fit(id)
+      if ((slot === 'weapon' || slot === 'offhand') && isMod(def)) {
+        this.fit(id, slot)
         return
       }
       const fits = !!def && slotFits(ITEMS[def.defId]?.slot, slot)
       if (!fits) {
-        this.host.toast('그 칸에는 못 끼워.')
+        this.host.toast(isMod(def) ? '부품은 주 손 · 보조 손 총에만 끼울 수 있어.' : '그 칸에는 못 끼워.')
         return
       }
       this.picked = id
@@ -429,8 +446,10 @@ export class InventoryUI {
       if (slot === 'offhand' && !save.equipment.offhand) {
         const twoHand = !oneHanded(findItem(save, save.equipment.weapon))
         c.classList.toggle('blocked', twoHand)
-        c.dataset.tip = twoHand ? '보조 손\n양손 총이 두 손을 다 쓰고 있어.' : '보조 손\n한 손 총(물총)을 하나 더 차면 쌍권총! 오른쪽 클릭 · 끌어다 놓기 · \'보조 손에 차기\''
+        c.dataset.tip = twoHand ? '보조 손\n양손 총이 두 손을 다 쓰고 있어.' : '보조 손\n한 손 총(물총)을 하나 더 차면 쌍권총! 부품은 이 칸에 끌어다 놓으면 보조 손 총에 끼워져.'
       }
+      const picked = this.picked ? findItem(save, this.picked) : undefined
+      if (picked && isMod(picked) && (slot === 'weapon' || slot === 'offhand') && this.partHand === slot) c.classList.add('part-target')
       if (!c.dataset.tip) c.dataset.tip = `${SLOT_KO[slot]}\n비어 있어. 가방에서 끌어다 놓으면 장착!`
       this.dropZone(c, slot)
       slots.append(c)
@@ -755,6 +774,30 @@ export class InventoryUI {
     box.append(hands)
   }
 
+  /** Two big chips: which worn gun the open part will go into. */
+  private handPicks(save: SaveData): HTMLElement {
+    const row = el('div', 'hand-picks')
+    row.id = 'inv-hands-pick'
+    const main = wornGun(save, 'weapon')
+    for (const hand of ['weapon', 'offhand'] as const) {
+      const gun = wornGun(save, hand)
+      const b = el('button', `hand-pick${this.partHand === hand ? ' on' : ''}${gun ? '' : ' empty'}`)
+      b.type = 'button'
+      b.id = `inv-hand-${hand}`
+      const empty = hand === 'offhand' && main && !oneHanded(main) ? '양손 총이 사용 중' : '비어 있음 · 눌러서 안내'
+      b.append(el('b', '', HAND_KO[hand]), el('small', '', gun ? itemName(gun) : empty))
+      b.addEventListener('click', () => {
+        this.partHand = hand
+        const why = partTarget(save, hand, true)
+        if (!why.gun && why.note) this.host.toast(why.note)
+        this.host.sfx('ui')
+        this.render()
+      })
+      row.append(b)
+    }
+    return row
+  }
+
   private renderDetail(save: SaveData, box: HTMLElement): void {
     box.replaceChildren()
     const item = this.picked ? findItem(save, this.picked) : undefined
@@ -770,26 +813,44 @@ export class InventoryUI {
     const ul = el('ul', 'inv-lines')
     for (const line of itemLines(item).slice(2, -1)) ul.append(el('li', '', line))
     box.append(ul)
-    const wornGun = findItem(save, save.equipment.weapon)
-    if (isGun(item) && modSlots(item) > 0) {
-      box.append(el('h4', '', `개조 칸 ${gunMods(item).length}/${modSlots(item)}${worn ? ' · 칸을 누르면 빼기' : ''}`))
-      box.append(this.sockets(item, -1, worn))
+    const shownGun = isGun(item) ? item : null
+    if (shownGun && modSlots(shownGun) > 0) {
+      box.append(el('h4', '', `개조 칸 ${gunMods(shownGun).length}/${modSlots(shownGun)}${worn ? ' · 칸을 누르면 빼기' : ''}`))
+      box.append(this.sockets(shownGun, -1, worn))
     }
     let fitBtn: (() => void) | null = null
-    if (isMod(item) && !worn && wornGun) {
-      const pv = fitPreview(wornGun, item)
-      box.append(el('h4', '', `${itemName(wornGun)}에 끼우면`))
-      box.append(this.sockets(wornGun, pv.block ? -1 : pv.slot, true))
-      const p = el('p', 'inv-fit')
-      p.id = 'inv-fit-preview'
-      if (pv.block) p.append(el('span', 'lose', pv.block))
-      else {
-        p.append(pv.swap ? `${pv.slot + 1}번 칸 ${modLabel(pv.swap)}과(와) 바꿔 · ` : `${pv.slot + 1}번 빈 칸에 끼워 · `, `${pv.cost}골드`)
-        if (pv.gain.length) p.append(' · ', el('span', 'gain', `✦ 조합 켜짐: ${pv.gain.map((c) => c.name).join(', ')}`))
-        if (pv.lose.length) p.append(' · ', el('span', 'lose', `✖ 조합 꺼짐: ${pv.lose.map((c) => c.name).join(', ')}`))
+    let fitLabel = ''
+    let fitBlocked: string | null = null
+    if (isMod(item) && !worn) {
+      box.append(el('h4', '', '어느 총에 끼울까'))
+      box.append(this.handPicks(save))
+      const target = partTarget(save, this.partHand, true)
+      if (!target.gun) {
+        const p = el('p', 'inv-fit')
+        p.id = 'inv-fit-preview'
+        p.append(el('span', 'lose', target.note ?? '총을 먼저 차 줘.'))
+        box.append(p)
+        fitBlocked = target.note ?? '총을 먼저 차 줘.'
+      } else {
+        const pv = fitPreview(target.gun, item)
+        box.append(el('h4', '', `${HAND_KO[this.partHand]} · ${itemName(target.gun)}에 끼우면`))
+        box.append(this.sockets(target.gun, pv.block ? -1 : pv.slot, true))
+        const p = el('p', 'inv-fit')
+        p.id = 'inv-fit-preview'
+        if (pv.block) p.append(el('span', 'lose', pv.block))
+        else {
+          p.append(pv.swap ? `${pv.slot + 1}번 칸 ${modLabel(pv.swap)}과(와) 바꿔 · ` : `${pv.slot + 1}번 빈 칸에 끼워 · `, `${pv.cost}골드`)
+          if (pv.gain.length) p.append(' · ', el('span', 'gain', `✦ 조합 켜짐: ${pv.gain.map((c) => c.name).join(', ')}`))
+          if (pv.lose.length) p.append(' · ', el('span', 'lose', `✖ 조합 꺼짐: ${pv.lose.map((c) => c.name).join(', ')}`))
+        }
+        box.append(p)
+        if (pv.block) fitBlocked = pv.block
+        else if (save.gold < pv.cost) fitBlocked = `골드가 모자라. ${pv.cost} 필요해.`
+        else {
+          fitLabel = `${HAND_KO[this.partHand]}에 끼우기 ${pv.cost}골드`
+          fitBtn = () => this.fit(item.uid, this.partHand)
+        }
       }
-      box.append(p)
-      if (!pv.block) fitBtn = () => this.fit(item.uid)
     }
     if (!worn && def?.slot) {
       const target = slotFor(save, item)
@@ -818,7 +879,11 @@ export class InventoryUI {
       return b
     }
     if (fitBtn) {
-      const fb = btn(`총에 끼우기 ${fitPreview(wornGun!, item).cost}골드`, fitBtn, 'primary', save.gold < fitPreview(wornGun!, item).cost)
+      const fb = btn(fitLabel, fitBtn, 'primary')
+      fb.id = 'inv-fit'
+    } else if (fitBlocked) {
+      const why = fitBlocked
+      const fb = btn('끼울 수 없어 · 이유 보기', () => this.host.toast(why), 'warn')
       fb.id = 'inv-fit'
     }
     if (worn) {
