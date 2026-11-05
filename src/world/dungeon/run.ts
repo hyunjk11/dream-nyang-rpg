@@ -114,6 +114,7 @@ import { NAMED } from '../../sim/chapters'
 import type { HordeKind } from './horde'
 import { Chest } from './chest'
 import { nearest, route, type WaypointGoal } from '../../sim/waypoint'
+import type { HuntPlan } from '../../sim/autohunt'
 
 /** What the sewer borrows from the hub game each frame. */
 export interface RunHost {
@@ -179,6 +180,13 @@ export interface RunHost {
   stairsBlock?: () => string | null
   /** The game's one shoulder rig + gun (shared with the town); the run makes its own if absent. */
   shooter?: Shooter
+  /**
+   * 자동 사냥 for this frame, or null to leave the stick and the trigger alone.
+   * The host aims the shared view before returning; this only applies move, fire and a skill.
+   */
+  hunt?: (dt: number) => HuntPlan | null
+  /** Hotbar slot the hunt wants cast, after the crosshair ray is fresh. */
+  skill?: (slot: number) => void
 }
 
 /** Sewer fog: soft lavender haze that hides the far tunnels. */
@@ -846,14 +854,18 @@ export class DungeonRun {
     const { hero } = this.host
     this.time += dt
     const move = axis()
-    const wish = this.shooter.rig.wish(move.x, move.y)
-    const dash = consumeDash()
+    const hunt = this.host.hunt?.(dt) ?? null
+    const auto = hunt?.active ? hunt : null
+    const wish = auto ? { x: auto.wishX, z: auto.wishZ } : this.shooter.rig.wish(move.x, move.y)
+    let dash = consumeDash()
+    if (auto?.dash) dash = true
     if (dash && hero.alive) {
       this.host.sfx('dash')
       this.host.vfx.dust(hero.object.position, 2.4)
     }
+    const firing = (pad.fire || !!auto?.fire) && hero.alive
     // She squares up to last frame's crosshair point; the shot itself uses this frame's.
-    hero.update(dt, { wishX: wish.x, wishZ: wish.z, aim: this.aim, firing: pad.fire && hero.alive, dash, run: runningHeld(), face: true })
+    hero.update(dt, { wishX: wish.x, wishZ: wish.z, aim: this.aim, firing, dash, run: runningHeld() || !!auto?.running, face: true })
     const p = hero.object.position
     const out = collideCircle(this.maze, p.x, p.z, 0.34)
     p.x = out.x
@@ -868,7 +880,8 @@ export class DungeonRun {
     hero.object.visible = this.shooter.rig.place(dt, p.x, p.y, p.z, this.ray)
     hero.fade(this.shooter.rig.ghost)
     this.shooter.rig.aimFrom(this.world, dt)
-    this.shooter.update(dt, pad.fire, this.world)
+    this.shooter.update(dt, firing, this.world)
+    if (auto && auto.skill >= 0) this.host.skill?.(auto.skill)
     const camera = this.host.camera
     const t1 = performance.now()
     this.hordeView.sync(this.horde, camera, this.time)

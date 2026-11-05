@@ -118,7 +118,7 @@ describe('자동 판매 · 자동 사탕 · 설정 기억', () => {
   it('저장된 설정을 읽고, 깨진 값은 기본값으로 되돌린다', () => {
     expect(loadQol(null)).toEqual(QOL_DEFAULTS)
     expect(loadQol('{oops')).toEqual(QOL_DEFAULTS)
-    expect(loadQol(JSON.stringify({ autoSellCommon: true, autoCandy: false, autoCandyAt: 0.5 }))).toEqual({ autoSellCommon: true, autoCandy: false, autoCandyAt: 0.5, autoAim: false, shake: true })
+    expect(loadQol(JSON.stringify({ autoSellCommon: true, autoCandy: false, autoCandyAt: 0.5 }))).toEqual({ autoSellCommon: true, autoCandy: false, autoCandyAt: 0.5, autoAim: false, shake: true, autoHunt: false })
     expect(loadQol(null, true).autoAim).toBe(true)
     expect(loadQol(JSON.stringify({ autoAim: false }), true).autoAim).toBe(false)
     expect(loadQol(JSON.stringify({ autoCandyAt: 7 })).autoCandyAt).toBe(QOL_DEFAULTS.autoCandyAt)
