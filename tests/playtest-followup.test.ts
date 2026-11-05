@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { freshSave } from '../src/sim/mutate'
-import { GUIDE, GUIDE_DUST, GUIDE_PLUS1_GOLD, guideEvent, guideStep } from '../src/sim/chapters'
+import { GUIDE, GUIDE_DUST, GUIDE_PLUS1_GOLD, guideEvent, guideStep, skipGuide } from '../src/sim/chapters'
 import { canPay, upgradeCost } from '../src/sim/workshop'
 import { engageFor } from '../src/data/guns'
 import { EARLY_SHOT, RANGED, SHOT_STYLES, hordeHp } from '../src/world/dungeon/horde'
@@ -27,6 +27,55 @@ describe('플레이테스트: 첫 강화', () => {
     const cost = upgradeCost(gun)!
     expect(cost).toEqual({ gold: 28, mats: { dream_dust: 1 } })
     expect(canPay(save, cost)).toBe(true)
+  })
+
+  it('가이드를 건너뛰어도 공방 +1을 낼 수 있고, 이미 있는 꿈가루는 더 쌓지 않는다', () => {
+    const fresh = freshSave()
+    fresh.gold = 0
+    fresh.materials.dream_dust = 0
+    skipGuide(fresh)
+    expect(fresh.materials.dream_dust).toBeGreaterThanOrEqual(GUIDE_DUST)
+    expect(fresh.gold).toBeGreaterThanOrEqual(GUIDE_PLUS1_GOLD)
+    const gun = fresh.items.find((i) => i.uid === fresh.equipment.weapon)!
+    expect(canPay(fresh, upgradeCost(gun)!)).toBe(true)
+    // A second skip (guide already done) must not hand over another pinch.
+    skipGuide(fresh)
+    expect(fresh.materials.dream_dust).toBe(GUIDE_DUST)
+    expect(fresh.gold).toBe(GUIDE_PLUS1_GOLD)
+
+    const topped = freshSave()
+    topped.materials.dream_dust = 1
+    topped.gold = 10
+    skipGuide(topped)
+    expect(topped.materials.dream_dust).toBe(GUIDE_DUST)
+    expect(topped.gold).toBe(GUIDE_PLUS1_GOLD)
+
+    const ahead = freshSave()
+    ahead.materials.dream_dust = GUIDE_DUST + 3
+    ahead.gold = 88
+    skipGuide(ahead)
+    expect(ahead.materials.dream_dust).toBe(GUIDE_DUST + 3)
+    expect(ahead.gold).toBe(88)
+    skipGuide(ahead)
+    expect(ahead.materials.dream_dust).toBe(GUIDE_DUST + 3)
+    expect(ahead.gold).toBe(88)
+  })
+
+  it('공방 선물을 이미 받은 뒤 건너뛰면 꿈가루가 두 배가 되지 않는다', () => {
+    const save = freshSave()
+    save.gold = 88
+    const rngn = rng(4)
+    for (let n = 0; n < 20 && guideStep(save)?.id !== 'workshop'; n += 1) {
+      const step = guideStep(save)!
+      guideEvent(save, { type: step.id, amount: step.goal }, rngn)
+    }
+    expect(guideStep(save)?.gift).toBe('dust')
+    const dust = save.materials.dream_dust
+    const gold = save.gold
+    expect(dust).toBeGreaterThanOrEqual(GUIDE_DUST)
+    skipGuide(save)
+    expect(save.materials.dream_dust).toBe(dust)
+    expect(save.gold).toBe(gold)
   })
 })
 

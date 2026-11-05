@@ -996,6 +996,14 @@ function showClearCard(): void {
   })
 }
 
+/** Skip toast. Mention 꿈가루 only when the starter purse actually rose. */
+function guideSkipToast(grant: { dust: boolean; gold: boolean }): string {
+  const tail = '게시판에서 챕터 2 퀘스트를 받아 봐!'
+  if (grant.dust) return `가이드를 건너뛰었어. 꿈가루를 챙겼어. ${tail}`
+  if (grant.gold) return `가이드를 건너뛰었어. 강화 골드를 챙겼어. ${tail}`
+  return `가이드를 건너뛰었어. ${tail}`
+}
+
 /** Existing players: offer the skip once. */
 function offerSkip(): void {
   const c = chaptersOf(game.save)
@@ -1008,8 +1016,8 @@ function offerSkip(): void {
   releaseLook()
   void chapterUI.skipCard().then((skip) => {
     if (skip) {
-      skipGuide(game.save)
-      toast('가이드를 건너뛰었어. 게시판에서 챕터 2 퀘스트를 받아 봐!', 'quest')
+      toast(guideSkipToast(skipGuide(game.save)), 'quest')
+      paintStats(game.save)
     } else {
       keepGuide(game.save)
       const step = guideStep(game.save)
@@ -1427,10 +1435,11 @@ document.getElementById('guide-skip')?.addEventListener('click', () => {
     toast('가이드 챕터는 이미 끝났어.', 'info')
     return
   }
-  skipGuide(game.save)
+  const grant = skipGuide(game.save)
   game.persist(store)
   paintContracts()
-  toast('가이드를 건너뛰었어. 게시판에서 챕터 2 퀘스트를 받아 봐!', 'quest')
+  paintStats(game.save)
+  toast(guideSkipToast(grant), 'quest')
 })
 
 /** Dev-only close camera for checking the hand pose: __slice.view = { on: true, yaw, pitch, dist }. */
