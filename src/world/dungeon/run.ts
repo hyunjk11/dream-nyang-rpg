@@ -35,7 +35,7 @@ import { blast, SKILL_POWER, SKILL_REF_MUL, type SkillBody, type SkillWorld } fr
 import { applyProcs, chill, ELEMENTS, procBursts } from '../../combat/elements'
 import { itemColor } from '../../sim/rarity'
 import { collideCircle, rayHit } from './walls'
-import { HORDE, Horde, RANGED, type HordeFoe } from './horde'
+import { EARLY_SHOT, HORDE, Horde, RANGED, type HordeFoe } from './horde'
 import { HordeView, SHOT_LOOK } from './horde-view'
 import { DRAIN, Director, LIVE_CAP, waveFor } from './waves'
 import { BOSS, Boss } from './boss'
@@ -419,6 +419,12 @@ export class DungeonRun {
     this.horde.scale = runFoeScale(this.plan, isBoss, host.hero.maxHp)
     // 원거리 (2026-11): half the pack lobs dream shots; the boss floor keeps only a few ranged adds.
     this.horde.rangedShare = rangedShareFor(this.plan)
+    // Depth-1 sewer: shots reach the starter water gun (14 m). Later depths keep RANGED's 13 m cap.
+    if (this.plan.depth === 1 && this.plan.objective === 'exit' && !this.plan.area) {
+      this.horde.shotFar = EARLY_SHOT.far
+      this.horde.shotMax = EARLY_SHOT.max
+      this.horde.shotSpeed = EARLY_SHOT.speed
+    }
     this.horde.onKill = (f) => this.foeDown(f)
     this.horde.onRage = (f) => {
       const at = new Vector3(f.x, 1, f.z)

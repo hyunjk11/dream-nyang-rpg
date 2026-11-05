@@ -66,7 +66,7 @@ import { activeContracts, contractEvent, contractLine, type ContractEvent } from
 import { eatCandy, townOf, useScroll } from './sim/town'
 import { tryEquip } from './sim/mutate'
 import { isEquipped } from './sim/inventory'
-import { CHAPTER2, FLUFF, chapter2Open, chaptersOf, fieldNeeds, guideEvent, guideStep, keepGuide, questEvent, questHud, skipGuide, tutorialRest, type ChapterOut, type FieldEvent, type GuideEvent } from './sim/chapters'
+import { CHAPTER2, FLUFF, GUIDE, chapter2Open, chaptersOf, fieldNeeds, guideEvent, guideStep, keepGuide, questEvent, questHud, skipGuide, tutorialRest, type ChapterOut, type FieldEvent, type GuideEvent } from './sim/chapters'
 import { delveGateRows, shouldParkFloor, storyGateRows, type PortalRow } from './sim/portals'
 import { ChapterUI } from './ui/chapters'
 import { GROUP_KO, pinsOf, questBook, togglePin, trackedQuests, type QuestGroup } from './sim/questbook'
@@ -927,6 +927,8 @@ function chapterOut(o: ChapterOut): void {
   if (o.gift === 'candy') {
     paintCandy()
     toast('모찌가 하트 사탕을 챙겨 줬어!', 'reward')
+  } else if (o.gift === 'dust') {
+    toast('꿈가루 2줌! 북쪽 키키에게서 총을 +1 할 수 있어.', 'reward')
   } else if (o.gift === 'gear') {
     const item = game.save.items[game.save.items.length - 1]
     if (item) lootPing(item)
@@ -935,6 +937,7 @@ function chapterOut(o: ChapterOut): void {
     toast(t, 'quest')
     chime('contract')
   }
+  if (o.advanced >= 0 && GUIDE[o.advanced]?.id === 'kill') reviveTutorial()
   if (o.advanced >= 0) audio.sfx('quest')
   if (o.cleared) queueClearCard()
   if (o.advanced >= 0 || o.cleared) paintContracts()
@@ -945,6 +948,20 @@ function chapterOut(o: ChapterOut): void {
 function guideHit(e: GuideEvent): void {
   if (mode === 'title' || !guideStep(game.save)) return
   chapterOut(guideEvent(game.save, e))
+}
+
+/** The kill step's three meadow slimes, put back if Mochi or a stray shot cleared them early. */
+function reviveTutorial(): void {
+  if (game.zone !== 'meadow') return
+  for (const foe of combat.foes) {
+    if (!foe.tags.includes('tutorial')) continue
+    foe.alive = true
+    foe.hp = foe.maxHp
+    foe.dying = 0
+    foe.windup = 0
+    foe.object.visible = true
+    foe.object.position.copy(foe.home)
+  }
 }
 
 /** A 몽실 들판 happening for the active chapter quests. */
@@ -1867,8 +1884,16 @@ function leaveSewer(why: DelveEnd = 'recall'): void {
     paintReturnPortal()
   }).then(() => {
     travelling = false
-    if (parkAs) toast(home === 'mongsil' ? `별문에 돌아가기 포털이 열렸어 (${keptLabel()})` : `별문 옆에 돌아가기 포털이 열렸어 (${keptLabel()})`, 'quest')
-    if (!sum) return
+    const tellReturn = () => {
+      if (!parkAs) return
+      const where = home === 'mongsil' ? '별문 첫 줄' : '서쪽 별문 옆 주황 기둥'
+      toast(`돌아가기 포털 · ${keptLabel()} (${where})`, 'quest')
+      zoneBanner('돌아가기 포털', `${keptLabel()} · ${where}`)
+    }
+    if (!sum) {
+      tellReturn()
+      return
+    }
     mode = 'menu'
     releaseLook()
     if (import.meta.env.DEV) lastSummary = sum
@@ -1876,6 +1901,7 @@ function leaveSewer(why: DelveEnd = 'recall'): void {
     showSummary(sum, () => {
       mode = 'play'
       paintContracts()
+      tellReturn()
       if (chaptersOf(game.save).card) queueClearCard()
     })
   })
@@ -2353,6 +2379,7 @@ function frame(): void {
   }
   game.save.playSeconds += raw
   chapterTick()
+  paintReturnTag()
   if (run) {
     sewerFrame(dt, raw)
     return
@@ -2398,7 +2425,8 @@ function frame(): void {
   if (!skills.rushing) mochiFollow(dt, heroPos)
   landmarks.update(dt, heroPos)
   if (returnPortal.active) returnPortal.update(performance.now() / 1000)
-  const notes = combat.update(frozen ? 0 : dt, heroPos, 0.7, (amount, from) => {
+  // Talk freezes the meadow: slimes were biting (and Mochi was deleting them) through the opening lines.
+  const notes = combat.update(talking ? 0 : dt, heroPos, 0.7, (amount, from) => {
     const hurt = hero.hurt(amount, from)
     if (!hurt) return
     audio.sfx('hurt')
@@ -2560,6 +2588,23 @@ function hurtFlash(): void {
 }
 
 const tipAt = new Vector3()
+const returnTag = document.createElement('span')
+returnTag.id = 'return-tag'
+returnTag.className = 'hidden'
+returnTag.textContent = '돌아가기 포털'
+document.getElementById('ui')?.append(returnTag)
+/** Orange column beside the 별문, labeled so a recall isn't only a line in the summary. */
+function paintReturnTag(): void {
+  const on = returnPortal.active && mode === 'play' && game.zone === 'village' && !run
+  returnTag.classList.toggle('hidden', !on)
+  if (!on) return
+  tipAt.set(RETURN_SPOT.x, 2.8, RETURN_SPOT.z).project(stage.camera)
+  const behind = tipAt.z > 1
+  returnTag.classList.toggle('hidden', behind)
+  if (behind) return
+  returnTag.style.left = `${(tipAt.x * 0.5 + 0.5) * window.innerWidth}px`
+  returnTag.style.top = `${(-tipAt.y * 0.5 + 0.5) * window.innerHeight}px`
+}
 function updateTalk(): void {
   const p = hero.object.position
   const spots = returnPortal.active ? [...zonePlaces, RETURN_PLACE] : zonePlaces
@@ -2645,7 +2690,7 @@ function mochiFollow(dt: number, heroPos: Vector3): void {
   mochi.update(dt, heroPos.x, heroPos.z, vx, vz, cam.x - heroPos.x, cam.z - heroPos.z, WALK_RADIUS)
   mochiCd -= dt
   const prey = nearestFoe()
-  if (prey && mochiCd <= 0 && hero.alive && !menuUp()) {
+  if (prey && mochiCd <= 0 && hero.alive && !menuUp() && !talk.open) {
     mochiCd = 1.35
     const from = mochi.fishMuzzle.getWorldPosition(new Vector3())
     const dir = combat.centre(prey).sub(from)

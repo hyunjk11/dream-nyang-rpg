@@ -150,10 +150,10 @@ describe('챕터 저장', () => {
   it('JSON으로 저장했다 불러와도 진행이 그대로다 (새로고침)', () => {
     const save = freshSave()
     guideEvent(save, { type: 'move', amount: 8 })
-    guideEvent(save, { type: 'shoot', amount: 10 })
+    guideEvent(save, { type: 'shoot', amount: 4 })
     const back = JSON.parse(JSON.stringify(save)) as SaveData
     expect(guideStep(back)?.id).toBe('shoot')
-    expect(chaptersOf(back).guide.count).toBe(10)
+    expect(chaptersOf(back).guide.count).toBe(4)
   })
 
   it('망가진 챕터 데이터는 안전하게 고쳐진다', () => {

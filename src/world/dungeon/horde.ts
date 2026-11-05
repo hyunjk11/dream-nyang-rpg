@@ -79,6 +79,14 @@ export const ELITE = { scale: 1.45, hp: DIFFICULTY.elite.hp, damage: DIFFICULTY.
  * and each hit is RANGED.damage × the foe's melee hit (inside the same %maxHP band).
  */
 export const RANGED = { share: 0.5, near: 7, far: 11, kite: 5.2, maxShot: 13, minShot: 1.4, damage: 0.85, life: 2.6, radius: 0.3, sightEvery: 0.2 }
+/**
+ * Depth-1 sewer explore only. The starter water gun holds at 14 m and default shots stop at 13 m,
+ * so auto-hunt cleared packs without a single hit (playtest: 8 kills, ~1m43s, HP full).
+ * These shots release out to 16.5 m and fly 1.25× (a 14 m bubble: 0.55 s charge + 14/7.5 s ≈ 2.4 s).
+ * A landed hit stays in the existing band, about 13–22 HP at 150 max (9–15%), not a one-shot.
+ * +5 is still ×1.20 gun damage, so the slime's ~1.9 s TTK drops under the travel time and the shot often misses the fight.
+ */
+export const EARLY_SHOT = { far: 15, max: 16.5, speed: 1.25 }
 /** Most ranged foes charging a shot at once (like SWING_CAP for melee). */
 export const SHOT_CAP = 3
 /** Live shots in the pool (the view's instance buffers are sized from it). */
@@ -417,6 +425,11 @@ export class Horde {
   dodged = 0
   /** Optional shot-line test (default: the maze grid, water is see-through). */
   shotLine: SightFn | null = null
+  /** How far a ranged foe will hold and fire. Depth-1 explore raises this to EARLY_SHOT. */
+  shotFar = RANGED.far
+  shotMax = RANGED.maxShot
+  /** Projectile speed scale (1 = SHOT_STYLES). */
+  shotSpeed = 1
 
   get chasing(): number {
     let n = 0
@@ -671,10 +684,10 @@ export class Horde {
     f.losT -= dt
     if (f.losT <= 0) {
       f.losT = RANGED.sightEvery
-      f.los = target.alive && d < RANGED.maxShot && this.clearShot(f.x, f.z, target.x, target.z)
+      f.los = target.alive && d < this.shotMax && this.clearShot(f.x, f.z, target.x, target.z)
     }
     f.cooldown = Math.max(0, f.cooldown - dt)
-    if (!f.los || d > RANGED.far) {
+    if (!f.los || d > this.shotFar) {
       // Lost the line mid-charge: the glow fizzles.
       if (f.aim > 0 && !f.los) {
         f.aim = 0
@@ -728,7 +741,7 @@ export class Horde {
       }
       return
     }
-    if (f.cooldown > 0 || !f.los || !target.alive || f.age < SPAWN_TIME || f.stun > 0 || d < RANGED.minShot || d > RANGED.maxShot) return
+    if (f.cooldown > 0 || !f.los || !target.alive || f.age < SPAWN_TIME || f.stun > 0 || d < RANGED.minShot || d > this.shotMax) return
     if (this.aiming >= this.shotCap) {
       f.cooldown = 0.15 + 0.25 * ((f.beat + f.id * 0.37) % 1)
       return
@@ -742,7 +755,7 @@ export class Horde {
     const slot = this.shots.find((s) => !s.alive)
     if (!slot) return
     const style = SHOT_STYLE[f.kind]
-    const sp = SHOT_STYLES[style].speed
+    const sp = SHOT_STYLES[style].speed * this.shotSpeed
     const y = Math.max(0.55, Math.min(1.3, HORDE[f.kind].chest * (f.elite ? ELITE.scale : 1)))
     const dx = target.x - f.x
     const dz = target.z - f.z
