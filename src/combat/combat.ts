@@ -28,7 +28,16 @@ const TOWN = DIFFICULTY.town
 export function townFoeHp(kind: FoeKind, elite: boolean): number {
   return Math.round(FOE_SPECS[kind].hp * TOWN.hp * (kind === 'bloom' ? TOWN.bossHp : 1) * (elite ? TOWN.elite : 1))
 }
-const townDamage = (raw: number) => Math.max(1, Math.round(raw * TOWN.damage))
+
+/**
+ * HP a chapter-1 foe deals to her (pure). Wild forest/vale hits sit near a maze slime;
+ * the meadow's tutorial slime is `guide`, and the altar bloom's petals are `bossHit` on top.
+ * Gear and skills do not enter this.
+ */
+export function townHit(kind: FoeKind, tutorial = false): number {
+  const mul = TOWN.damage * (kind === 'bloom' ? TOWN.bossHit : 1) * (tutorial ? TOWN.guide : 1)
+  return Math.max(1, Math.round(FOE_SPECS[kind].damage * mul))
+}
 
 export interface Foe {
   kind: FoeKind
@@ -557,14 +566,14 @@ export class Combat {
       const dir = heroPos.clone().setY(0.9).sub(origin)
       if (foe.kind === 'bloom') {
         // Five-petal fan the player can weave through.
-        for (let i = -2; i <= 2; i += 1) this.fire(origin, dir.clone().applyAxisAngle(UP, i * 0.24), townDamage(spec.damage), false, 0xff9ad8, 5.2, 0.16)
+        for (let i = -2; i <= 2; i += 1) this.fire(origin, dir.clone().applyAxisAngle(UP, i * 0.24), townHit(foe.kind, foe.tags.includes('tutorial')), false, 0xff9ad8, 5.2, 0.16)
         this.shake = Math.max(this.shake, 0.06)
-      } else this.fire(origin, dir, townDamage(spec.damage), false, 0xd7b6ff, 6.5)
+      } else this.fire(origin, dir, townHit(foe.kind, foe.tags.includes('tutorial')), false, 0xd7b6ff, 6.5)
       return
     }
     // Melee lunge: a short hop forward, hits only if she is still close.
     foe.knock.copy(to).multiplyScalar(foe.kind === 'bug' ? 4.5 : 3.6)
-    if (dist < heroRadius + 1.2) onHeroHit(townDamage(spec.damage), foe.object.position)
+    if (dist < heroRadius + 1.2) onHeroHit(townHit(foe.kind, foe.tags.includes('tutorial')), foe.object.position)
   }
 
   /** Push overlapping foes apart so a crowd reads as separate bodies. */
