@@ -4,7 +4,7 @@ import { WEAPON_IDS } from '../src/data/items'
 import { boardOf, claimContract, contractEvent, contractGoal, contractTitle, takeContract } from '../src/sim/contracts'
 import { delveOf } from '../src/sim/delve'
 import { addItem } from '../src/sim/inventory'
-import { baseValue, makeItem, maxRarityFor, rollDrops, rollRarity, sellValue } from '../src/sim/loot'
+import { baseValue, makeItem, maxRarityFor, rollDrops, rollRarity, sellValue, upgradeMul } from '../src/sim/loot'
 import { RARITIES } from '../src/sim/types'
 import { freshSave } from '../src/sim/mutate'
 import { mulberry32 } from '../src/sim/rng'
@@ -143,7 +143,7 @@ describe('키키 공방', () => {
     expect(upgradeCost(item)).toBeNull()
   })
 
-  it('항상 성공하는 굴림이면 +10까지 가고, +1마다 총 피해가 7%씩 오른다', () => {
+  it('항상 성공하는 굴림이면 +10까지 가고, 총 피해는 강화 곡선을 따른다', () => {
     const save = richSave()
     const uid = save.equipment.weapon!
     const base = computeStats(save).gun.damage
@@ -151,7 +151,8 @@ describe('키키 공방', () => {
     expect(upgradeGun(save, uid).ok).toBe(false)
     const gun = save.items.find((i) => i.uid === uid)!
     expect(gun.plus).toBe(10)
-    expect(computeStats(save).gun.damage / base).toBeCloseTo(1.7, 2)
+    expect(computeStats(save).gun.damage / base).toBeCloseTo(upgradeMul(10), 2)
+    expect(upgradeMul(10)).toBeLessThan(1.7)
     expect(sellValue(gun)).toBeGreaterThan(0)
   })
 

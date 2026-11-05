@@ -12,8 +12,12 @@ import { levelScale, roundStat } from './loot'
 import { townOf } from './town'
 import { BAG_CAP, RARITIES, uid, type Affix, type Element, type ItemInstance, type Rarity, type SaveData, type StatKey } from './types'
 
-/** Rarity → how strong a part rolls. */
-export const MOD_RARITY: Record<Rarity, number> = { common: 1, uncommon: 1.15, rare: 1.35, epic: 1.6, legendary: 1.9 }
+/**
+ * Rarity → how strong a part rolls. Was 1 / 1.15 / 1.35 / 1.60 / 1.90, so 부품 강화
+ * to 전설 nearly doubled a common part on top of the gun's +N. The climb is closer
+ * now: each step still matters, and a legendary part is ×1.45 a common one.
+ */
+export const MOD_RARITY: Record<Rarity, number> = { common: 1, uncommon: 1.08, rare: 1.18, epic: 1.3, legendary: 1.45 }
 /** Mod slots per gun rarity (보통 1 · 매직 1 · 희귀 2 · 영웅 3 · 전설 4); iLv 10+ adds one (max 4). */
 export const MOD_SLOTS: Record<Rarity, number> = { common: 1, uncommon: 1, rare: 2, epic: 3, legendary: 4 }
 export const MOD_SLOT_ILV = 10
