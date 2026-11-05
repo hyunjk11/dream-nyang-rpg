@@ -123,9 +123,34 @@ export function sellValue(item: ItemInstance): number {
   return Math.max(1, Math.round(baseValue(item.defId, item.rarity) * 0.42 * (1 + 0.1 * plusOf(item))))
 }
 
-/** Gun damage multiplier from the workshop: +7% per upgrade level (+10 = ×1.7). */
+/**
+ * Gun damage from 강화 (+0..+10).
+ *
+ * Was a flat +7% per level (+5 = ×1.35, +10 = ×1.70). The first five steps always
+ * succeed and are cheap, so a short workshop visit flattened chapter-1 fights
+ * (forest, vale, altar, the maze). Safe steps are now +4% of the base gun each.
+ * The risky steps (+6..+10, where a try can fail) carry most of the reward, and
+ * +10 stops at ×1.60.
+ *
+ *   +N | before | after
+ *    0 |  1.00  |  1.00
+ *    1 |  1.07  |  1.04
+ *    2 |  1.14  |  1.08
+ *    3 |  1.21  |  1.12
+ *    4 |  1.28  |  1.16
+ *    5 |  1.35  |  1.20
+ *    6 |  1.42  |  1.26
+ *    7 |  1.49  |  1.33
+ *    8 |  1.56  |  1.41
+ *    9 |  1.63  |  1.50
+ *   10 |  1.70  |  1.60
+ */
+export const UPGRADE_MUL = [1, 1.04, 1.08, 1.12, 1.16, 1.2, 1.26, 1.33, 1.41, 1.5, 1.6] as const
+
+/** Gun damage multiplier from the workshop (+0..+10). See UPGRADE_MUL. */
 export function upgradeMul(plus: number): number {
-  return 1 + 0.07 * Math.max(0, Math.min(10, Math.floor(plus)))
+  const i = Math.max(0, Math.min(UPGRADE_MUL.length - 1, Math.floor(plus)))
+  return UPGRADE_MUL[i]
 }
 
 /** Workshop upgrade level (+0..+10). */
