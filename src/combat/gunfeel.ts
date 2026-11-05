@@ -11,9 +11,13 @@ export const GUN = {
   bloomPerShot: 0.085,
   bloomHold: 0.07,
   bloomDecay: 2.8,
-  /** Cone half-angle (rad) at no bloom and full bloom. */
-  spreadMin: 0.0035,
-  spreadMax: 0.042,
+  /**
+   * Cone half-angle (rad) at no bloom and full bloom for the one-hand water pistol.
+   * Medium: at rest the droplet stays on the aimed body, full bloom can kiss a neighbour.
+   * 쌍권총 uses a wider fan (combat/aim.ts), not these numbers.
+   */
+  spreadMin: 0.024,
+  spreadMax: 0.046,
   /** Camera kick per shot (rad up, ± rad sideways). */
   kickUp: 0.0048,
   kickSide: 0.0042,
@@ -171,6 +175,40 @@ export function spreadDir(dx: number, dy: number, dz: number, angle: number, r1:
   const ox = dx + (ux * Math.cos(t) + vx * Math.sin(t)) * a
   const oy = dy + (uy * Math.cos(t) + vy * Math.sin(t)) * a
   const oz = dz + (uz * Math.cos(t) + vz * Math.sin(t)) * a
+  const l = Math.hypot(ox, oy, oz) || 1
+  return { x: ox / l, y: oy / l, z: oz / l }
+}
+
+/**
+ * Jitter a unit direction inside an elliptical cone. `yaw` is the horizontal half-angle and
+ * `pitch` the vertical one (radians). r1, r2 in [0, 1); sqrt(r1) keeps the pattern even
+ * across the ellipse instead of piling on the crosshair. Equal axes match `spreadDir`.
+ */
+export function spreadFan(dx: number, dy: number, dz: number, yaw: number, pitch: number, r1: number, r2: number): { x: number; y: number; z: number } {
+  // right = world-up × dir (stays on the horizon); view-up = dir × right.
+  let rx = dz
+  let ry = 0
+  let rz = -dx
+  const rl = Math.hypot(rx, ry, rz)
+  if (rl < 1e-8) {
+    rx = 1
+    ry = 0
+    rz = 0
+  } else {
+    rx /= rl
+    ry /= rl
+    rz /= rl
+  }
+  const ux = dy * rz - dz * ry
+  const uy = dz * rx - dx * rz
+  const uz = dx * ry - dy * rx
+  const rad = Math.sqrt(Math.max(0, Math.min(1, r1)))
+  const t = r2 * Math.PI * 2
+  const h = rad * Math.tan(yaw) * Math.cos(t)
+  const v = rad * Math.tan(pitch) * Math.sin(t)
+  const ox = dx + rx * h + ux * v
+  const oy = dy + ry * h + uy * v
+  const oz = dz + rz * h + uz * v
   const l = Math.hypot(ox, oy, oz) || 1
   return { x: ox / l, y: oy / l, z: oz / l }
 }

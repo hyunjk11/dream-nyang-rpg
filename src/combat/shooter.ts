@@ -15,9 +15,10 @@ import {
   ASSIST, AUTO_AIM, TPS, anglesTo, assistPick, createView, kick, look, overlapsHer, perPixel, pose, rayCapsule, recover, wishFrom,
   type AimTarget, type RayFn, type TpsView,
 } from '../core/tps'
-import { Gun, hitStopFor, rollDamage, spreadDir } from './gunfeel'
+import { reticlePx, shotCone, splitDamage } from './aim'
+import { Gun, hitStopFor, rollDamage, spreadFan } from './gunfeel'
 import { firingHand } from '../actors/holds'
-import { GUN_PROFILES, falloffAt, type GunProfile } from '../data/guns'
+import { GUN_PROFILES, engageFor, falloffAt, type GunProfile } from '../data/guns'
 import { GunFx } from './gunfx'
 import { HudFx } from '../ui/hudfx'
 import type { GunCue } from '../audio/gunsound'
@@ -341,7 +342,9 @@ export class Shooter {
       const t = hero.muzzle.getWorldPosition(this.tip)
       this.host.vfx.burst(t, 0xf2f0ff, { count: 10, speed: 0.8, up: 1.4, life: 0.8, size: 0.4, grow: 0.8, gravity: -1.5, drag: 2, additive: false })
     }
-    this.hudFx.aim(this.gun.gapPx, this.gun.heat, this.gun.overheated)
+    const cone = shotCone(hero.holdStyle.type, this.gun.bloom)
+    const viewH = this.host.hud?.clientHeight || (typeof globalThis.innerHeight === 'number' ? globalThis.innerHeight : 0) || 720
+    this.hudFx.aim(reticlePx(cone.yaw, this.host.camera.fov, viewH), reticlePx(cone.pitch, this.host.camera.fov, viewH), this.gun.heat, this.gun.overheated)
     this.hudFx.target(this.rig.onTarget ? 2 : this.rig.near ? 1 : 0)
     this.tickTracers(dt)
     this.juice.update(dt, world)
@@ -366,21 +369,37 @@ export class Shooter {
     let firstDir = aim
     let stolen = 0
     this.puffed = false
-    for (let k = 0; k < Math.max(1, p.pellets); k += 1) {
-      // Converge on the crosshair point, jittered inside the bloom cone (pellets fan wider).
-      const cone = p.pellets > 1 ? Math.max(gun.spread, p.spreadMin) : gun.spread
-      const d = spreadDir(aim.x, aim.y, aim.z, cone, Math.random(), Math.random())
+    // Hold picks the cone: 쌍권총 fans one rolled hit across several rays; the shotgun's
+    // pellets are already separate droplets. Other holds put the whole hit on one ray.
+    const cone = shotCone(hero.holdStyle.type, gun.bloom)
+    const pelletRolls = Math.max(1, p.pellets) > 1
+    const critChance = l.critChance + (gun.overdrive > 0 ? this.overdriveCrit : 0)
+    const rollProcs = (): ShotProcs => ({
+      knock: p.knock,
+      stagger: p.stagger,
+      sparkle: l.sparkle > 0 && Math.random() < l.sparkle,
+      ice: l.ice > 0 && Math.random() < l.ice,
+      candy: l.candy > 0 && Math.random() < l.candy,
+    })
+    const rays: { amount: number; crit: boolean }[] = []
+    const sharedProcs = pelletRolls ? null : rollProcs()
+    if (pelletRolls) {
+      for (let k = 0; k < p.pellets; k += 1) rays.push(rollDamage(Math.random(), l.damage, critChance, l.critMul))
+    } else {
+      const roll = rollDamage(Math.random(), l.damage, critChance, l.critMul)
+      for (const amount of splitDamage(roll.amount, cone.fan)) rays.push({ amount, crit: roll.crit })
+    }
+    const fan = !pelletRolls && rays.length > 1
+    // 쌍권총 is shorter than the same pistol alone; the sniper reaches across the room.
+    const band = engageFor(p.kind, hero.holdStyle.dual)
+    for (let k = 0; k < rays.length; k += 1) {
+      const roll = rays[k]
+      // Converge on the crosshair point, jittered inside this hold's bloom cone.
+      const d = spreadFan(aim.x, aim.y, aim.z, cone.yaw, cone.pitch, Math.random(), Math.random())
       const dir = this.dir.set(d.x, d.y, d.z)
       if (k === 0) firstDir = dir.clone()
-      const reach = world.solid(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, 60)
-      const roll = rollDamage(Math.random(), l.damage, l.critChance + (gun.overdrive > 0 ? this.overdriveCrit : 0), l.critMul)
-      const procs: ShotProcs = {
-        knock: p.knock,
-        stagger: p.stagger,
-        sparkle: l.sparkle > 0 && Math.random() < l.sparkle,
-        ice: l.ice > 0 && Math.random() < l.ice,
-        candy: l.candy > 0 && Math.random() < l.candy,
-      }
+      const reach = Math.min(band.far, world.solid(tip.x, tip.y, tip.z, dir.x, dir.y, dir.z, band.far))
+      const procs = sharedProcs ?? rollProcs()
       // Pierce: after a hit, the droplet carries on past that foe.
       let from = tip.clone()
       let travelled = 0
@@ -388,13 +407,13 @@ export class Shooter {
       let hit: ShotHit | null = null
       let first: ShotHit | null = null
       for (let pass = 0; pass <= l.pierce; pass += 1) {
-        // The shotgun's bubbles lose punch with range (falloffAt is 1 for the other guns).
-        const far = falloffAt(p, travelled)
+        // Full inside the sweet band, then down to `min` at the gun's far reach.
+        const far = falloffAt({ engage: band }, travelled)
         const shot = { amount: Math.max(1, Math.round(roll.amount * far)), crit: roll.crit }
         hit = world.strike(from, dir, reach - travelled, pass ? Math.round(shot.amount * 0.8) : shot.amount, procs)
         if (!hit) break
         if (far < 1) {
-          const nearHit = falloffAt(p, travelled + hit.t)
+          const nearHit = falloffAt({ engage: band }, travelled + hit.t)
           shot.amount = Math.max(1, Math.round(roll.amount * nearHit))
         }
         first ??= hit
@@ -409,14 +428,15 @@ export class Shooter {
       }
       if (!first) {
         end = this.end.copy(tip).addScaledVector(dir, reach)
-        const n = world.normal(end, dir)
-        this.gunFx.splat(end, n, l.tint, p.pellets > 1 ? 0.3 : 0.42)
-        if (k === 0) this.host.vfx.burst(end.clone().addScaledVector(new Vector3(n.x, n.y, n.z), 0.05), 0xd8f2ff, { count: 4, speed: 3.4, up: 1.2, life: 0.22, size: 0.09, gravity: 7, drag: 2 })
+        const norm = world.normal(end, dir)
+        this.gunFx.splat(end, norm, l.tint, p.pellets > 1 || fan ? 0.3 : 0.42)
+        if (k === 0) this.host.vfx.burst(end.clone().addScaledVector(new Vector3(norm.x, norm.y, norm.z), 0.05), 0xd8f2ff, { count: 4, speed: 3.4, up: 1.2, life: 0.22, size: 0.09, gravity: 7, drag: 2 })
         this.host.vfx.hit(end, l.tint)
       } else if (l.pierce > 0 && hit === null) {
         end = this.end.copy(tip).addScaledVector(dir, Math.min(reach, travelled + 4))
       }
-      this.tracer(tip, end, p.tracerW, p.tracerLife)
+      // A fan's streaks stay thin so the spread reads as several droplets, not one thick beam.
+      this.tracer(tip, end, p.tracerW * (fan ? 0.72 : 1), p.tracerLife)
       lastEnd = end.clone()
     }
     if (stolen > 0) this.host.heal?.(stolen)
@@ -428,7 +448,7 @@ export class Shooter {
     if (anyHit) this.landed += 1
     this.handShots[this.lastHand] += 1
     if (anyHit) this.handShots[this.lastHand === 'main' ? 'mainHit' : 'offHit'] += 1
-    this.gunFx.shot(tip, firstDir, camera, n, 0xc8f0ff, p.casing, p.light, p.pellets > 1 ? 1.35 : p.voice === 'crack' ? 1.6 : 1)
+    this.gunFx.shot(tip, firstDir, camera, n, 0xc8f0ff, p.casing, p.light, p.pellets > 1 ? 1.35 : fan ? 1.15 : p.voice === 'crack' ? 1.6 : 1)
     hero.recoil(hand)
     // Heavy guns shove the lens back along the view (water pistols barely).
     // 쌍권총: 1/DUAL_PACE kick per shot, so the view climbs as fast as with one gun (twice the shots would otherwise walk the crosshair off).

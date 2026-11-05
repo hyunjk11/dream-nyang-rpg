@@ -172,17 +172,37 @@ button:disabled { opacity: 0.55; cursor: default; }
 #quest-body small { color: #8a7898; }
 body.menu #ui { visibility: hidden; }
 
-/* Shoulder camera (town + sewer): centre crosshair, four ticks that spread with --spread (px).
-   Darker outline so it reads on bright grass too; turns pink over a foe, soft pink in the assist cone. */
-#crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; --spread: 7px; pointer-events: none; }
-#crosshair i { position: absolute; background: #fff6fb; box-shadow: 0 0 0 1.5px rgba(40, 22, 54, 0.9), 0 0 4px rgba(40, 22, 54, 0.5); border-radius: 2px; transition: background 0.08s; }
+/* Shoulder camera (town + sewer): centre crosshair. Ticks and the cone oval follow the equipped
+   gun (--spread-x / --spread-y, px). Dark outline so it reads on bright grass; pink over a foe. */
+@property --spread-x { syntax: '<length>'; inherits: true; initial-value: 7px; }
+@property --spread-y { syntax: '<length>'; inherits: true; initial-value: 7px; }
+#crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; --spread: 7px; --spread-x: 7px; --spread-y: 7px; pointer-events: none; }
+#crosshair::before {
+  content: '';
+  position: absolute;
+  width: calc(var(--spread-x) * 2);
+  height: calc(var(--spread-y) * 2);
+  left: calc(var(--spread-x) * -1);
+  top: calc(var(--spread-y) * -1);
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 246, 251, 0.62);
+  box-shadow: 0 0 0 1px rgba(40, 22, 54, 0.4);
+  transition: width 0.08s linear, height 0.08s linear, left 0.08s linear, top 0.08s linear, border-color 0.08s;
+}
+#crosshair i { position: absolute; background: #fff6fb; box-shadow: 0 0 0 1.5px rgba(40, 22, 54, 0.9), 0 0 4px rgba(40, 22, 54, 0.5); border-radius: 2px; transition: background 0.08s, top 0.08s linear, left 0.08s linear; }
 #crosshair.near i { background: #ffc6e4; }
+#crosshair.near::before { border-color: rgba(255, 198, 228, 0.9); }
 #crosshair.on i { background: #ff5fae; }
+#crosshair.on::before { border-color: #ff5fae; }
 #crosshair.on b { background: #ff5fae; box-shadow: 0 0 6px #ff9fd2; }
-#crosshair i:nth-child(1) { width: 2px; height: 9px; left: -1px; top: calc(-9px - var(--spread)); }
-#crosshair i:nth-child(2) { width: 2px; height: 9px; left: -1px; top: var(--spread); }
-#crosshair i:nth-child(3) { width: 9px; height: 2px; top: -1px; left: calc(-9px - var(--spread)); }
-#crosshair i:nth-child(4) { width: 9px; height: 2px; top: -1px; left: var(--spread); }
+#crosshair.wide::before { border-width: 2px; }
+#crosshair.pin i:nth-child(1), #crosshair.pin i:nth-child(2) { height: 6px; }
+#crosshair.pin i:nth-child(3), #crosshair.pin i:nth-child(4) { width: 6px; }
+#crosshair.pin::before { opacity: 0.45; }
+#crosshair i:nth-child(1) { width: 2px; height: 9px; left: -1px; top: calc(-9px - var(--spread-y)); }
+#crosshair i:nth-child(2) { width: 2px; height: 9px; left: -1px; top: var(--spread-y); }
+#crosshair i:nth-child(3) { width: 9px; height: 2px; top: -1px; left: calc(-9px - var(--spread-x)); }
+#crosshair i:nth-child(4) { width: 9px; height: 2px; top: -1px; left: var(--spread-x); }
 #crosshair b { position: absolute; width: 4px; height: 4px; left: -2px; top: -2px; border-radius: 50%; background: #fff6fb; box-shadow: 0 0 0 1.5px rgba(40, 22, 54, 0.9); }
 body.menu #crosshair, #crosshair.hidden { display: none; }
 #sens { width: 90px; }
