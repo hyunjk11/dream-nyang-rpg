@@ -88,11 +88,12 @@ body.compact #hint { display: none; }
 body.compact .settings input[type="range"] { width: 96px; }
 
 /* Landmark talk: a small tag over whoever is in reach, and a storybook dialogue box. */
-#talk-tip {
+#talk-tip, #return-tag {
   position: absolute; transform: translate(-50%, -100%); padding: 5px 11px; border-radius: 999px;
   background: rgba(255, 248, 252, 0.95); color: #4a3358; font-family: "Jua", sans-serif; font-size: 14px;
-  box-shadow: 0 3px 0 rgba(58, 36, 72, 0.35); white-space: nowrap;
+  box-shadow: 0 3px 0 rgba(58, 36, 72, 0.35); white-space: nowrap; pointer-events: none; z-index: 6;
 }
+#return-tag { background: #ffe3a8; color: #6a3d12; box-shadow: 0 3px 0 rgba(120, 72, 20, 0.4); }
 #dialog {
   position: absolute; left: 50%; bottom: calc(var(--edge-b) + 84px); transform: translateX(-50%); width: min(640px, calc(100% - 32px)); max-height: calc(100% - var(--edge-t) - var(--edge-b) - 140px); overflow: auto; z-index: 8;
   display: flex; gap: 14px; align-items: center; padding: 14px 18px; border-radius: 22px;

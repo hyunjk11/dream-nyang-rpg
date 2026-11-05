@@ -44,7 +44,7 @@ export interface GuideStep {
   /** Short line when the step begins (별하 or 모찌). */
   say: { who: '별하' | '모찌'; text: string }
   /** Gift handed over as the step begins (so the step can always be done). */
-  gift?: 'gear' | 'candy'
+  gift?: 'gear' | 'candy' | 'dust'
   /** Quest-row place ("n장 · 이름"). */
   at: PlaceId
   /** Extra tail on that place ("북쪽 포포", "깊이 1"). */
@@ -53,14 +53,14 @@ export interface GuideStep {
 
 export const GUIDE: GuideStep[] = [
   { id: 'move', title: '걸어 보기', keys: 'WASD로 움직이기 · 꿈의 초원', touch: '왼쪽 스틱으로 움직이기 · 꿈의 초원', goal: 5, at: 'meadow', say: { who: '모찌', text: '여기가 꿈의 초원이야. 천천히 걸어 봐냥.' } },
-  { id: 'shoot', title: '조준하고 쏘기', keys: '마우스로 조준 · 클릭을 누르고 있으면 연사', touch: '오른쪽 드래그로 조준 · 공격 길게 누르기', goal: 25, at: 'meadow', say: { who: '별하', text: '물총이네. 두두두… 생각보다 손맛 있는데?' } },
+  { id: 'shoot', title: '조준하고 쏘기', keys: '클릭을 누르고 연사 8발 · 다음은 초원 슬라임 3마리', touch: '공격 길게 8발 · 다음은 슬라임 3마리', goal: 8, at: 'meadow', say: { who: '별하', text: '물총이네. 잠깐만 연사해 봐. 그 다음엔 초원 슬라임 셋을 잠재울 차례야.' } },
   { id: 'dash', title: '대시로 피하기', keys: 'Space로 대시', touch: '대시 버튼', goal: 2, at: 'meadow', say: { who: '모찌', text: '공격이 오면 휙 비켜! 대시는 짧게 무적이야.' } },
   { id: 'kill', title: '초원 슬라임 3마리', keys: '꿈의 초원 솜사탕 슬라임 3마리 · 서쪽 별문으로 나가기 전에', touch: '초원 슬라임 3마리 · 나가기 전에', goal: 3, at: 'meadow', spot: '슬라임 3', say: { who: '별하', text: '초원에 솜사탕 슬라임이 셋이야. 서쪽 별문으로 마을에 가기 전에 셋 다 잠재우자.' } },
   { id: 'skill', title: '스킬 써 보기', keys: '1·2·3·4 키 (아래 스킬 칸)', touch: '아래 스킬 칸 누르기', goal: 2, at: 'meadow', say: { who: '모찌', text: '스킬 칸 보이지? 나도 같이 뛰어든다냥!' } },
   { id: 'equip', title: '장비 장착하기', keys: 'G로 바로 장착 · I 가방에서 비교', touch: '"바로 장착" 또는 가방에서 장착', goal: 1, at: 'meadow', say: { who: '모찌', text: '반짝이는 거 주웠어! 별하한테 어울릴 것 같아.' }, gift: 'gear' },
   { id: 'candy', title: '하트 사탕 먹기', keys: 'Q로 사탕 먹기', touch: '사탕 버튼', goal: 1, at: 'meadow', say: { who: '모찌', text: '아플 땐 하트 사탕! 한 개 챙겨 뒀어냥.' }, gift: 'candy' },
   { id: 'shop', title: '포포 상점 둘러보기', keys: '서쪽 별문 → 꿈의 마을 · 북쪽 포포에게 E', touch: '서쪽 별문 → 마을 · 북쪽 포포', goal: 1, at: 'village', spot: '북쪽 포포', say: { who: '별하', text: '서쪽 별문이 꿈의 마을로 열려. 포포는 마을 북쪽, 사탕이랑 두루마리는 거기서.' } },
-  { id: 'workshop', title: '키키 공방 들르기', keys: '꿈의 마을 북쪽 키키에게 E · 총 강화', touch: '북쪽 키키에게 대화 · 총 강화', goal: 1, at: 'village', spot: '북쪽 키키', say: { who: '모찌', text: '키키도 마을 북쪽이야. 총 강화는 앞 단계가 실패 없이 올라. 비싸지만!' } },
+  { id: 'workshop', title: '키키 공방 들르기', keys: '꿈의 마을 북쪽 키키에게 E · 총 +1 강화', touch: '북쪽 키키에게 대화 · 총 +1', goal: 1, at: 'village', spot: '북쪽 키키', gift: 'dust', say: { who: '모찌', text: '키키도 마을 북쪽이야. 꿈가루 두 줌 챙겼어. +1은 골드랑 가루 한 줌이면 돼.' } },
   { id: 'board', title: '퀘스트 게시판 보기', keys: '꿈의 마을 게시판 앞에서 E', touch: '마을 게시판 앞에서 대화', goal: 1, at: 'village', spot: '게시판', say: { who: '별하', text: '게시판은 마을에 있어. 의뢰를 맡으면 다녀와서 보상을 받아.' } },
   { id: 'sewer', title: '무한 탐험 깊이 1', keys: '서쪽 별문 → 무한 탐험 → 깊이 1 · 꿈 하수도', touch: '별문 → 무한 탐험 → 깊이 1', goal: 1, at: 'sewer', spot: '깊이 1', say: { who: '모찌', text: '별문에서 "무한 탐험"을 골라. 초원·숲 같은 이야기 길이랑 다른 문이야. 깊이 1로 내려가자!' } },
   { id: 'recall', title: 'T로 마을 귀환', keys: '하수도에서 T (맞으면 끊겨) · 마을 돌아가기 포털', touch: '귀환 버튼 · 마을 돌아가기 포털', goal: 1, at: 'sewer', spot: '깊이 1', say: { who: '별하', text: '위험하면 T로 마을에 돌아와. 별문 옆에 돌아가기 포털이 그 자리를 남겨 둬.' } },
@@ -197,7 +197,7 @@ export interface ChapterOut {
   /** Toasts (quest progress, rewards). */
   toasts: string[]
   /** A gift was handed over for the new step. */
-  gift: 'gear' | 'candy' | null
+  gift: 'gear' | 'candy' | 'dust' | null
 }
 
 const out = (): ChapterOut => ({ advanced: -1, say: null, cleared: 0, toasts: [], gift: null })
@@ -217,8 +217,13 @@ export function tutorialRest(save: SaveData): boolean {
   return !!step && (step.id === 'move' || step.id === 'shoot' || step.id === 'dash' || step.id === 'kill')
 }
 
-/** Put the step's gift in her hands (gear in the bag, a heart candy). */
-function giveGift(save: SaveData, step: GuideStep, rng: () => number): 'gear' | 'candy' | null {
+/** Gold the first gun upgrade asks for (+1). The workshop step tops her up to this if she spent it. */
+export const GUIDE_PLUS1_GOLD = 28
+/** 꿈가루 handed over with the workshop step: one for +1, one left in the pocket. */
+export const GUIDE_DUST = 2
+
+/** Put the step's gift in her hands (gear, a heart candy, or the first 강화's 꿈가루). */
+function giveGift(save: SaveData, step: GuideStep, rng: () => number): 'gear' | 'candy' | 'dust' | null {
   if (step.gift === 'gear') {
     const id = GEAR_IDS[Math.floor(rng() * GEAR_IDS.length)] ?? 'hat_pin'
     addItem(save, makeItem(id, 'uncommon', rng, Math.max(1, save.level)))
@@ -227,6 +232,11 @@ function giveGift(save: SaveData, step: GuideStep, rng: () => number): 'gear' | 
   if (step.gift === 'candy') {
     save.potions = Math.max(1, save.potions)
     return 'candy'
+  }
+  if (step.gift === 'dust') {
+    save.materials.dream_dust = (save.materials.dream_dust ?? 0) + GUIDE_DUST
+    if (save.gold < GUIDE_PLUS1_GOLD) save.gold = GUIDE_PLUS1_GOLD
+    return 'dust'
   }
   return null
 }
