@@ -5,10 +5,14 @@
  * death idle it. Pure, so the mobile / QA behaviour is tested without a browser.
  */
 import type { WeaponKind } from './types'
+import { engageFor } from '../data/guns'
 import { TPS, anglesTo } from '../core/tps'
+import { routePoint, worldClear, type HuntGrid } from './huntpath'
 
-/** Foes farther than this are someone else's problem (no pathfinding across the maze). */
+/** Open ground (the island): ignore foes past this. A maze passes `reach` instead and paths the floor. */
 export const HUNT_ENGAGE = 40
+/** Whole dungeon floor: packs spawn across the maze, often farther than HUNT_ENGAGE. */
+export const HUNT_FLOOR = 180
 /** Walk to a pickup only when it is this close and nothing is already a fight. */
 export const HUNT_LOOT = 8
 /** A pile underfoot is grabbed before chasing a foe that is still a way off. */
@@ -52,8 +56,12 @@ export interface HuntQuery {
   time: number
   hp: number
   maxHp: number
-  /** Gun identity: where she likes to stand and how far a held trigger still connects. */
+  /** Gun identity. Distance comes from engageFor(kind, paired), not a second table. */
   kind: WeaponKind
+  /** Second one-handed gun in the off hand (쌍권총): engageFor uses the closer dual band. */
+  paired?: boolean
+  /** Maze grid. Without it she walks in a straight line and will not chase past engage.far. */
+  grid?: HuntGrid | null
   foes: readonly HuntFoe[]
   drops: readonly HuntDrop[]
   skills: readonly HuntSkill[]
@@ -80,28 +88,17 @@ export interface HuntPlan {
   running: boolean
 }
 
-export interface Standoff {
-  /** Preferred gap (m). */
-  range: number
-  /** Back up inside this (m). */
-  kite: number
-  /** Hold fire out to this (m). Shotgun stays short; the sniper reaches. */
-  fire: number
+/**
+ * Village hub, 몽실, or a floor left parked at home. A live run (`inRun`, not `parked`) is a
+ * hunting ground even when the save's zone name is still the village she recalled from.
+ */
+export function huntIsTown(s: { parked: boolean; mongsil: boolean; inRun: boolean; village: boolean }): boolean {
+  if (s.parked || s.mongsil) return true
+  return !s.inRun && s.village
 }
 
-/** Where each gun wants to stand. Dual pistols are the water gun's range. */
-export function standoff(kind: WeaponKind): Standoff {
-  switch (kind) {
-    case 'bubble':
-      return { range: 4.2, kite: 2.0, fire: 8 }
-    case 'star':
-      return { range: 9, kite: 4.2, fire: 26 }
-    case 'dart':
-      return { range: 13, kite: 7.5, fire: 30 }
-    default:
-      return { range: 7, kite: 3.2, fire: 24 }
-  }
-}
+/** Back up when she is this far inside the sweet spot (share of engage.sweet). */
+const KITE_AT = 0.55
 
 /** May auto-hunt run this frame? Town hubs, talks, menus, death and the recall channel idle it. */
 export function huntAllowed(s: { on: boolean; alive: boolean; talking: boolean; menu: boolean; town: boolean; recalling: boolean }): boolean {
@@ -148,13 +145,13 @@ interface Pick {
   d: number
 }
 
-function pickFoe(foes: readonly HuntFoe[], px: number, pz: number): Pick | null {
+function pickFoe(foes: readonly HuntFoe[], px: number, pz: number, limit: number): Pick | null {
   let best: Pick | null = null
   let bestScore = Infinity
   for (const foe of foes) {
     if (foe.hp <= 0) continue
     const d = hypot(foe.x - px, foe.z - pz)
-    if (d > HUNT_ENGAGE) continue
+    if (d > limit) continue
     const pri = PRIORITY_M[Math.max(0, Math.min(2, foe.priority))] ?? 0
     const score = d - pri
     if (score < bestScore) {
@@ -185,7 +182,7 @@ function pickSkill(q: HuntQuery, foe: Pick | null, dist: number): number {
   if (aura && hp < 0.62 && (foe || hp < 0.4)) return aura.slot
   if (!foe) return -1
   const over = ready(q.skills, 'overdrive')
-  if (over && dist < standoff(q.kind).fire) return over.slot
+  if (over && dist <= engageFor(q.kind, !!q.paired).far) return over.slot
   let near = 0
   for (const f of q.foes) {
     if (f.hp <= 0) continue
@@ -207,11 +204,54 @@ const IDLE: Omit<HuntPlan, 'active' | 'aimYaw' | 'aimPitch'> = {
   running: false,
 }
 
+/** Walk target for one foe. `sweet` is where she wants to stand; past `far` she only seeks on a maze. */
+function foeMove(q: HuntQuery, fx: number, fz: number, dist: number, sweet: number, far: number): { wishX: number; wishZ: number; running: boolean } {
+  const away = unit(q.px - fx, q.pz - fz)
+  const ax = away.x || 1
+  const az = away.z || 0
+  const kite = sweet * KITE_AT
+  const grid = q.grid
+  let gx = fx
+  let gz = fz
+  let mode: 'seek' | 'close' | 'hold' | 'kite' = 'close'
+  if (!grid && dist > far) return { wishX: 0, wishZ: 0, running: false }
+  if (dist > far) mode = 'seek'
+  else if (dist > sweet + 0.6) mode = 'close'
+  else if (dist < kite) mode = 'kite'
+  else mode = 'hold'
+  if (mode === 'hold') {
+    const s = Math.sign(Math.sin(q.time * 1.3) || 1)
+    const sx = -az * s
+    const sz = ax * s
+    if (grid) {
+      const here = grid.toTile(q.px, q.pz)
+      const probe = grid.toTile(q.px + sx * 1.7, q.pz + sz * 1.7)
+      if (!grid.open(probe.x, probe.y) || (probe.x === here.x && probe.y === here.y)) return { wishX: 0, wishZ: 0, running: false }
+    }
+    return { wishX: sx, wishZ: sz, running: false }
+  }
+  if (mode === 'kite' || mode === 'close') {
+    gx = fx + ax * sweet
+    gz = fz + az * sweet
+  }
+  let destX = gx
+  let destZ = gz
+  if (grid) {
+    const routed = routePoint(q.px, q.pz, gx, gz, grid)
+    if (mode === 'kite' && hypot(routed.x - fx, routed.z - fz) < dist - 0.2) return { wishX: 0, wishZ: 0, running: false }
+    destX = routed.x
+    destZ = routed.z
+  }
+  if (hypot(destX - q.px, destZ - q.pz) < 0.35) return { wishX: 0, wishZ: 0, running: false }
+  const u = unit(destX - q.px, destZ - q.pz)
+  return { wishX: u.x, wishZ: u.z, running: true }
+}
+
 /** One frame of auto-hunt. `active: false` means the caller should leave input alone. */
 export function planHunt(q: HuntQuery): HuntPlan {
   if (!q.active) return { active: false, ...IDLE, aimYaw: q.yaw, aimPitch: q.pitch }
-  const stand = standoff(q.kind)
-  const foe = pickFoe(q.foes, q.px, q.pz)
+  const band = engageFor(q.kind, !!q.paired)
+  const foe = pickFoe(q.foes, q.px, q.pz, q.grid ? HUNT_FLOOR : band.far)
   const loot = nearestDrop(q.drops, q.px, q.pz)
   const grabLoot = loot && (!foe || (loot.d < HUNT_LOOT_FIRST && foe.d > HUNT_LOOT_THREAT))
   if (!foe && !grabLoot) {
@@ -229,43 +269,29 @@ export function planHunt(q: HuntQuery): HuntPlan {
     wishX = q.manualX
     wishZ = q.manualZ
   } else if (grabLoot) {
-    const u = unit(tx - q.px, tz - q.pz)
+    const dest = q.grid ? routePoint(q.px, q.pz, tx, tz, q.grid) : { x: tx, z: tz }
+    const u = unit(dest.x - q.px, dest.z - q.pz)
     wishX = u.x
     wishZ = u.z
     running = dist > 1.2
   } else if (foe) {
-    const dx = foe.foe.x - q.px
-    const dz = foe.foe.z - q.pz
-    const u = unit(dx, dz)
-    const side = Math.sin(q.time * 1.4)
-    const sway = side === 0 ? 1 : Math.sign(side)
-    let x = 0
-    let z = 0
-    if (dist > stand.range + 0.8) {
-      x = u.x * 0.92 + -u.z * side * 0.28
-      z = u.z * 0.92 + u.x * side * 0.28
-    } else if (dist < stand.kite) {
-      x = -u.x * 0.85 + -u.z * side * 0.4
-      z = -u.z * 0.85 + u.x * side * 0.4
-    } else {
-      x = -u.z * sway
-      z = u.x * sway
-    }
-    const n = unit(x, z)
-    wishX = n.x
-    wishZ = n.z
-    running = true
+    const step = foeMove(q, foe.foe.x, foe.foe.z, dist, band.sweet, band.far)
+    wishX = step.wishX
+    wishZ = step.wishZ
+    running = step.running
   }
+  const seen = !!foe && dist <= band.far && (!q.grid || worldClear(q.px, q.pz, foe.foe.x, foe.foe.z, q.grid))
   const hp = q.maxHp > 0 ? q.hp / q.maxHp : 1
+  const kite = band.sweet * KITE_AT
   return {
     active: true,
     wishX,
     wishZ,
     aimYaw: aim.yaw,
     aimPitch: aim.pitch,
-    fire: !grabLoot && !!foe && dist <= stand.fire,
+    fire: !grabLoot && seen,
     skill: pickSkill(q, grabLoot ? null : foe, dist),
-    dash: !q.manual && !grabLoot && !!foe && dist < stand.kite && hp < 0.8 && q.sinceDash >= 2.2,
+    dash: !q.manual && !grabLoot && !!foe && dist < kite && hp < 0.8 && q.sinceDash >= 2.2,
     running,
   }
 }
