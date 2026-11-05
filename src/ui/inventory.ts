@@ -4,7 +4,7 @@
  * Plain DOM over the canvas. Every change goes through sim/ (mutate, skilltree) and the host
  * re-applies the build to the live hero.
  */
-import { GUN_KO, GUN_PROFILES, gunDps, gunStatLine } from '../data/guns'
+import { DUAL_ENGAGE, GUN_KO, GUN_PROFILES, engageFor, gunDps, gunStatLine, rangeLabel } from '../data/guns'
 import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { BRANCH_KO, TIER_LEVEL, TREE, type Branch, type TreeSkill } from '../data/tree'
 import { xpToNext } from '../sim/formulas'
@@ -12,6 +12,8 @@ import { bagItems, findItem, isEquipped, slotFor, equipItem, slotFits, oneHanded
 import { ilvText, itemLines, itemName, itemPower } from '../sim/loot'
 import { fillCell, ilvRow, nameTitle } from './itemcell'
 import { tryEquip, tryUnequip } from '../sim/mutate'
+import { AIM_CONES } from '../combat/aim'
+import { holdFor } from '../actors/holds'
 import { handDps, offGun } from '../sim/hands'
 import { buildOf, learn, learnBlock, rank, respec, respecCost } from '../sim/skilltree'
 import { computeStats, type ComputedStats } from '../sim/stats'
@@ -727,7 +729,7 @@ export class InventoryUI {
     gun.dataset.gun = s.weaponKind
     gun.append(el('b', '', GUN_KO[s.weaponKind]), el('span', '', GUN_PROFILES[s.weaponKind].blurb))
     box.append(gun)
-    const line = gunStatLine(GUN_PROFILES[s.weaponKind], s.shotDamage, s.fireRate)
+    const line = gunStatLine(GUN_PROFILES[s.weaponKind], s.shotDamage, s.fireRate, !!offGun(save))
     const chips = el('p', 'inv-gun-stats')
     chips.title = line
     for (const part of line.split(' · ')) chips.append(el('span', '', part))
@@ -748,10 +750,14 @@ export class InventoryUI {
     if (off) {
       hands.append(el('b', '', `🔫🔫 쌍권총 · 초당 피해 합계 ${Math.round(hd.total)}`))
       hands.append(el('span', 'hand main', `주 손 ${Math.round(hd.main)}`), el('span', 'hand off', `보조 손 ${Math.round(hd.off)}`))
-      hands.append(el('small', '', `한 자루일 때의 ×${hd.vsOne.toFixed(2)} · 번갈아 쏘고, 손마다 자기 총 피해 · 스킬은 주 손 기준`))
+      hands.append(el('small', '', `한 자루일 때의 ×${hd.vsOne.toFixed(2)} · 넓게 퍼짐 · 사거리 ${rangeLabel(DUAL_ENGAGE)} ${DUAL_ENGAGE.sweet}~${DUAL_ENGAGE.far}m · 한 몸에 다 맞으면 피해는 같음 · 스킬은 주 손 기준`))
     } else if (oneHanded(findItem(save, save.equipment.weapon))) {
-      hands.append(el('small', '', `한 손 권총 · 초당 피해 ${Math.round(hd.total)} · 한 손 총을 하나 더 '보조 손에 차기' 하면 쌍권총!`))
-    } else hands.append(el('small', '', '양손 총: 두 손을 다 써서 보조 손은 비어 있어.'))
+      const band = engageFor(s.weaponKind, false)
+      hands.append(el('small', '', `한 손 권총 · 조준 ${AIM_CONES.pistol.label} · 사거리 ${rangeLabel(band)} ${band.sweet}~${band.far}m · 하나 더 차면 가까운 쌍권총!`))
+    } else {
+      const band = engageFor(s.weaponKind, false)
+      hands.append(el('small', '', `양손 총 · 조준 ${AIM_CONES[holdFor(s.weaponKind).type].label} · 사거리 ${rangeLabel(band)} ${band.sweet}~${band.far}m · 보조 손은 비어 있어.`))
+    }
     box.append(hands)
   }
 

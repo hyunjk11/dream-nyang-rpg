@@ -20,8 +20,9 @@ describe('총마다 개성이 뚜렷하다 (fix/gun-identity)', () => {
     expect(bubble.spreadMin).toBeGreaterThan(water.spreadMax)
     expect(falloffAt(bubble, 3)).toBe(1)
     expect(falloffAt(bubble, 11)).toBeLessThan(0.8)
-    expect(falloffAt(bubble, 30)).toBe(bubble.falloff!.min)
-    expect(falloffAt(water, 30)).toBe(1)
+    expect(falloffAt(bubble, 30)).toBe(bubble.engage.min)
+    expect(falloffAt(water, 8)).toBe(1)
+    expect(falloffAt(water, 30)).toBe(water.engage.min)
     expect(bubble.knock * bubble.pellets).toBeGreaterThan(water.knock * 10)
   })
 

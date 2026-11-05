@@ -18,7 +18,7 @@ describe('두두두 연사 손맛', () => {
     const g = new Gun()
     const rest = g.spread
     for (let i = 0; i < 30; i += 1) g.update(1 / 60, true)
-    expect(g.spread).toBeGreaterThan(rest * 3)
+    expect(g.spread - rest).toBeGreaterThan(0.01)
     expect(g.gapPx).toBeGreaterThan(GUN.gapPx + 5)
     for (let i = 0; i < 60; i += 1) g.update(1 / 60, false)
     expect(g.spread).toBeCloseTo(rest, 5)

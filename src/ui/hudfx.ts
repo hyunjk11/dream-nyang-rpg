@@ -113,7 +113,7 @@ export class HudFx {
   private next = 0
   private markT = 0
   private readonly tmp = new Vector3()
-  private lastGap = -1
+  private lastGap = ''
   private lastHeat = ''
   private lastTarget = -1
   private readonly tallyEl: HTMLElement | null = null
@@ -144,17 +144,26 @@ export class HudFx {
     }
   }
 
-  /** Crosshair gap (px), heat 0..1 and whether the tank is venting. */
-  aim(gapPx: number, heat: number, overheated: boolean): void {
-    const g = Math.round(gapPx * 2) / 2
-    if (this.cross && g !== this.lastGap) {
-      this.lastGap = g
-      this.cross.style.setProperty('--spread', `${g}px`)
+  /**
+   * Crosshair gaps (px) for the horizontal and vertical cone edges, heat 0..1, and whether
+   * the tank is venting. A wide x and a short y draws the 쌍권총 ellipse; a tiny pair is the sniper dot.
+   */
+  aim(spreadX: number, spreadY: number, heat: number, overheated: boolean): void {
+    const x = Math.round(spreadX * 2) / 2
+    const y = Math.round(spreadY * 2) / 2
+    const key = `${x},${y}`
+    if (this.cross && key !== this.lastGap) {
+      this.lastGap = key
+      this.cross.style.setProperty('--spread-x', `${x}px`)
+      this.cross.style.setProperty('--spread-y', `${y}px`)
+      this.cross.style.setProperty('--spread', `${Math.max(x, y)}px`)
+      this.cross.classList.toggle('wide', x > y * 1.4)
+      this.cross.classList.toggle('pin', x <= 3 && y <= 3)
     }
     if (this.heat) {
-      const key = `${Math.round(heat * 50)}${overheated}`
-      if (key !== this.lastHeat) {
-        this.lastHeat = key
+      const heatKey = `${Math.round(heat * 50)}${overheated}`
+      if (heatKey !== this.lastHeat) {
+        this.lastHeat = heatKey
         this.heat.style.setProperty('--heat', heat.toFixed(2))
         this.heat.classList.toggle('on', heat > 0.06)
         this.heat.classList.toggle('vent', overheated)
@@ -326,7 +335,9 @@ export class HudFx {
     this.tallyEl?.remove()
     for (const n of this.nums) n.el.remove()
     this.cross?.style.setProperty('--spread', '7px')
-    this.cross?.classList.remove('near', 'on')
+    this.cross?.style.setProperty('--spread-x', '7px')
+    this.cross?.style.setProperty('--spread-y', '7px')
+    this.cross?.classList.remove('near', 'on', 'wide', 'pin')
   }
 }
 
