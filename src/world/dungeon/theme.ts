@@ -1,4 +1,4 @@
-import { BoxGeometry, Color, ConeGeometry, Group, InstancedMesh, MeshToonMaterial, Object3D, type BufferGeometry } from 'three'
+import { BoxGeometry, Color, ConeGeometry, CylinderGeometry, Group, InstancedMesh, MeshToonMaterial, Object3D, type BufferGeometry } from 'three'
 import { toonGradient } from '../../core/materials'
 import { DREAM, hash } from './dream'
 import { TILE, Tile, tileCentre, type Maze } from './maze'
@@ -27,7 +27,7 @@ export interface DungeonTheme {
   /** Pipe stripes. */
   pipes: readonly number[]
   /** Props along the walls: none, candy crystals, or bookshelves. */
-  props: 'none' | 'crystals' | 'shelves'
+  props: 'none' | 'crystals' | 'shelves' | 'drains'
 }
 
 export const THEMES: Record<ThemeId, DungeonTheme> = {
@@ -41,7 +41,7 @@ export const THEMES: Record<ThemeId, DungeonTheme> = {
     ceiling: 0x4a3870,
     lamps: [DREAM.lemon, DREAM.pink, DREAM.sky, DREAM.teal],
     pipes: [DREAM.pink, DREAM.teal, DREAM.lemon, DREAM.lavender],
-    props: 'none',
+    props: 'drains',
   },
   candy: {
     id: 'candy',
@@ -164,9 +164,10 @@ export function themeProps(maze: Maze, theme: DungeonTheme): Group {
   const group = new Group()
   group.name = `theme-${theme.id}`
   if (theme.props === 'none') return group
+  const salt = (maze.seed % 4096) * 17
   const faces = wallFaces(maze).filter((f) => {
     const kind = maze.tiles[f.y * maze.w + f.x]
-    return hash(f.x, f.y, f.side + 31) < (kind === Tile.Corridor ? 0.22 : 0.5)
+    return hash(f.x, f.y, f.side + 31 + salt) < (kind === Tile.Corridor ? 0.22 : 0.5)
   }).slice(0, PROP_CAP)
   const o = new Object3D()
   const col = new Color()
@@ -176,6 +177,33 @@ export function themeProps(maze: Maze, theme: DungeonTheme): Group {
     mesh.count = 0
     group.add(mesh)
     return mesh
+  }
+  if (theme.props === 'drains') {
+    const grates = make(new CylinderGeometry(0.28, 0.28, 0.08, 8).translate(0, 0.05, 0), faces.length, 0x1a2438, 0.12)
+    const posts = make(new BoxGeometry(0.16, 0.85, 0.16).translate(0, 0.42, 0), faces.length, 0x243044, 0.08)
+    grates.name = 'theme-grates'
+    posts.name = 'theme-posts'
+    let i = 0
+    for (const f of faces) {
+      const { x, z } = tileCentre(maze, f.x, f.y)
+      const nx = f.side === 0 ? 1 : f.side === 1 ? -1 : 0
+      const nz = f.side === 2 ? 1 : f.side === 3 ? -1 : 0
+      o.position.set(x + nx * (TILE / 2 - 0.36), 0, z + nz * (TILE / 2 - 0.36))
+      o.rotation.set(0, hash(f.x, f.y, 40 + salt) * 6.28, 0)
+      o.scale.set(0.8 + hash(f.x, f.y, 41 + salt) * 0.5, 1, 0.8)
+      o.updateMatrix()
+      grates.setMatrixAt(i, o.matrix)
+      grates.setColorAt(i, col.set(hash(f.x, f.y, 42 + salt) < 0.5 ? 0x6a8aaa : 0x8aa0b0))
+      o.position.set(x + nx * (TILE / 2 - 0.34) + nz * 0.42, 0, z + nz * (TILE / 2 - 0.34) - nx * 0.42)
+      o.scale.set(1, 0.7 + hash(f.x, f.y, 43 + salt) * 0.6, 1)
+      o.updateMatrix()
+      posts.setMatrixAt(i, o.matrix)
+      posts.setColorAt(i, col.set(0x4a5c72))
+      i += 1
+    }
+    grates.count = i
+    posts.count = i
+    return group
   }
   if (theme.props === 'crystals') {
     const mesh = make(new ConeGeometry(0.22, 1, 5).translate(0, 0.5, 0), faces.length * 3, 0xff8fc8, 0.35)

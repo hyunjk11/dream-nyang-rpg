@@ -11,6 +11,7 @@
  * Old saves get a chapter block on load; a player with real progress is offered the skip.
  */
 import { GEAR_IDS, ITEMS, MATERIAL_KO, WEAPON_IDS } from '../data/items'
+import type { PlaceId } from './places'
 import type { HordeKind } from '../world/dungeon/horde'
 import { addItem } from './inventory'
 // Cycle with dreamstory (it reads chapter2Open): both only call each other inside functions.
@@ -44,22 +45,26 @@ export interface GuideStep {
   say: { who: '별하' | '모찌'; text: string }
   /** Gift handed over as the step begins (so the step can always be done). */
   gift?: 'gear' | 'candy'
+  /** Quest-row place ("n장 · 이름"). */
+  at: PlaceId
+  /** Extra tail on that place ("북쪽 포포", "깊이 1"). */
+  spot?: string
 }
 
 export const GUIDE: GuideStep[] = [
-  { id: 'move', title: '걸어 보기', keys: 'WASD로 움직이기', touch: '왼쪽 스틱으로 움직이기', goal: 5, say: { who: '모찌', text: '여기가 꿈 섬이야. 천천히 걸어 봐냥.' } },
-  { id: 'shoot', title: '조준하고 쏘기', keys: '마우스로 조준 · 클릭을 누르고 있으면 연사', touch: '오른쪽 드래그로 조준 · 공격 길게 누르기', goal: 25, say: { who: '별하', text: '물총이네. 두두두… 생각보다 손맛 있는데?' } },
-  { id: 'dash', title: '대시로 피하기', keys: 'Space로 대시', touch: '대시 버튼', goal: 2, say: { who: '모찌', text: '공격이 오면 휙 비켜! 대시는 짧게 무적이야.' } },
-  { id: 'kill', title: '괴물 쓰러뜨리기', keys: '꿈을 갉는 괴물을 물총으로', touch: '꿈을 갉는 괴물을 물총으로', goal: 3, say: { who: '별하', text: '저 솜사탕 녀석들… 꿈을 갉아먹는 거지? 조준 들어간다.' } },
-  { id: 'skill', title: '스킬 써 보기', keys: '1·2·3·4 키 (아래 스킬 칸)', touch: '아래 스킬 칸 누르기', goal: 2, say: { who: '모찌', text: '스킬 칸 보이지? 나도 같이 뛰어든다냥!' } },
-  { id: 'equip', title: '장비 장착하기', keys: 'G로 바로 장착 · I 가방에서 비교', touch: '"바로 장착" 또는 가방에서 장착', goal: 1, say: { who: '모찌', text: '반짝이는 거 주웠어! 별하한테 어울릴 것 같아.' }, gift: 'gear' },
-  { id: 'candy', title: '하트 사탕 먹기', keys: 'Q로 사탕 먹기', touch: '사탕 버튼', goal: 1, say: { who: '모찌', text: '아플 땐 하트 사탕! 한 개 챙겨 뒀어냥.' }, gift: 'candy' },
-  { id: 'shop', title: '포포 상점 둘러보기', keys: '마을의 포포에게 E', touch: '마을의 포포에게 대화', goal: 1, say: { who: '별하', text: '마을이다. 사탕이랑 두루마리는 포포네서 사면 되겠다.' } },
-  { id: 'workshop', title: '키키 공방 들르기', keys: '키키에게 E · 총 강화', touch: '키키에게 대화 · 총 강화', goal: 1, say: { who: '모찌', text: '키키는 총을 실패 없이 강화해 줘. 비싸지만!' } },
-  { id: 'board', title: '퀘스트 게시판 보기', keys: '게시판 앞에서 E', touch: '게시판 앞에서 대화', goal: 1, say: { who: '별하', text: '의뢰도 받는구나. 다녀오면 보상이라… 좋아.' } },
-  { id: 'sewer', title: '별문으로 꿈 하수도에', keys: '광장 별문에서 E · 꿈 하수도 깊이 1', touch: '별문에서 대화 · 꿈 하수도 깊이 1', goal: 1, say: { who: '모찌', text: '별문 너머가 꿈 하수도야. 같이 내려가자!' } },
-  { id: 'recall', title: 'T로 마을 귀환', keys: 'T: 귀환 주문 (맞으면 끊겨)', touch: '귀환 버튼', goal: 1, say: { who: '별하', text: '위험하면 T로 돌아오면 되는 거지? 한번 해 볼게.' } },
-  { id: 'boss', title: '깊이 1 악몽 꽃 쓰러뜨리기', keys: '별문 → 꿈 하수도 깊이 1 · 보스층까지', touch: '별문 → 꿈 하수도 깊이 1 · 보스층까지', goal: 1, say: { who: '모찌', text: '이제 진짜야. 깊이 1 끝의 악몽 꽃, 같이 끝내자냥!' } },
+  { id: 'move', title: '걸어 보기', keys: 'WASD로 움직이기 · 꿈의 초원', touch: '왼쪽 스틱으로 움직이기 · 꿈의 초원', goal: 5, at: 'meadow', say: { who: '모찌', text: '여기가 꿈의 초원이야. 천천히 걸어 봐냥.' } },
+  { id: 'shoot', title: '조준하고 쏘기', keys: '마우스로 조준 · 클릭을 누르고 있으면 연사', touch: '오른쪽 드래그로 조준 · 공격 길게 누르기', goal: 25, at: 'meadow', say: { who: '별하', text: '물총이네. 두두두… 생각보다 손맛 있는데?' } },
+  { id: 'dash', title: '대시로 피하기', keys: 'Space로 대시', touch: '대시 버튼', goal: 2, at: 'meadow', say: { who: '모찌', text: '공격이 오면 휙 비켜! 대시는 짧게 무적이야.' } },
+  { id: 'kill', title: '초원 슬라임 3마리', keys: '꿈의 초원 솜사탕 슬라임 3마리 · 서쪽 별문으로 나가기 전에', touch: '초원 슬라임 3마리 · 나가기 전에', goal: 3, at: 'meadow', spot: '슬라임 3', say: { who: '별하', text: '초원에 솜사탕 슬라임이 셋이야. 서쪽 별문으로 마을에 가기 전에 셋 다 잠재우자.' } },
+  { id: 'skill', title: '스킬 써 보기', keys: '1·2·3·4 키 (아래 스킬 칸)', touch: '아래 스킬 칸 누르기', goal: 2, at: 'meadow', say: { who: '모찌', text: '스킬 칸 보이지? 나도 같이 뛰어든다냥!' } },
+  { id: 'equip', title: '장비 장착하기', keys: 'G로 바로 장착 · I 가방에서 비교', touch: '"바로 장착" 또는 가방에서 장착', goal: 1, at: 'meadow', say: { who: '모찌', text: '반짝이는 거 주웠어! 별하한테 어울릴 것 같아.' }, gift: 'gear' },
+  { id: 'candy', title: '하트 사탕 먹기', keys: 'Q로 사탕 먹기', touch: '사탕 버튼', goal: 1, at: 'meadow', say: { who: '모찌', text: '아플 땐 하트 사탕! 한 개 챙겨 뒀어냥.' }, gift: 'candy' },
+  { id: 'shop', title: '포포 상점 둘러보기', keys: '서쪽 별문 → 꿈의 마을 · 북쪽 포포에게 E', touch: '서쪽 별문 → 마을 · 북쪽 포포', goal: 1, at: 'village', spot: '북쪽 포포', say: { who: '별하', text: '서쪽 별문이 꿈의 마을로 열려. 포포는 마을 북쪽, 사탕이랑 두루마리는 거기서.' } },
+  { id: 'workshop', title: '키키 공방 들르기', keys: '꿈의 마을 북쪽 키키에게 E · 총 강화', touch: '북쪽 키키에게 대화 · 총 강화', goal: 1, at: 'village', spot: '북쪽 키키', say: { who: '모찌', text: '키키도 마을 북쪽이야. 총 강화는 앞 단계가 실패 없이 올라. 비싸지만!' } },
+  { id: 'board', title: '퀘스트 게시판 보기', keys: '꿈의 마을 게시판 앞에서 E', touch: '마을 게시판 앞에서 대화', goal: 1, at: 'village', spot: '게시판', say: { who: '별하', text: '게시판은 마을에 있어. 의뢰를 맡으면 다녀와서 보상을 받아.' } },
+  { id: 'sewer', title: '무한 탐험 깊이 1', keys: '서쪽 별문 → 무한 탐험 → 깊이 1 · 꿈 하수도', touch: '별문 → 무한 탐험 → 깊이 1', goal: 1, at: 'sewer', spot: '깊이 1', say: { who: '모찌', text: '별문에서 "무한 탐험"을 골라. 초원·숲 같은 이야기 길이랑 다른 문이야. 깊이 1로 내려가자!' } },
+  { id: 'recall', title: 'T로 마을 귀환', keys: '하수도에서 T (맞으면 끊겨) · 마을 돌아가기 포털', touch: '귀환 버튼 · 마을 돌아가기 포털', goal: 1, at: 'sewer', spot: '깊이 1', say: { who: '별하', text: '위험하면 T로 마을에 돌아와. 별문 옆에 돌아가기 포털이 그 자리를 남겨 둬.' } },
+  { id: 'boss', title: '깊이 1 악몽 꽃', keys: '별문 → 무한 탐험 → 깊이 1 · 탐험 3층 다음 보스층', touch: '무한 탐험 깊이 1 · 보스층', goal: 1, at: 'sewer', spot: '깊이 1 · 보스', say: { who: '모찌', text: '깊이 1은 탐험 세 층 다음에 보스층이야. 악몽 꽃을 끝내면 1장이 닫혀.' } },
 ]
 
 // ---------------------------------------------------------------- 챕터 2: 몽실 들판
@@ -201,6 +206,15 @@ export function guideStep(save: SaveData): GuideStep | null {
   const c = chaptersOf(save)
   if (c.current !== 1 || c.guide.done) return null
   return GUIDE[c.guide.step] ?? null
+}
+
+/**
+ * Meadow tutorial slimes stay through the kill step.
+ * Leaving for the village after the first used to despawn the other two, and the step asks for three.
+ */
+export function tutorialRest(save: SaveData): boolean {
+  const step = guideStep(save)
+  return !!step && (step.id === 'move' || step.id === 'shoot' || step.id === 'dash' || step.id === 'kill')
 }
 
 /** Put the step's gift in her hands (gear in the bag, a heart candy). */

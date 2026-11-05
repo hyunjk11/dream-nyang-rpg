@@ -184,7 +184,11 @@ export const ZONES: Record<string, ZoneDef> = {
     ],
     npcs: [],
     spots: [],
-    enemies: [{ id: 'slime', x: 1280, y: 900, tags: ['tutorial'], fixed: true }],
+    enemies: [
+      { id: 'slime', x: 1120, y: 820, tags: ['tutorial'], fixed: true },
+      { id: 'slime', x: 1280, y: 900, tags: ['tutorial'], fixed: true },
+      { id: 'slime', x: 1460, y: 760, tags: ['tutorial'], fixed: true },
+    ],
     exits: [{ x: 900, y: 1040, w: 280, h: 240, to: 'village', spawn: 'fromMeadow' }],
     pickups: [],
   },

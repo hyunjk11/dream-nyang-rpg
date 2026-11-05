@@ -5,7 +5,7 @@
  * alcoves give the nests, chests and the secret pocket their dead ends. Same `Maze` data as
  * `generateMaze`, so sewer geometry, the minimap and `planLayout` work unchanged.
  */
-import { Tile, rng, type Maze, type Rect } from './maze'
+import { Tile, distances, rng, type Maze, type Rect } from './maze'
 
 /** Tiles per grid slot (5 open + 1 shared wall line). */
 export const SLOT = 6
@@ -27,11 +27,21 @@ export interface RoomMaze extends Maze {
 export const ROOMS = {
   /** Side rooms off the main path, inclusive range. */
   side: [3, 4] as const,
-  /** Straight 2-tile alcoves (dead ends) for nests, chests and the secret. */
+  /** Straight alcoves (dead ends) for nests, chests and the secret. */
   alcoves: [4, 6] as const,
   /** Chance one side room also joins a second main room (one loop, so a horde can flank). */
   loop: 0.6,
 }
+
+/** Room footprints that still fit one grid slot (centre ± 2). */
+const FOOT: readonly [number, number][] = [
+  [3, 3],
+  [3, 3],
+  [3, 3],
+  [5, 5],
+  [5, 3],
+  [3, 5],
+]
 
 export function roomMaze(seed: number, slots = 4, exitSize = 5): RoomMaze {
   const rand = rng(seed)
@@ -80,7 +90,8 @@ export function roomMaze(seed: number, slots = 4, exitSize = 5): RoomMaze {
   rooms.set(key(exitSlot), bossRoom)
   const chambers: Rect[] = []
   for (const s of path.slice(1, -1)) {
-    const r = roomAt(s.x, s.y, pick([3, 5, 5]), pick([3, 5, 5]))
+    const [rw, rh] = pick(FOOT)
+    const r = roomAt(s.x, s.y, rw, rh)
     rooms.set(key(s), r)
     chambers.push(r)
   }
@@ -104,7 +115,8 @@ export function roomMaze(seed: number, slots = 4, exitSize = 5): RoomMaze {
   for (let i = 1; i < path.length; i += 1) links.push({ a: path[i - 1], b: path[i], wide: true })
   let looped = false
   for (const s of sideSlots) {
-    const r = roomAt(s.x, s.y, pick([3, 3, 5]), pick([3, 3, 5]))
+    const [rw, rh] = pick(FOOT)
+    const r = roomAt(s.x, s.y, rw, rh)
     rooms.set(key(s), r)
     side.push(r)
     chambers.push(r)
@@ -148,10 +160,9 @@ export function roomMaze(seed: number, slots = 4, exitSize = 5): RoomMaze {
     const along = dx ? r.y + 1 + Math.floor(rand() * Math.max(1, r.h - 2)) : r.x + 1 + Math.floor(rand() * Math.max(1, r.w - 2))
     const x0 = dx ? (dx > 0 ? r.x + r.w : r.x - 1) : along
     const y0 = dy ? (dy > 0 ? r.y + r.h : r.y - 1) : along
-    const cells = [
-      { x: x0, y: y0 },
-      { x: x0 + dx, y: y0 + dy },
-    ]
+    // Most nooks are two tiles; some run one tile deeper so floors don't share one silhouette.
+    const len = rand() < 0.4 ? 3 : 2
+    const cells = Array.from({ length: len }, (_, i) => ({ x: x0 + dx * i, y: y0 + dy * i }))
     const ok = cells.every((c, i) => {
       if (!inside(c.x, c.y) || tiles[at(c.x, c.y)] !== Tile.Solid) return false
       // Sides solid; the far end solid past the last tile.
@@ -170,7 +181,55 @@ export function roomMaze(seed: number, slots = 4, exitSize = 5): RoomMaze {
     for (const c of cells) set(c.x, c.y, Tile.Corridor)
     made += 1
   }
-  return { seed, w, h, tiles, start: { x: startRoom.x + 1, y: startRoom.y + 1 }, startRoom, bossRoom, chambers, nests: [], side, path }
+  const start = { x: startRoom.x + 1, y: startRoom.y + 1 }
+  carveVariety(tiles, w, h, rand, chambers, start)
+  return { seed, w, h, tiles, start, startRoom, bossRoom, chambers, nests: [], side, path }
+}
+
+const VDIRS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+] as const
+
+/** A puddle in one dead end, and a pillar in a wide room, without cutting the walk. */
+function carveVariety(tiles: Uint8Array, w: number, h: number, rand: () => number, chambers: Rect[], start: { x: number; y: number }): void {
+  const at = (x: number, y: number) => y * w + x
+  const walk = (x: number, y: number) => x > 0 && y > 0 && x < w - 1 && y < h - 1 && tiles[at(x, y)] !== Tile.Solid && tiles[at(x, y)] !== Tile.Water
+  const linked = () => {
+    const d = distances(tiles, w, h, start.x, start.y)
+    for (let i = 0; i < tiles.length; i += 1) {
+      const t = tiles[i]
+      if (t === Tile.Solid || t === Tile.Water) continue
+      if (d[i] < 0) return false
+    }
+    return true
+  }
+  if (rand() < 0.55) {
+    const tips: { x: number; y: number }[] = []
+    for (let y = 1; y < h - 1; y += 1) {
+      for (let x = 1; x < w - 1; x += 1) {
+        if (tiles[at(x, y)] !== Tile.Corridor) continue
+        let n = 0
+        for (const [dx, dy] of VDIRS) if (walk(x + dx, y + dy)) n += 1
+        if (n === 1) tips.push({ x, y })
+      }
+    }
+    if (tips.length) {
+      const tip = tips[Math.floor(rand() * tips.length)]
+      tiles[at(tip.x, tip.y)] = Tile.Water
+      if (!linked()) tiles[at(tip.x, tip.y)] = Tile.Corridor
+    }
+  }
+  for (const r of chambers) {
+    if (r.w < 5 || r.h < 5 || rand() > 0.65) continue
+    const x = r.x + 1
+    const y = r.y + 1
+    if (x <= 0 || y <= 0 || tiles[at(x, y)] !== Tile.Chamber) continue
+    tiles[at(x, y)] = Tile.Solid
+    if (!linked()) tiles[at(x, y)] = Tile.Chamber
+  }
 }
 
 /**
@@ -205,7 +264,15 @@ export function bossMaze(seed: number, size: number = BOSS_ARENA.size): RoomMaze
   const lanes = rng(seed)() < 0.5 ? [cx - 1, cx] : [cx, cx + 1]
   for (let y = hallY; y < bossRoom.y; y += 1) for (const x of lanes) set(x, y, Tile.Corridor)
   fill(bossRoom, Tile.Boss)
-  // Four pillars two tiles in from the corners: cover from the orb rings, never on the centre lines.
-  for (const [px, py] of [[2, 2], [s - 3, 2], [2, s - 3], [s - 3, s - 3]]) tiles[(bossRoom.y + py) * w + bossRoom.x + px] = Tile.Solid
+  // Four pillars, two tiles in from the rim. The seed picks a layout so arenas don't all match.
+  for (const [px, py] of arenaPillars(seed, s)) tiles[(bossRoom.y + py) * w + bossRoom.x + px] = Tile.Solid
   return { seed, w, h, tiles, start: { x: startRoom.x + 1, y: startRoom.y + 1 }, startRoom, bossRoom, chambers: [], nests: [], side: [], path: [{ x: 0, y: 0 }, { x: 0, y: 1 }] }
+}
+
+/** Pillar spots inside an s×s arena. All sit off the south-centre entrance. */
+function arenaPillars(seed: number, s: number): [number, number][] {
+  const roll = rng(seed ^ 0x51ed)()
+  if (roll < 0.34) return [[2, 2], [s - 3, 2], [2, s - 3], [s - 3, s - 3]]
+  if (roll < 0.67) return [[2, 3], [s - 3, 3], [3, s - 3], [s - 4, 2]]
+  return [[3, 2], [s - 4, 3], [2, s - 4], [s - 3, s - 3]]
 }

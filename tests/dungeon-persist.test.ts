@@ -66,7 +66,9 @@ describe('던전 유지: 층 상태 저장', () => {
 
   it('복귀·죽음 모두 층을 남기고, 보스·다음 층·새 여행은 지운다 (main 연결)', async () => {
     const main = await src('src/main.ts')
-    expect(main).toMatch(/why === 'recall' \|\| why === 'down'/)
+    const portals = await src('src/sim/portals.ts')
+    expect(main).toMatch(/shouldParkFloor\(why/)
+    expect(portals).toMatch(/why === 'recall' \|\| why === 'down'/)
     expect(main).toMatch(/keepFloor\(snap\)/)
     expect(main).toMatch(/run\.restore\(kept\)/)
     expect((main.match(/keepFloor\(null\)/g) ?? []).length).toBeGreaterThanOrEqual(4)

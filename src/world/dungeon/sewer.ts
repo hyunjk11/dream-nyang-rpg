@@ -67,7 +67,7 @@ export function vaultGeometry(segments = 7): BufferGeometry {
 
 /**
  * Tunnel shell: one merged floor, one merged ceiling, and the wall faces as one InstancedMesh.
- * Three draw calls whatever the maze size.
+ * The shell is three draw calls (floor, ceiling, walls). Theme props add at most two more.
  */
 export class Sewer {
   readonly group = new Group()

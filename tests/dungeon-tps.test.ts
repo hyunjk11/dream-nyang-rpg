@@ -85,7 +85,8 @@ describe('벽 충돌과 시선 광선', () => {
     sewer.group.traverse((o) => {
       if ((o as { isMesh?: boolean }).isMesh) meshes += 1
     })
-    expect(meshes).toBeLessThanOrEqual(4)
+    // Shell is floor + ceiling + walls. 꿈 하수도 adds two instanced prop draws (grates, posts).
+    expect(meshes).toBeLessThanOrEqual(6)
     sewer.dispose()
   })
 })

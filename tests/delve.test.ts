@@ -43,8 +43,9 @@ describe('탐험 층 구성', () => {
   })
 
   it('HUD 문구가 한국어로 진행도를 보여준다', () => {
-    expect(floorLabel(1, 2)).toBe('1장 · 꿈 하수도 · 깊이 1 · 2층')
-    expect(floorLabel(2, 4)).toBe('1장 · 꿈 하수도 · 깊이 2 · 보스층')
+    expect(floorLabel(1, 2)).toBe('1장 · 깊이 1 · 꿈 하수도 · 2층')
+    expect(floorLabel(2, 4)).toBe('1장 · 깊이 2 · 캔디 동굴 · 보스층')
+    expect(floorLabel(3, 1)).toBe('1장 · 깊이 3 · 별빛 서재 · 1층')
     expect(objectiveText(floorPlan(1, 1))).toBe('미궁 끝 출구 방 찾기')
     expect(objectiveText(floorPlan(1, 2), 0)).toBe('별 열쇠를 가진 정예 찾기')
     expect(objectiveText(floorPlan(1, 2), 1)).toBe('별 열쇠로 출구 문 열기')
