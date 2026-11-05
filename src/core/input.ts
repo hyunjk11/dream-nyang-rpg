@@ -72,12 +72,27 @@ let lockRefused = false
 let everLocked = false
 /** "클릭해서 계속" was clicked: play goes on even if the browser turned the lock down this time. */
 let resumed = false
+/**
+ * The click asked for the lock and Chrome may still be in its post-Esc cooldown (a real Escape
+ * rejects the request for about half a second). Keep asking on a short timer while the gesture's
+ * activation lasts, so that one click finishes the resume instead of leaving a second click.
+ */
+let resumeWanted = false
+let resumeTries = 0
+let resumeTimer = 0
 let fireFinger = -1
 let lockedAt = 0
 let lockErrors = 0
 const refuse = () => {
   lockErrors += 1
   if (!everLocked) lockRefused = true
+}
+/** How many quiet retries one click may spend, and the gap between them. Cooldown is ~0.5 s. */
+export const LOCK_RETRY_MS = 100
+export const LOCK_RETRY_CAP = 16
+/** Try the lock again without another click? Pure. */
+export function shouldRetryLock(s: { attempt: number; active: boolean; locked: boolean; refused: boolean; free: boolean }): boolean {
+  return s.active && !s.locked && !s.refused && !s.free && s.attempt < LOCK_RETRY_CAP
 }
 if (typeof document !== 'undefined') {
   document.addEventListener('pointerlockchange', () => {
@@ -86,9 +101,13 @@ if (typeof document !== 'undefined') {
       everLocked = true
       // A refusal was only for that try (no gesture yet, a cooldown): a granted lock clears it.
       lockRefused = false
+      stopResume()
     }
     // Losing the lock (Esc, a tab switch) asks for a fresh "클릭해서 계속".
-    else resumed = false
+    else {
+      resumed = false
+      stopResume()
+    }
   })
   document.addEventListener('pointerlockerror', refuse)
 }
@@ -104,6 +123,28 @@ export function clickAction(locked: boolean, refused: boolean): 'lock' | 'fire' 
 let view: HTMLCanvasElement | null = null
 let lockAsked = 0
 
+function stopResume(): void {
+  resumeWanted = false
+  if (typeof window !== 'undefined') window.clearTimeout(resumeTimer)
+}
+
+/** The request was turned down. One click keeps trying through Chrome's post-Esc cooldown. */
+function failLock(): void {
+  refuse()
+  if (!resumeWanted || typeof window === 'undefined') return
+  window.clearTimeout(resumeTimer)
+  resumeTimer = window.setTimeout(() => {
+    if (!shouldRetryLock({ attempt: resumeTries, active: gestureActive(), locked: shoulder.locked, refused: lockRefused, free: cursor.free })) {
+      // Out of gestures or tries: the button comes back instead of pretending play resumed.
+      if (!shoulder.locked) resumed = false
+      stopResume()
+      return
+    }
+    resumeTries += 1
+    if (view) requestLock(view)
+  }, LOCK_RETRY_MS)
+}
+
 function requestLock(canvas: HTMLCanvasElement): void {
   lockAsked = typeof performance === 'undefined' ? 0 : performance.now()
   if (!canvas.requestPointerLock) {
@@ -112,9 +153,9 @@ function requestLock(canvas: HTMLCanvasElement): void {
   }
   try {
     const out = canvas.requestPointerLock() as Promise<void> | undefined
-    if (out && typeof out.catch === 'function') out.catch(refuse)
+    if (out && typeof out.catch === 'function') out.catch(() => failLock())
   } catch {
-    refuse()
+    failLock()
   }
 }
 
@@ -124,12 +165,14 @@ export function relockView(): void {
 }
 
 /**
- * One click on "클릭해서 계속" (or the start buttons): play resumes right away and the lock is asked
- * for in the same handler, so it rides this very gesture. If the browser says no (Chrome's re-lock
- * cooldown right after Esc), play still resumes; the next click on the view takes the lock.
+ * One click on "클릭해서 계속" (or the start buttons): play resumes on this gesture. Chrome rejects
+ * a fresh lock for about half a second after a real Escape; the same click keeps asking until the
+ * cooldown lifts (the activation from the click is still good), so a second click is not required.
  */
 export function resumeView(): void {
   resumed = true
+  resumeWanted = true
+  resumeTries = 0
   lockAsked = 0
   relockView()
 }
@@ -244,8 +287,10 @@ export function installInput(canvas: HTMLCanvasElement): void {
         return
       }
       if (clickAction(shoulder.locked, lockRefused) === 'lock') {
-        // Same rule as the button: this click resumes, whatever the browser says about the lock.
+        // Same rule as the button: this click resumes, and rides out a post-Esc cooldown.
         resumed = true
+        resumeWanted = true
+        resumeTries = 0
         requestLock(canvas)
       } else {
         pad.fire = true

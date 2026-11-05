@@ -66,24 +66,32 @@ export const BOSS_LIVE = 8
  * one hits harder, and the boss herself bites. Both also grow with her max HP (levels and gear
  * raise it; foe damage did not follow, so a Lv 9 hero never dropped).
  */
-export const BOSS_ROOM_HIT = { adds: 4, boss: 2 }
+/**
+ * Incoming threat scale (2026-11, "적 공격이 여전히 너무 약함"). A surrounded pack was taking about
+ * 24–36% of her health in 10 s — the same before and after half the foes went ranged — because every
+ * landed hit was clamped to 3.2–5.2% of max HP and i-frames ate the rest. Boss, elite and normal all
+ * move by this same factor, so a boss touch stays ~2.8× a slime and an elite stays 1× (1.1× enraged).
+ * Player damage and skills are not part of it.
+ */
+export const THREAT = 2.8
+export const BOSS_ROOM_HIT = { adds: 4 * THREAT, boss: 2 * THREAT }
 /**
  * Every other floor (fix/real-play, "미로에서 피가 안 빠져"): #46 scaled only the boss room. Out on a
  * maze / sewer / field floor a slime still hit for 5 × 0.15 = 1 HP of 150 and a pack swung in
- * step, so one i-frame window ate the other four: 2% in 10 s in the browser. Now normal floors hit
- * FOE_HIT × harder (a slime 4–5, a knight 6–7) and, like the boss room, follow her max HP.
+ * step, so one i-frame window ate the other four: 2% in 10 s in the browser. FOE_HIT lifts the raw
+ * hit into FOE_HIT_BAND; THREAT scales both together so kind-vs-kind spread survives the clamp.
  */
-export const FOE_HIT = 6
+export const FOE_HIT = 6 * THREAT
 export function foeHit(maxHp: number): number {
   return FOE_HIT * Math.max(1, maxHp / DIFFICULTY.hero.maxHp)
 }
 /** The horde's hp / damage scale for a floor, exactly as the run sets it (tests use this too). */
 /**
- * A normal foe's hit as a share of her max HP (browser-measured, fix/real-play): bats rounded to 4
- * (18.7% in 10 s) and depth-3 mages to 11 (42.7%). Every fighting floor keeps normals in this band,
- * so a pack takes 20–40% in 10 s anywhere; elites still multiply on top.
+ * A normal foe's hit as a share of her max HP. The old band (3.2–5.2%) made a surrounded pack a
+ * scratch (about 24% in 10 s). THREAT lifts it to about 9–15% a hit: standing in a pack is dangerous,
+ * stepping out of the telegraph or kiting is not. Elites still multiply on top.
  */
-export const FOE_HIT_BAND = [0.032, 0.052] as const
+export const FOE_HIT_BAND = [0.032 * THREAT, 0.052 * THREAT] as const
 export function runFoeScale(plan: Pick<FloorPlan, 'scale' | 'objective'>, isBoss: boolean, maxHp: number): { hp: number; damage: number; hit?: readonly [number, number] } {
   const scale: { hp: number; damage: number; hit?: readonly [number, number] } = { hp: plan.scale.hp, damage: plan.scale.damage }
   // 몽실 마을 (objective 'town') has no foes; every fighting floor hits for real.

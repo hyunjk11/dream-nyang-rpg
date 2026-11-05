@@ -28,9 +28,9 @@ export const DIFFICULTY = {
     /** Was 0.36: fights last ~8× longer, so each swing lands softer and less often (cooldown 1.45 → 2.1 s). 0.18 → 0.15 to smooth depth 3. */
     damage: 0.15,
     speed: 0.92,
-    /** Longer, easier-to-read melee wind-up (was 0.32 s) and a longer rest between swings (was 1.1 s). */
+    /** Wind-up stays readable (0.44 s) so a step or a dash still leaves the swing. The rest between swings was 2.1 s: a pack on top of her only landed ~7 hits in 10 s. 1.55 s keeps the telegraph and closes that long breath. */
     windup: 0.44,
-    cooldown: 2.1,
+    cooldown: 1.55,
   },
   /**
    * Elite multipliers (were hp 4.5, damage 2). hp is ×6.5 a slime-sized foe; bigger kinds get only
