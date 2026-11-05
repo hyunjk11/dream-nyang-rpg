@@ -234,11 +234,25 @@ function giveGift(save: SaveData, step: GuideStep, rng: () => number): 'gear' | 
     return 'candy'
   }
   if (step.gift === 'dust') {
+    // A real pinch on top of anything she already found. The floor only covers a short purse.
     save.materials.dream_dust = (save.materials.dream_dust ?? 0) + GUIDE_DUST
-    if (save.gold < GUIDE_PLUS1_GOLD) save.gold = GUIDE_PLUS1_GOLD
+    ensureGuideStarter(save)
     return 'dust'
   }
   return null
+}
+
+/**
+ * Workshop +1 starter, without stacking: dream dust at least GUIDE_DUST, gold at least
+ * GUIDE_PLUS1_GOLD. A skip after the workshop gift leaves the gift where it is.
+ */
+export function ensureGuideStarter(save: SaveData): { dust: boolean; gold: boolean } {
+  const had = save.materials.dream_dust ?? 0
+  const dust = had < GUIDE_DUST
+  if (dust) save.materials.dream_dust = GUIDE_DUST
+  const gold = save.gold < GUIDE_PLUS1_GOLD
+  if (gold) save.gold = GUIDE_PLUS1_GOLD
+  return { dust, gold }
 }
 
 /** Mark chapter n cleared: the clear card, and the next chapter opens. */
@@ -274,15 +288,20 @@ export function guideEvent(save: SaveData, e: GuideEvent, rng: () => number = Ma
   return o
 }
 
-/** Skip the guide (existing players, or anyone from the settings): chapter 2 opens. */
-export function skipGuide(save: SaveData): void {
+/**
+ * Skip the guide (existing players, or anyone from the settings): chapter 2 opens.
+ * Tops dust and gold up to the workshop +1 starter so the skip does not lock out 강화.
+ * Returns which purse actually rose (both false when she already had enough, or the guide was done).
+ */
+export function skipGuide(save: SaveData): { dust: boolean; gold: boolean } {
   const c = chaptersOf(save)
   c.offerSkip = false
-  if (c.guide.done) return
+  if (c.guide.done) return { dust: false, gold: false }
   c.guide.done = true
   c.guide.skipped = true
   if (!c.cleared.includes(1)) c.cleared.push(1)
   c.current = Math.max(c.current, 2)
+  return ensureGuideStarter(save)
 }
 
 /** Keep the guide (the skip card said no). */
