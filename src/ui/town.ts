@@ -8,7 +8,7 @@
  */
 import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { REPEAT_ICON, boardOf, claimContract, contractRuns, contractTitle, dropContract, rewardText, runsText, takeContract, type Contract } from '../sim/contracts'
-import { addItem, bagItems, findItem, isEquipped, slotFor } from '../sim/inventory'
+import { addItem, bagItems, findItem, isEquipped, oneHanded, slotFor } from '../sim/inventory'
 import { formatAffix, ilvText, itemLines, itemName, itemPower, plusOf, sellValue, upgradeMul } from '../sim/loot'
 import { fillCell, ilvRow, nameTitle, pct } from './itemcell'
 import { buyBack, buyConsumable, buyStock, consumableCount, CONSUMABLES, RESTOCK_COST, restock, sellItem, shopStock, STASH_CAP, stashPut, stashTake, townOf } from '../sim/town'
@@ -18,7 +18,7 @@ import { BAG_CAP, type MutationResult, type Element, type ItemInstance, type Sav
 import { compareEquip } from './inventory'
 import { iconSvg } from './icons'
 import { COMBOS, MAX_TRICKS, TRICK_KO } from '../data/mods'
-import { attachMod, bagMods, detachMod, fitBlock, fitCost, gunCombos, gunMods, gunTraits, isMod, MAX_MOD_SLOTS, MOD_SLOT_ILV, modKind, modLabel, modSlots, modUpgradeCost, newCombos, swapIndex, upgradeMod, type Trait } from '../sim/mods'
+import { attachMod, bagMods, detachMod, fitBlock, fitCost, gunCombos, gunMods, gunTraits, HAND_KO, isMod, MAX_MOD_SLOTS, MOD_SLOT_ILV, modKind, modLabel, modSlots, modUpgradeCost, newCombos, partTarget, swapIndex, upgradeMod, wornGun, type PartHand, type Trait } from '../sim/mods'
 import { RARITY_COLOR, RARITY_KO } from '../sim/types'
 import { itemColor, itemRarityKo } from '../sim/rarity'
 import type { LegendSource } from '../data/legends'
@@ -444,6 +444,8 @@ export class TownUI {
     const right = el('section', 'town-col town-side')
     body.append(left, right)
     const items = this.workItems(save)
+    left.append(el('h3', '', '어느 총에 끼울까'))
+    left.append(this.handPicks(save))
     left.append(el('h3', '', '맡길 물건 (착용 중 → 가방 → 보관함)'))
     left.append(this.grid(items, 'work'))
     left.append(el('p', 'inv-empty', '강화: 총만 · 옵션 재굴림: 모든 장비 · 속성 변경: 속성 옵션이 붙은 총'))
@@ -509,6 +511,42 @@ export class TownUI {
     }
   }
 
+  /** Big 주 손 / 보조 손 chips so the second gun is one tap, not a hunt through the grid. */
+  private handPicks(save: SaveData): HTMLElement {
+    const row = el('div', 'hand-picks')
+    row.id = 'work-hands'
+    const main = wornGun(save, 'weapon')
+    const picked = this.picked?.from === 'work' ? this.picked.key : ''
+    for (const hand of ['weapon', 'offhand'] as const) {
+      const gun = wornGun(save, hand)
+      const on = !!gun && picked === gun.uid
+      const b = el('button', `hand-pick${on ? ' on' : ''}${gun ? '' : ' empty'}`)
+      b.type = 'button'
+      b.id = `work-hand-${hand}`
+      const empty = hand === 'offhand' && main && !oneHanded(main) ? '양손 총이 사용 중' : '비어 있음 · 눌러서 안내'
+      b.append(el('b', '', HAND_KO[hand]), el('small', '', gun ? itemName(gun) : empty))
+      b.addEventListener('click', () => {
+        if (!gun) {
+          this.host.toast(partTarget(save, hand, true).note ?? '총을 먼저 차 줘.')
+          this.host.sfx('ui')
+          return
+        }
+        this.picked = { from: 'work', key: gun.uid }
+        this.host.sfx('ui')
+        this.render()
+      })
+      row.append(b)
+    }
+    return row
+  }
+
+  /** 주 손 / 보조 손 / 가방, for the banner on the gun being modified. */
+  private handOf(save: SaveData, gun: ItemInstance): PartHand | 'bag' {
+    if (save.equipment.weapon === gun.uid) return 'weapon'
+    if (save.equipment.offhand === gun.uid && wornGun(save, 'offhand')?.uid === gun.uid) return 'offhand'
+    return 'bag'
+  }
+
   /**
    * 총 개조: the gun's slots and the bag's parts. Tap a part to fit it (same kind swaps), or drag
    * it onto a slot; tap 빼기 (or Alt+click a slot) to pull it; 부품 강화 spends salvage.
@@ -518,12 +556,18 @@ export class TownUI {
     box.id = 'work-mods'
     const mods = gunMods(gun)
     const slots = modSlots(gun)
+    const hand = this.handOf(save, gun)
+    const where = hand === 'bag' ? '가방' : HAND_KO[hand]
+    const banner = el('p', 'mod-which', `지금 개조: ${where} · ${itemName(gun)}`)
+    banner.id = 'work-mod-which'
+    box.append(banner)
     box.append(el('h4', '', `총 개조 ${mods.length}/${slots}칸`))
-    box.append(el('small', '', `부품을 한 번 누르면 바로 끼워 (가방에서도 두 번 클릭) · 칸의 빼기 / Alt+클릭으로 빼기 · 같은 종류는 서로 바뀌어 · 특수 부품은 서로 다른 것 ${MAX_TRICKS}개까지`))
+    box.append(el('small', '', `위쪽 주 손 · 보조 손을 누르면 총이 바뀌어 · 부품을 한 번 누르면 이 총에 끼워 · 칸의 빼기 / Alt+클릭으로 빼기 · 같은 종류는 서로 바뀌어 · 특수 부품은 서로 다른 것 ${MAX_TRICKS}개까지`))
     const row = el('div', 'mod-slots')
     const fit = (uid: string) => {
       const part = findItem(save, uid)
-      this.run(attachMod(save, gun.uid, uid), part ? `${itemName(part)} 장착! 총이 달라졌어.` : '부품을 끼웠어!', 'mod', gun)
+      const whereNow = `${where} ${itemName(gun)}`
+      this.run(attachMod(save, gun.uid, uid), part ? `${whereNow}에 ${itemName(part)} 장착!` : `${whereNow}에 부품을 끼웠어!`, 'mod', gun)
     }
     for (let i = 0; i < MAX_MOD_SLOTS; i += 1) {
       const m = mods[i]
@@ -581,7 +625,7 @@ export class TownUI {
         el('small', gain.length && !block ? 'mod-gain' : '', block ?? (gain.length ? `✦ ${gain.map((c) => c.name).join(' · ')} · ` : '') + `${swap ? '바꾸기' : '끼우기'} ${fitCost(p)}골드`),
       )
       b.title = itemLines(p).join('\n')
-      b.disabled = !!block || save.gold < fitCost(p)
+      if (block || save.gold < fitCost(p)) b.classList.add('no')
       b.addEventListener('dragstart', (e) => e.dataTransfer?.setData('text/plain', p.uid))
       b.addEventListener('click', () => fit(p.uid))
       // Hover a part: its landing socket glows (the swap slot, or the next empty one).
