@@ -32,7 +32,7 @@ describe('퀘스트 정리 2: 순서 · 장소 · 미래 챕터 숨김', () => {
 
   it('모든 퀘스트가 "n장 · 장소" 지역을 보여 준다', () => {
     for (const q of questBook(mongsilSave())) expect(q.area).toMatch(/^[12]장 · \S/)
-    expect(questBook(freshSave())[0]!.area).toBe('1장 · 꿈의 마을')
+    expect(questBook(freshSave())[0]!.area).toBe('1장 · 꿈의 초원')
   })
 
   it('같은 퀘스트가 두 번 나오지 않는다', () => {
@@ -77,9 +77,10 @@ describe('포털 이름: "n장 · 이름" · 이야기 순서 · 잠금', () => 
   })
 
   it('층 이름표 · 지역 이름표 · 포털 메뉴가 같은 이름을 쓴다', () => {
-    expect(floorLabel(1, 1)).toContain(placeLabel('sewer'))
+    expect(floorLabel(1, 1)).toContain('꿈 하수도')
+    expect(floorLabel(2, 1)).toContain('캔디 동굴')
     expect(areaLabel('maze', 1)).toContain(placeLabel('maze'))
     const s = freshSave()
-    for (const c of portalChoices(s)) expect(c.label.startsWith(placeLabel('sewer'))).toBe(true)
+    for (const c of portalChoices(s)) expect(c.label.startsWith('무한 탐험 · 깊이')).toBe(true)
   })
 })

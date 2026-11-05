@@ -46,7 +46,7 @@ export const DIALOGUES: Record<string, DialogueDef> = {
     lines: [
       { speaker: '루나', portrait: 'npc_luna', text: '별하, 맞지? 기록에 네 이름이 오늘따라 반짝여. 나는 루나. 이 마을의 꿈 기록자야.' },
       { speaker: '루나', portrait: 'npc_luna', text: '몽환의 숲이 탁해지고 있어. 괴물이 꿈을 갉으면, 바닥에 꿈가루가 떨어져.' },
-      { speaker: '루나', portrait: 'npc_luna', text: '숲의 괴물 여덟을 잠재우고, 꿈가루 다섯을 모아 줄래? 남쪽 별문이 입구야.' },
+      { speaker: '루나', portrait: 'npc_luna', text: '숲의 괴물 여덟을 잠재우고, 꿈가루 다섯을 모아 줄래? 서쪽 별문에서 몽환의 숲을 고르면 돼.' },
     ],
     choices: [
       { text: '도와줄게요', actions: [{ type: 'quest-start', id: 'q_dust' }] },
@@ -81,7 +81,7 @@ export const DIALOGUES: Record<string, DialogueDef> = {
   luna_offer_bloom: {
     id: 'luna_offer_bloom',
     lines: [
-      { speaker: '루나', portrait: 'npc_luna', text: '제단의 꽃은 아직 악몽을 피우고 있어. 버섯 골짜기를 지나면 별문이 하나 더 있어.' },
+      { speaker: '루나', portrait: 'npc_luna', text: '제단의 꽃은 아직 악몽을 피우고 있어. 서쪽 별문에서 버섯 골짜기를 지나 별빛 제단을 골라.' },
       { speaker: '루나', portrait: 'npc_luna', text: '이제 갈 수 있겠어?' },
     ],
     choices: [

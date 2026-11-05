@@ -18,7 +18,18 @@ describe('탐험 층 방 구조 (미로 단순화)', () => {
     for (const seed of seeds) {
       const m = mazeOf(seed)
       const d = distances(m.tiles, m.w, m.h, m.start.x, m.start.y)
-      for (let i = 0; i < m.tiles.length; i += 1) if (m.tiles[i] !== Tile.Solid) expect(d[i]).toBeGreaterThanOrEqual(0)
+      for (let i = 0; i < m.tiles.length; i += 1) {
+        const t = m.tiles[i]
+        if (t === Tile.Solid || t === Tile.Water) continue
+        expect(d[i]).toBeGreaterThanOrEqual(0)
+      }
+      for (let i = 0; i < m.tiles.length; i += 1) {
+        if (m.tiles[i] !== Tile.Water) continue
+        const x = i % m.w
+        const y = (i - x) / m.w
+        const touch = DIRS.some(([dx, dy]) => open(m, x + dx, y + dy))
+        expect(touch).toBe(true)
+      }
       let ex = Infinity
       const r = m.bossRoom
       for (let y = r.y; y < r.y + r.h; y += 1) for (let x = r.x; x < r.x + r.w; x += 1) ex = Math.min(ex, d[y * m.w + x])
@@ -77,5 +88,15 @@ describe('탐험 층 방 구조 (미로 단순화)', () => {
 
   it('같은 씨앗이면 같은 지도', () => {
     expect(Array.from(mazeOf(42).tiles)).toEqual(Array.from(mazeOf(42).tiles))
+  })
+
+  it('씨앗이 다르면 방 모양이나 물웅덩이가 달라진다', () => {
+    const sig = (seed: number) => {
+      const m = mazeOf(seed)
+      const shape = m.chambers.map((r) => `${r.w}x${r.h}`).sort().join(',')
+      const water = [...m.tiles].filter((t) => t === Tile.Water).length
+      return `${shape}|w${water}`
+    }
+    expect(new Set(seeds.slice(0, 16).map(sig)).size).toBeGreaterThan(4)
   })
 })

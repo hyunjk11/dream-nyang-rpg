@@ -52,7 +52,6 @@ const FIELD_LINE: Record<string, string> = { slime: '몽실 들판의 솜사탕 
 const BOUNTY_TITLE: Record<Contract['kind'], string> = { kills: '괴물 사냥', elites: '정예 사냥', nests: '둥지 부수기', chests: '상자 열기', clean: '무사 돌파', boss: '보스 잡기' }
 const BOARD = '마을 게시판에서 보상 받기'
 
-const GUIDE_AT: Record<string, PlaceId> = { sewer: 'sewer', recall: 'sewer', boss: 'sewer' }
 /** Island folk quests → the island place they send her to. */
 const STORY_AT: Record<string, PlaceId> = { q_awaken: 'meadow', q_dust: 'forest', q_bloom: 'altar', q_parts: 'vale' }
 
@@ -70,8 +69,7 @@ export function mainQuest(save: SaveData): QuestEntry {
   if (c.current === 1 || step) {
     const s = step ?? GUIDE[GUIDE.length - 1]
     const count = s.goal > 1 ? `${Math.min(s.goal, Math.floor(c.guide.count))}/${s.goal}` : ''
-    const at = GUIDE_AT[s.id]
-    return { ...base, title: `1장 · 가이드 ${c.guide.step + 1}/${GUIDE.length}`, line: s.title, prog: count, reward: '마치면 다음 장이 열려', area: at ? placeLabel(at, '깊이 1') : placeLabel('village') }
+    return { ...base, title: `1장 · 가이드 ${c.guide.step + 1}/${GUIDE.length}`, line: s.title, prog: count, reward: '마치면 다음 장이 열려', area: placeLabel(s.at, s.spot ?? '') }
   }
   // 3장 has no content yet: no teaser row, just "2장 완료" (future chapters stay hidden).
   if (chapter3Open(save)) return { ...base, title: '2장 완료', line: '다음 장은 준비 중 · 남은 의뢰를 마무리해', prog: '', area: placeLabel('mongsil') }

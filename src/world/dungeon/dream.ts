@@ -411,8 +411,9 @@ export class Decor {
       const { x, z } = tileCentre(this.maze, f.x, f.y)
       const nx = f.side === 0 ? 1 : f.side === 1 ? -1 : 0
       const nz = f.side === 2 ? 1 : f.side === 3 ? -1 : 0
-      const h = hash(f.x, f.y, f.side)
-      const c = palette[Math.floor(hash(f.x >> 1, f.y >> 1, 7) * palette.length)]
+      const salt = (this.maze.seed % 4096) * 17
+      const h = hash(f.x, f.y, f.side + salt)
+      const c = palette[Math.floor(hash(f.x >> 1, f.y >> 1, 7 + salt) * palette.length)]
       const wx = x + nx * (TILE / 2 - 0.22)
       const wz = z + nz * (TILE / 2 - 0.22)
       if (h < 0.62) list.push({ x: wx, y: 3.0, z: wz, rx: 1, ry: nx ? Math.PI / 2 : 0, r: 0.15, len: TILE, c })
@@ -437,9 +438,10 @@ export class Decor {
 
   private lampMeshes(): Mesh[] {
     const faces = wallFaces(this.maze)
+    const salt = (this.maze.seed % 4096) * 17
     const picks = faces.filter((f) => {
       const kind = this.maze.tiles[f.y * this.maze.w + f.x]
-      return hash(f.x, f.y, f.side + 11) < (kind === Tile.Corridor ? 0.2 : 0.45)
+      return hash(f.x, f.y, f.side + 11 + salt) < (kind === Tile.Corridor ? 0.2 : 0.45)
     })
     const starGeo = new ExtrudeGeometry(starShape(), { depth: 0.06, bevelEnabled: true, bevelSize: 0.02, bevelThickness: 0.02, bevelSegments: 1 })
     const stars = new InstancedMesh(starGeo, new MeshBasicMaterial({ color: 0xffffff }), Math.max(1, picks.length))
@@ -485,7 +487,8 @@ export class Decor {
         if (!walkable(m, tx, ty)) continue
         const kind = m.tiles[ty * m.w + tx]
         const chance = kind === Tile.Corridor ? 0.22 : 0.6
-        if (hash(tx, ty, 21) > chance) continue
+        const salt = (m.seed % 4096) * 17
+        if (hash(tx, ty, 21 + salt) > chance) continue
         const { x, z } = tileCentre(m, tx, ty)
         // Cluster in a corner that backs onto walls.
         const cx = !walkable(m, tx + 1, ty) ? 1 : !walkable(m, tx - 1, ty) ? -1 : hash(tx, ty, 22) > 0.5 ? 1 : -1

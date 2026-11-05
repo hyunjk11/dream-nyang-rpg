@@ -198,13 +198,22 @@ export function floorPlan(depth: number, floor: number, salt = 0): FloorPlan {
   }
 }
 
-/** "1장 · 꿈 하수도 깊이 1 · 2층" / "… · 보스층" (places.ts scheme). */
-export function floorLabel(depth: number, floor: number): string {
-  return placeLabel('sewer', `깊이 ${depth} · ${floor >= BOSS_FLOOR ? '보스층' : `${floor}층`}`)
+/** Themes rotate with depth: 꿈 하수도, 캔디 동굴, 별빛 서재 (world/dungeon/theme.ts ORDER). */
+export const DELVE_THEMES = ['꿈 하수도', '캔디 동굴', '별빛 서재'] as const
+
+export function delveThemeName(depth: number): string {
+  return DELVE_THEMES[(Math.max(1, Math.floor(depth)) - 1) % DELVE_THEMES.length]
 }
-/** "깊이 1 · 2층": the short form for rows that already say where (summary, resume). */
-export function floorShort(depth: number, floor: number): string {
-  return `깊이 ${depth} · ${floor >= BOSS_FLOOR ? '보스층' : `${floor}층`}`
+
+/** "무한 탐험 · 깊이 2 · 캔디 동굴" — the tower menu, not a story place. */
+export function delveMenuLabel(depth: number, cleared = false): string {
+  return `무한 탐험 · 깊이 ${depth} · ${delveThemeName(depth)}${cleared ? ' ✓' : ''}`
+}
+
+/** "1장 · 깊이 2 · 캔디 동굴 · 3층" / "… · 보스층". */
+export function floorLabel(depth: number, floor: number): string {
+  const tail = floor >= BOSS_FLOOR ? '보스층' : `${floor}층`
+  return `1장 · 깊이 ${depth} · ${delveThemeName(depth)} · ${tail}`
 }
 
 /**
@@ -570,17 +579,23 @@ export function formatTime(seconds: number): string {
   return m ? `${m}분 ${String(s % 60).padStart(2, '0')}초` : `${s}초`
 }
 
-/** Portal menu entries (story order): each open depth from 1 up, then the resume row (if any). */
+/**
+ * Infinite-tower rows only (the story 별문 does not list these).
+ * Depth 1 stays, plus the three newest depths, then 이어가기 when the checkpoint is past floor 1.
+ */
 export function portalChoices(save: SaveData): { label: string; depth: number; floor: number; resume: boolean }[] {
   const d = delveOf(save)
   const out: { label: string; depth: number; floor: number; resume: boolean }[] = []
+  const rows: typeof out = []
+  for (let depth = 1; depth <= d.unlocked; depth += 1) {
+    if (depth !== 1 && depth < d.unlocked - 2) continue
+    rows.push({ label: delveMenuLabel(depth, depth <= d.cleared), depth, floor: 1, resume: false })
+  }
   // Floor 1 is the same as picking the depth itself, so only deeper checkpoints get a line.
   if (d.checkpoint && d.checkpoint.floor > 1) {
-    out.push({ label: placeLabel('sewer', `이어가기 · ${floorShort(d.checkpoint.depth, d.checkpoint.floor)}`), depth: d.checkpoint.depth, floor: d.checkpoint.floor, resume: true })
-  }
-  const rows: typeof out = []
-  for (let depth = Math.max(1, d.unlocked - 2); depth <= d.unlocked; depth += 1) {
-    rows.push({ label: placeLabel('sewer', `깊이 ${depth}${depth > d.cleared ? '' : ' ✓'}`), depth, floor: 1, resume: false })
+    const c = d.checkpoint
+    const bit = c.floor >= BOSS_FLOOR ? '보스층' : `${c.floor}층`
+    out.push({ label: `이어가기 · 깊이 ${c.depth} · ${delveThemeName(c.depth)} · ${bit}`, depth: c.depth, floor: c.floor, resume: true })
   }
   return [...rows, ...out]
 }
