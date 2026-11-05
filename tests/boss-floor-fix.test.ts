@@ -82,11 +82,11 @@ describe('보스층에서 내 피도 빠진다 (내 피도 안빠져)', () => {
     expect(old.lost).toBeLessThan(0.1)
   })
 
-  it('이제 Lv1(150)도 Lv30(302)도 10초 포위에 확실히 깎이지만 바로 죽지는 않는다', () => {
+  it('이제 Lv1(150)도 Lv30(302)도 10초 포위에 위험할 만큼 깎이지만 바로 죽지는 않는다', () => {
     for (const maxHp of [150, 302]) {
       const r = surrounded(bossRoomHit(maxHp, 'adds'), maxHp)
-      expect(r.lost, `maxHp ${maxHp}`).toBeGreaterThan(0.15)
-      expect(r.lost, `maxHp ${maxHp}`).toBeLessThan(0.5)
+      expect(r.lost, `maxHp ${maxHp}`).toBeGreaterThan(0.55)
+      expect(r.lost, `maxHp ${maxHp}`).toBeLessThan(0.95)
     }
   })
 

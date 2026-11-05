@@ -3,7 +3,7 @@ import { Vector3 } from 'three'
 import { Horde, hordeHp, swingRest, type HordeKind } from '../src/world/dungeon/horde'
 import { floorMaze, EXPLORE } from '../src/world/dungeon/layout'
 import { tileCentre, walkable, worldToTile } from '../src/world/dungeon/maze'
-import { runFoeScale, foeHit } from '../src/world/dungeon/run'
+import { runFoeScale, foeHit, bossRoomHit } from '../src/world/dungeon/run'
 import { BOSS } from '../src/world/dungeon/boss'
 import { floorPlan, fieldPlan } from '../src/sim/delve'
 import { bombRadius } from '../src/data/tree'
@@ -14,7 +14,7 @@ import { migrateSave } from '../src/sim/migrate'
 import { freshSave } from '../src/sim/mutate'
 
 /** 브라우저와 같은 길: Horde.update → 진짜 Hero.hurt (무적·방어·반올림) → Hero.update 자연 회복. */
-function stand(plan: Parameters<typeof runFoeScale>[0] & Parameters<typeof floorMaze>[0], kinds: HordeKind[], maxHp = 150, isBoss = false, share = 0) {
+function stand(plan: Parameters<typeof runFoeScale>[0] & Parameters<typeof floorMaze>[0], kinds: HordeKind[], maxHp = 150, isBoss = false, share = 0, drift = 0) {
   const maze = floorMaze(plan)
   const h = new Horde(maze)
   h.rangedShare = share
@@ -40,6 +40,11 @@ function stand(plan: Parameters<typeof runFoeScale>[0] & Parameters<typeof floor
   const dt = 1 / 60
   const aim = new Vector3()
   for (let t = 0; t < 10; t += dt) {
+    if (drift > 0) {
+      const ang = t * 1.2
+      at.x = s.x + Math.sin(ang) * drift
+      at.z = s.z + Math.cos(ang) * drift
+    }
     h.update(dt, at, (amount, fx, fz) => {
       hero.hurt(amount, new Vector3(fx, 0, fz))
     })
@@ -47,35 +52,33 @@ function stand(plan: Parameters<typeof runFoeScale>[0] & Parameters<typeof floor
     hero.iframes = Math.max(0, hero.iframes - dt)
     hero.sinceHit += dt
     if (hero.alive && hero.sinceHit > hero.regenDelay && hero.hp < hero.maxHp) hero.hp = Math.min(hero.maxHp, hero.hp + DIFFICULTY.hero.regenRate * hero.regenMul * dt)
-    hero.object.position.set(s.x, 0, s.z)
-    at.x = s.x
-    at.z = s.z
+    hero.object.position.set(at.x, 0, at.z)
     void aim
   }
   return { lost: 1 - hero.hp / maxHp, foes: h.foes.length }
 }
 
 describe('실제 플레이: 미로·하수도·들판에서도 피가 빠진다 (미로 - 안빠짐)', () => {
-  it('미로·깊이 1–3 일반 무리 5마리에 10초 가만히 서 있으면 20–40% 깎인다', () => {
+  it('미로·깊이 1–3 일반 무리 5마리에 10초 가만히 서 있으면 55–85% 깎인다 (위험하지만 즉사는 아님)', () => {
     for (const [d, f] of [[1, 1], [1, 3], [2, 2], [3, 2]] as const) {
       const r = stand(floorPlan(d, f), ['slime', 'slime', 'bug', 'slime', 'bat'])
-      expect(r.lost, `d${d}f${f}`).toBeGreaterThanOrEqual(0.2)
-      expect(r.lost, `d${d}f${f}`).toBeLessThanOrEqual(0.4)
+      expect(r.lost, `d${d}f${f}`).toBeGreaterThanOrEqual(0.55)
+      expect(r.lost, `d${d}f${f}`).toBeLessThan(0.85)
     }
   })
 
-  it('브라우저에서 벗어났던 무리도 범위 안: 깊이 2 박쥐(18.7%), 깊이 3 해골 마법사(42.7%)', () => {
+  it('같은 종류 5마리도 깊이마다 그 위험 구간에 머문다', () => {
     for (const [d, kind] of [[2, 'bat'], [3, 'skel_mage'], [3, 'bat'], [1, 'slime']] as const) {
       const r = stand(floorPlan(d, 2), [kind, kind, kind, kind, kind])
-      expect(r.lost, `d${d} ${kind}`).toBeGreaterThanOrEqual(0.2)
-      expect(r.lost, `d${d} ${kind}`).toBeLessThanOrEqual(0.4)
+      expect(r.lost, `d${d} ${kind}`).toBeGreaterThanOrEqual(0.5)
+      expect(r.lost, `d${d} ${kind}`).toBeLessThanOrEqual(1)
     }
   })
 
   it('레벨이 올라 최대 체력이 커져도(300) 같은 비율로 깎인다', () => {
     const r = stand(floorPlan(1, 2), ['slime', 'slime', 'bug', 'slime', 'bat'], 300)
-    expect(r.lost).toBeGreaterThanOrEqual(0.18)
-    expect(r.lost).toBeLessThanOrEqual(0.42)
+    expect(r.lost).toBeGreaterThanOrEqual(0.55)
+    expect(r.lost).toBeLessThan(0.85)
   })
 
   it('예전 배율(×1)이면 거의 안 빠졌다: 원인 재현', () => {
@@ -228,14 +231,41 @@ describe('밸런스 패스: 1장 튜토리얼 스킬은 그대로', () => {
   })
 })
 
+describe('맞는 한 대의 무게 (보스 > 기사 > 슬라임, 정예는 같은 한 대에 더 오래 버틴다)', () => {
+  it('깊이 1에서 슬라임 한 대는 최대 체력의 8–10%, 기사는 그보다 세고, 보스 몸통은 더 아프다', () => {
+    const plan = floorPlan(1, 1)
+    const h = new Horde(floorMaze(plan))
+    h.scale = runFoeScale(plan, false, 150)
+    const slime = h.spawn('slime', 0, 0)!.damage / 150
+    const knight = h.spawn('knight', 1, 0)!.damage / 150
+    const elite = h.spawn('knight', 2, 0, true)!.damage / 150
+    expect(slime).toBeGreaterThanOrEqual(0.08)
+    expect(slime).toBeLessThanOrEqual(0.1)
+    expect(knight).toBeGreaterThan(slime)
+    expect(elite).toBe(knight)
+    const touch = Math.round(BOSS.contact * bossRoomHit(150, 'boss')) / 150
+    const orb = Math.round(BOSS.orbDamage * bossRoomHit(150, 'boss')) / 150
+    expect(touch).toBeGreaterThan(knight)
+    expect(orb).toBeGreaterThan(slime)
+    expect(orb).toBeLessThan(touch)
+  })
+})
+
 describe('실제 플레이: 원거리가 절반 섞인 무리', () => {
-  it('원거리 50% 무리 5마리에 10초 서 있어도 23–37% 안쪽 (근접만일 때와 비슷)', () => {
+  it('원거리 50% 무리 5마리에 10초 서 있으면 근접만 있을 때보다 더 아프고, 10초 안에 죽지는 않는다', () => {
     for (const [d, f] of [[1, 1], [1, 3], [2, 2], [3, 2]] as const) {
       const melee = stand(floorPlan(d, f), ['slime', 'slime', 'bug', 'slime', 'bat'], 150, false, 0)
       const mixed = stand(floorPlan(d, f), ['slime', 'slime', 'bug', 'slime', 'bat'], 150, false, 0.5)
       if ((globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.RANGED_LOG) console.log(`d${d}f${f} 근접만 ${(melee.lost * 100).toFixed(1)}% 섞임 ${(mixed.lost * 100).toFixed(1)}%`)
-      expect(mixed.lost, `d${d}f${f}`).toBeGreaterThanOrEqual(0.2)
-      expect(mixed.lost, `d${d}f${f}`).toBeLessThanOrEqual(0.4)
+      expect(mixed.lost, `d${d}f${f}`).toBeGreaterThanOrEqual(0.6)
+      expect(mixed.lost, `d${d}f${f}`).toBeLessThan(0.95)
+      // Standing still, the shots finally add pressure instead of vanishing into the same i-frame budget.
+      expect(mixed.lost, `d${d}f${f} ranged`).toBeGreaterThan(melee.lost - 0.02)
     }
+  })
+
+  it('같은 무리를 3.5 m 원으로 돌면 10초에 15% 미만만 깎인다 (피하면 버틴다)', () => {
+    const r = stand(floorPlan(1, 1), ['slime', 'slime', 'bug', 'slime', 'bat'], 150, false, 0.5, 3.5)
+    expect(r.lost).toBeLessThan(0.15)
   })
 })

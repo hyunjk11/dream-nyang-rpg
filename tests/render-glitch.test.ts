@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { HDR_MAX, NEAR_FADE, POINT_MAX_PX, SANITIZE_SHADER, allFinite, pointGuard, safeHdr } from '../src/core/safeframe'
 import { particleAlpha, stepParticle } from '../src/core/vfx'
 import { needsRelock } from '../src/core/cursor'
-import { clickAction } from '../src/core/input'
+import { clickAction, shouldRetryLock } from '../src/core/input'
 import { FIELD_NAME, fieldQuestWay } from '../src/sim/waypoint'
 import { CHAPTER2, chapter2Open, chaptersOf, fieldOpen, questHud, skipGuide, takeQuest } from '../src/sim/chapters'
 import { passMaze } from '../src/sim/dreamstory'
@@ -87,6 +87,14 @@ describe('클릭 한 번으로 계속', () => {
   it('잠기지 않은 화면 클릭은 잠금을 가져가고, 잠금 뒤에는 발사', () => {
     expect(clickAction(false, false)).toBe('lock')
     expect(clickAction(true, false)).toBe('fire')
+  })
+  it('Esc 직후 잠금이 거절되면 같은 클릭이 잠시 더 시도하고, 잠기거나 제스처가 끝나면 멈춘다', () => {
+    expect(shouldRetryLock({ attempt: 0, active: true, locked: false, refused: false, free: false })).toBe(true)
+    expect(shouldRetryLock({ attempt: 16, active: true, locked: false, refused: false, free: false })).toBe(false)
+    expect(shouldRetryLock({ attempt: 1, active: false, locked: false, refused: false, free: false })).toBe(false)
+    expect(shouldRetryLock({ attempt: 1, active: true, locked: true, refused: false, free: false })).toBe(false)
+    expect(shouldRetryLock({ attempt: 1, active: true, locked: false, refused: true, free: false })).toBe(false)
+    expect(shouldRetryLock({ attempt: 1, active: true, locked: false, refused: false, free: true })).toBe(false)
   })
 })
 
