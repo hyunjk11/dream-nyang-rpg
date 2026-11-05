@@ -18,6 +18,7 @@
         <span class="tag" id="dust">골드 0</span>
         <span class="tag" id="mats" title="재료: H 도움말에서 쓰임새를 볼 수 있어">꿈가루 0 · 부품 0 · 별조각 0</span>
         <span id="fps">FPS</span>
+        <button id="auto-hunt" type="button" aria-pressed="false" title="자동 사냥 (V) · 전투 지역에서 가까운 괴물을 조준하고 쏴. 마을·대화·메뉴에서는 쉬어. 설정이 저장돼.">자동</button>
         <button id="gear" type="button" title="설정 (소리·음량·감도·FPS)" aria-expanded="false" aria-controls="settings">⚙</button>
       </div>
       <div id="tracker" class="hidden"></div>
@@ -48,6 +49,7 @@
       <div id="settings" class="settings hidden" role="dialog" aria-label="설정">
         <fieldset class="set-group"><legend>전투</legend>
           <button id="auto-aim" type="button" aria-pressed="false" title="조준선 근처에서 가장 가까운 괴물에게 총알이 붙어 (모바일 기본 켬 · 저장됨)">자동 조준: 끔</button>
+          <button id="auto-hunt-set" type="button" aria-pressed="false" title="전투 지역에서 가까운 괴물에게 다가가 조준하고 사격 (V · 저장됨). 마을·대화·메뉴에서는 쉬어.">자동 사냥: 끔</button>
           <button id="auto-candy" type="button" aria-pressed="true" title="체력이 30% 아래로 떨어지면 하트 사탕을 알아서 먹어 (저장됨)">자동 사탕: 켬 (30%)</button>
           <button id="shake-toggle" type="button" aria-pressed="true" title="총 쏠 때·큰 타격 때 화면 흔들림과 반동 밀림 (저장됨)">화면 흔들림: 켬</button>
           <button id="auto-sell" type="button" aria-pressed="false" title="던전에서 주운 일반(흰색) 장비 중 지금보다 안 좋은 건 바로 골드로 바꿔 (저장됨)">일반 자동 판매: 끔</button>

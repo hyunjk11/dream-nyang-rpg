@@ -19,9 +19,11 @@ export interface QolPrefs {
   autoAim: boolean
   /** ⚙ 화면 흔들림 (camera shake and the heavy-shot shove); on by default. */
   shake: boolean
+  /** 자동 사냥: in a combat zone, move, aim and hold fire. Off until she turns it on. */
+  autoHunt: boolean
 }
 
-export const QOL_DEFAULTS: QolPrefs = { autoSellCommon: false, autoCandy: true, autoCandyAt: 0.3, autoAim: false, shake: true }
+export const QOL_DEFAULTS: QolPrefs = { autoSellCommon: false, autoCandy: true, autoCandyAt: 0.3, autoAim: false, shake: true, autoHunt: false }
 export const QOL_KEY = 'dnr.qol'
 
 /** Read saved prefs (bad or missing JSON falls back to the defaults, field by field). */
@@ -34,6 +36,7 @@ export function loadQol(raw: string | null | undefined, touch = false): QolPrefs
       autoCandyAt: typeof v.autoCandyAt === 'number' && v.autoCandyAt > 0 && v.autoCandyAt < 1 ? v.autoCandyAt : QOL_DEFAULTS.autoCandyAt,
       autoAim: typeof v.autoAim === 'boolean' ? v.autoAim : touch,
       shake: typeof v.shake === 'boolean' ? v.shake : true,
+      autoHunt: typeof v.autoHunt === 'boolean' ? v.autoHunt : QOL_DEFAULTS.autoHunt,
     }
   } catch {
     return { ...QOL_DEFAULTS, autoAim: touch }

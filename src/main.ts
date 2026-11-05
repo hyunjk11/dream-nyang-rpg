@@ -8,14 +8,14 @@ import { Clock, Mesh, MeshBasicMaterial, SphereGeometry, Vector3 } from 'three'
 import { createStage } from './core/arena'
 import { audio } from './audio/audio'
 import { Combat } from './combat/combat'
-import { loadFoeModels } from './combat/foes'
+import { FOE_SPECS, loadFoeModels } from './combat/foes'
 import { cameraColliders, type CameraCollider } from './core/camera'
 import { FADE_FOCUS } from './core/materials'
 import { Shooter, type ShotWorld } from './combat/shooter'
 import { TPS, loadSens, rayCapsule, setSens, SENS, type AimTarget } from './core/tps'
 import { WALK_RADIUS } from './world/town/island'
 import { Hero } from './actors/hero'
-import { autoRunOn, onAutoRun, setAutoRun, axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, aimHint, gestureActive, installInput, lockState, pad, resumeView, runningHeld, shoulder, syncCursor } from './core/input'
+import { autoRunOn, onAutoRun, setAutoRun, axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, aimHint, gestureActive, installInput, lockState, onAutoHuntKey, pad, resumeView, runningHeld, shoulder, syncCursor } from './core/input'
 import { ALT_LABEL, cursor, installAlt, saveAltMode, setAlt } from './core/cursor'
 import { aimZone, hudArena, installLayout, placePocket } from './ui/layout'
 import { installTooltips } from './ui/tooltip'
@@ -32,6 +32,7 @@ import type { Action, MutationResult } from './sim/types'
 import { Vfx } from './core/vfx'
 import { HitStop } from './core/hitstop'
 import { AUTO_RISE, LAST_GATE_KEY, QOL_KEY, autoSellPick, loadQol, markLast, shouldAutoCandy, type QolPrefs } from './sim/qol'
+import { huntAllowed, planHunt, stepAim, type HuntDrop, type HuntFoe, type HuntPlan, type HuntSkill, type HuntSkillKind } from './sim/autohunt'
 import { DETAIL, Quality } from './core/quality'
 import type { DungeonRun } from './world/dungeon/run'
 import { Portal } from './world/dungeon/portal'
@@ -1227,7 +1228,11 @@ paintQuality()
 const autoCandyBtn = document.getElementById('auto-candy')
 const autoSellBtn = document.getElementById('auto-sell')
 const autoAimBtn = document.getElementById('auto-aim')
+const autoHuntBtn = document.getElementById('auto-hunt')
+const autoHuntSetBtn = document.getElementById('auto-hunt-set')
 const shakeBtn = document.getElementById('shake-toggle')
+/** Combat-zone hunt is actually steering this frame (town / menus show the pref without "중"). */
+let huntLive = false
 const paintQol = () => {
   if (shakeBtn) {
     shakeBtn.textContent = `화면 흔들림: ${qol.shake ? '켬' : '끔'}`
@@ -1236,6 +1241,15 @@ const paintQol = () => {
   if (autoAimBtn) {
     autoAimBtn.textContent = `자동 조준: ${qol.autoAim ? '켬' : '끔'}`
     autoAimBtn.setAttribute('aria-pressed', String(qol.autoAim))
+  }
+  if (autoHuntBtn) {
+    autoHuntBtn.textContent = qol.autoHunt ? (huntLive ? '자동 중' : '자동') : '자동'
+    autoHuntBtn.setAttribute('aria-pressed', String(qol.autoHunt))
+    autoHuntBtn.classList.toggle('live', huntLive)
+  }
+  if (autoHuntSetBtn) {
+    autoHuntSetBtn.textContent = `자동 사냥: ${qol.autoHunt ? '켬' : '끔'}`
+    autoHuntSetBtn.setAttribute('aria-pressed', String(qol.autoHunt))
   }
   if (autoCandyBtn) {
     autoCandyBtn.textContent = `자동 사탕: ${qol.autoCandy ? `켬 (${Math.round(qol.autoCandyAt * 100)}%)` : '끔'}`
@@ -1267,6 +1281,19 @@ autoAimBtn?.addEventListener('click', () => {
   paintQol()
   audio.sfx('ui')
   toast(qol.autoAim ? '자동 조준: 조준선 근처 가장 가까운 괴물에게 착 붙어.' : '자동 조준을 껐어 (살짝 끌리는 보정만 남아).', 'info')
+})
+function toggleAutoHunt(): void {
+  qol.autoHunt = !qol.autoHunt
+  saveQol()
+  paintQol()
+  audio.sfx('ui')
+  toast(qol.autoHunt ? '자동 사냥 켜짐 · 전투 지역에서 가까운 괴물을 조준하고 쏴. 마을에서는 쉬어.' : '자동 사냥을 껐어.', 'info')
+}
+autoHuntBtn?.addEventListener('click', () => toggleAutoHunt())
+autoHuntSetBtn?.addEventListener('click', () => toggleAutoHunt())
+onAutoHuntKey(() => {
+  if (mode !== 'play') return
+  toggleAutoHunt()
 })
 onAutoRun((on) => {
   document.body.classList.toggle('autorun', on)
@@ -1668,6 +1695,11 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
         hitStop.request(seconds)
       },
       shooter,
+      hunt: (step) => takeHunt(step),
+      skill: (slot) => {
+        const id = ACTIVES[slot]
+        if (id) skills.use(id, skillWorld())
+      },
     },
     plan,
   )
@@ -2161,6 +2193,112 @@ function gateTalk(): TalkDef {
   }
 }
 
+const HUNT_SKILL: HuntSkillKind[] = ['bomb', 'overdrive', 'rush', 'aura']
+let lastHuntDash = -1e12
+
+/** Village, 몽실, and a floor parked behind the return portal are not hunting grounds. */
+function inSafeTown(): boolean {
+  if (run?.parked) return true
+  if (inMongsil()) return true
+  return !run && game.zone === 'village'
+}
+
+function huntGate(): boolean {
+  const settingsOpen = !!settings && !settings.classList.contains('hidden')
+  return huntAllowed({
+    on: qol.autoHunt,
+    alive: hero.alive,
+    talking: talk.open,
+    menu: menuUp() || settingsOpen,
+    town: inSafeTown(),
+    recalling: (run?.recallT ?? 0) > 0,
+  })
+}
+
+/** Paint the 자동 chip and widen the existing aim assist while a hunt is allowed. Does not touch pointer lock. */
+function noteHunt(): boolean {
+  const allowed = huntGate()
+  huntLive = allowed
+  paintQol()
+  rig.autoAim = qol.autoAim || allowed
+  return allowed
+}
+
+function huntFoes(px: number, pz: number): { foes: HuntFoe[]; drops: HuntDrop[] } {
+  const foes: HuntFoe[] = []
+  const drops: HuntDrop[] = []
+  if (run) {
+    for (const f of run.horde.foes) {
+      if (f.hp <= 0 || f.dying > 0) continue
+      foes.push({ x: f.x, z: f.z, r: f.radius, hp: f.hp, priority: f.elite ? 1 : 0 })
+    }
+    const boss = run.boss
+    if (boss?.alive && boss.dying <= 0) {
+      const d = Math.hypot(boss.x - px, boss.z - pz)
+      if (boss.awake || d < 18) foes.push({ x: boss.x, z: boss.z, r: 1.25, hp: boss.hp, priority: 2 })
+    }
+    drops.push(...run.loot.spots())
+  } else {
+    for (const f of combat.foes) {
+      if (!f.alive || f.dying > 0 || f.spawn < 0.3) continue
+      foes.push({
+        x: f.object.position.x,
+        z: f.object.position.z,
+        r: FOE_SPECS[f.kind].radius,
+        hp: f.hp,
+        priority: f.kind === 'bloom' ? 2 : f.elite ? 1 : 0,
+      })
+    }
+    for (const d of combat.drops) {
+      if (d.life < 0.2) continue
+      drops.push({ x: d.mesh.position.x, z: d.mesh.position.z })
+    }
+  }
+  return { foes, drops }
+}
+
+/**
+ * One frame of 자동 사냥. Aims the shared shoulder view when it is on.
+ * Returns null when the stick and the trigger should stay with the player.
+ * Pointer lock is never requested or released here.
+ */
+function takeHunt(dt: number): HuntPlan | null {
+  if (!noteHunt()) return null
+  const p = hero.object.position
+  const seen = huntFoes(p.x, p.z)
+  const move = axis()
+  const steering = Math.hypot(move.x, move.y) > 0.18
+  const wish = rig.wish(move.x, move.y)
+  const skillsNow: HuntSkill[] = ACTIVES.map((id, slot) => ({
+    slot,
+    kind: HUNT_SKILL[slot],
+    ready: rank(game.save, id) > 0 && skills.readiness(id) <= 0,
+  }))
+  const plan = planHunt({
+    active: true,
+    px: p.x,
+    pz: p.z,
+    yaw: rig.view.yaw,
+    pitch: rig.view.pitch,
+    time: performance.now() / 1000,
+    hp: hero.hp,
+    maxHp: hero.maxHp,
+    kind: stats.weaponKind,
+    foes: seen.foes,
+    drops: seen.drops,
+    skills: skillsNow,
+    manual: steering,
+    manualX: wish.x,
+    manualZ: wish.z,
+    sinceDash: (performance.now() - lastHuntDash) / 1000,
+  })
+  if (plan.dash) lastHuntDash = performance.now()
+  const stepped = stepAim(rig.view.yaw, rig.view.pitch, plan.aimYaw, plan.aimPitch, dt)
+  rig.view.yaw = stepped.yaw
+  rig.view.pitch = stepped.pitch
+  return plan
+}
+
 function frame(): void {
   requestAnimationFrame(frame)
   // Real time up to 0.1 s per frame (10 FPS) so a slow frame never slows the game itself; the
@@ -2201,21 +2339,24 @@ function frame(): void {
   const talking = talk.open || frozen
   // Dialogue and menus need the cursor: hand it back while one is up.
   if (talking) releaseLook()
+  const plan = takeHunt(dt)
   const move = talking ? { x: 0, y: 0 } : axis()
-  // WASD / the stick relative to the view, exactly as in the sewer.
-  const wish = rig.wish(move.x, move.y)
+  // WASD / the stick relative to the view, exactly as in the sewer. 자동 사냥 already folded a manual stick in.
+  const steered = rig.wish(move.x, move.y)
+  const wish = plan?.active ? { x: plan.wishX, z: plan.wishZ } : steered
   if (import.meta.env.DEV && view.on && view.aimYaw !== undefined) {
     const p = hero.object.position
     aim.set(p.x + Math.sin(view.aimYaw) * 5, 1.05, p.z + Math.cos(view.aimYaw) * 5)
   }
-  const dash = consumeDash()
+  let dash = consumeDash()
+  if (plan?.dash) dash = true
   if (dash && hero.alive && !talking) {
     audio.sfx('dash')
     vfx.dust(hero.object.position, 2.4)
     vfx.ring(hero.object.position.clone().setY(0.05), 0xffd0ea, 0.3, 1.2, 0.3, 0.5)
   }
-  const firing = pad.fire && !talking && hero.alive
-  hero.update(dt, { wishX: wish.x, wishZ: wish.z, aim, firing, dash: dash && !talking, run: runningHeld(), face: true })
+  const firing = (pad.fire || !!plan?.fire) && !talking && hero.alive
+  hero.update(dt, { wishX: wish.x, wishZ: wish.z, aim, firing, dash: dash && !talking, run: runningHeld() || !!plan?.running, face: true })
   {
     // Landmarks are solid; she slides round the house corner instead of walking through it.
     const p = hero.object.position
@@ -2264,6 +2405,10 @@ function frame(): void {
   FADE_FOCUS.value.set(heroPos.x, heroPos.y + 1.0, heroPos.z)
   rig.aimFrom(townWorld, dt)
   shooter.update(dt, firing, townWorld)
+  if (plan?.active && plan.skill >= 0) {
+    const id = ACTIVES[plan.skill]
+    if (id) skills.use(id, skillWorld())
+  }
   skills.update(dt, townSkillWorld)
   paintHotbar()
   if (import.meta.env.DEV && view.on) inspectCamera(heroPos)
@@ -2283,11 +2428,13 @@ function sewerFrame(dt: number, raw: number): void {
   combat.shake = Math.max(0, combat.shake - raw * 1.5)
   countFps(raw)
   if (travelling) {
+    noteHunt()
     stage.render()
     return
   }
   // A dialogue (몽이, the 별문 menu) holds the run world; E / tap moves it on.
   if (talk.open) {
+    noteHunt()
     releaseLook()
     if (consumeTalk()) {
       talk.advance()

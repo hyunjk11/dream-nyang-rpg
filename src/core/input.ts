@@ -33,6 +33,13 @@ export function onAutoRun(fn: (on: boolean) => void): void {
   autoRunListener = fn
 }
 
+/** V toggles 자동 사냥. The preference itself lives in the saved QoL prefs. */
+let autoHuntKeyListener: (() => void) | null = null
+
+export function onAutoHuntKey(fn: () => void): void {
+  autoHuntKeyListener = fn
+}
+
 let dashQueued = false
 let talkQueued = false
 let mapQueued = false
@@ -252,6 +259,7 @@ export function installInput(canvas: HTMLCanvasElement): void {
     if (event.code === 'KeyG' && !event.repeat) equipQueued = true
     if (event.code === 'Tab') event.preventDefault()
     if (event.repeat) return
+    if (event.code === 'KeyV') autoHuntKeyListener?.()
     // Lost or refused lock while playing: any key press is a fresh gesture to take it back.
     if (shoulder.on && event.code !== 'Escape' && !event.altKey) retryLock()
     const slot = skillSlotFor(event.code)

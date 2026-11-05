@@ -111,6 +111,11 @@ export class LootView {
     return this.pieces.length
   }
 
+  /** Ground pickups still lying there (자동 사냥 walks to the near ones; the magnet still collects). */
+  spots(): { x: number; z: number }[] {
+    return this.pieces.map((p) => ({ x: p.x, z: p.z }))
+  }
+
   /** Drop pickups around (x, z) with a little pop. */
   spill(drops: Drop[], x: number, z: number, spread = 1): void {
     drops.forEach((drop, i) => {
