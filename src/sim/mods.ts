@@ -7,7 +7,7 @@
 import type { GunLook } from '../actors/toygun'
 import { ITEMS } from '../data/items'
 import { CHIP_TINT, COMBOS, MAX_TRICKS, MOD_IDS, MOD_KO, MOD_SPECS, TRICK_KO, type ComboSpec, type ModKind, type ModSpec, type TrickId } from '../data/mods'
-import { addItem, bagItems, findItem, isEquipped, removeItem } from './inventory'
+import { addItem, bagItems, findItem, isEquipped, oneHanded, removeItem } from './inventory'
 import { levelScale, roundStat } from './loot'
 import { townOf } from './town'
 import { BAG_CAP, RARITIES, uid, type Affix, type Element, type ItemInstance, type Rarity, type SaveData, type StatKey } from './types'
@@ -37,6 +37,51 @@ export function modKind(item: ItemInstance): ModKind | undefined {
 
 export function isGun(item: ItemInstance | undefined): boolean {
   return !!item && ITEMS[item.defId]?.slot === 'weapon'
+}
+
+/** Which worn gun a part is aimed at. `weapon` is the main hand, `offhand` the second gun. */
+export type PartHand = 'weapon' | 'offhand'
+export const HAND_KO: Record<PartHand, string> = { weapon: '주 손', offhand: '보조 손' }
+
+/**
+ * The gun in that hand, when parts can actually go there. A two-handed main gun leaves the off
+ * hand empty (it is not a second target). An illegal off-hand (old save) is ignored.
+ */
+export function wornGun(save: SaveData, hand: PartHand): ItemInstance | null {
+  const item = findItem(save, save.equipment[hand])
+  if (!item || !isGun(item)) return null
+  if (hand === 'weapon') return item
+  const main = findItem(save, save.equipment.weapon)
+  if (!main || !isGun(main) || !oneHanded(main) || !oneHanded(item)) return null
+  return item
+}
+
+export interface PartTarget {
+  hand: PartHand
+  gun: ItemInstance | null
+  /** Why nothing was fitted (also used when a strict pick misses). Null when `gun` is set with no caveat. */
+  note: string | null
+}
+
+/**
+ * Resolve the worn gun a part action targets.
+ * Strict (a tap on that hand, a drop on that slot): never swap hands behind the player's back.
+ * Loose (double-click with the preferred hand empty): fall back to the other gun and say so.
+ */
+export function partTarget(save: SaveData, prefer: PartHand, strict = false): PartTarget {
+  const want = wornGun(save, prefer)
+  if (want) return { hand: prefer, gun: want, note: null }
+  const main = wornGun(save, 'weapon')
+  if (prefer === 'offhand' && main && !oneHanded(main)) {
+    return { hand: 'weapon', gun: strict ? null : main, note: strict ? '양손 총이라 보조 손이 없어. 주 손 총을 골라 줘.' : '양손 총이라 보조 손이 없어. 주 손에 끼울게.' }
+  }
+  if (!strict) {
+    const other: PartHand = prefer === 'weapon' ? 'offhand' : 'weapon'
+    const alt = wornGun(save, other)
+    if (alt) return { hand: other, gun: alt, note: prefer === 'offhand' ? '보조 손이 비어 있어. 주 손에 끼울게.' : '주 손이 비어 있어. 보조 손에 끼울게.' }
+  }
+  const note = prefer === 'offhand' ? '보조 손에 한 손 총을 먼저 차 줘.' : '주 손에 총을 먼저 차 줘.'
+  return { hand: prefer, gun: null, note }
 }
 
 /** Slots this gun has. */

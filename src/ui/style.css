@@ -12,6 +12,10 @@ h1, h2, button, .tag { font-family: "Jua", sans-serif; font-weight: 400; }
 /* Sound / volume / sensitivity / FPS live in a popover off the top-right gear, so nothing sits
    on the bottom edge with the skill bar (they used to overlap at ~650 px wide). */
 #gear { width: 34px; height: 34px; padding: 0; font-size: 18px; line-height: 34px; flex: none; }
+#auto-hunt { min-width: 52px; height: 34px; padding: 0 10px; font-size: 15px; line-height: 34px; flex: none; }
+#auto-hunt[aria-pressed="true"] { background: #ff7aa8; color: #fff; box-shadow: 0 0 0 3px rgba(255, 224, 138, 0.9); }
+#auto-hunt.live { background: #ff4f86; }
+body.touch #auto-hunt { min-height: 44px; min-width: 64px; font-size: 16px; line-height: 1.1; }
 #gear[aria-expanded="true"] { background: #ffd6ea; }
 .settings {
   position: absolute; top: calc(var(--edge-t) + 42px); right: var(--edge-r); z-index: 40; display: flex; flex-direction: column; align-items: stretch; gap: 8px;
@@ -730,6 +734,7 @@ body.compact .spot-tag { font-size: 12px; padding: 1px 8px; }
 /* 총 개조 (gunsmith) */
 .town-mods .mod-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .town-mods .mod-slot { border: 2px dashed #d9c6e6; border-radius: 10px; padding: 6px; min-height: 52px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; background: #fbf7fd; }
+body.touch .town-mods .mod-slot { min-height: 72px; }
 .town-mods .mod-slot.on { border-style: solid; border-color: var(--rar, #c9b8ff); background: #fff; }
 .town-mods .mod-slot.locked { opacity: 0.45; background: #f1eaf4; }
 .town-mods .mod-slot.over { background: #f3e6ff; border-color: #8a4fb0; }
@@ -742,6 +747,24 @@ body.compact .spot-tag { font-size: 12px; padding: 1px 8px; }
 .town-mods .mod-part { display: flex; align-items: center; gap: 5px; border: 2px solid var(--rar, #c9b8ff); background: #fff; border-radius: 9px; padding: 4px 7px; font-size: 12px; cursor: grab; max-width: 100%; }
 .town-mods .mod-part small { color: #7a5a88; font-size: 11px; }
 .town-mods .mod-part:disabled { cursor: not-allowed; }
+.town-mods .mod-part.no { opacity: 0.72; }
+.hand-picks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 10px; }
+.hand-pick {
+  min-height: 56px; padding: 8px 12px; border-radius: 14px; border: 3px solid #e4d4ee; background: #fff;
+  text-align: left; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; cursor: pointer;
+}
+.hand-pick b { font-family: "Jua", sans-serif; font-size: 17px; color: #6a3d88; font-weight: 400; }
+.hand-pick small { color: #7a5a88; font-size: 12px; line-height: 1.3; }
+.hand-pick.on { border-color: #e0568a; background: #fff0f6; box-shadow: 0 0 0 3px #ffd0e2; }
+.hand-pick.empty { background: #f7f1f8; }
+.mod-which {
+  margin: 0 0 8px; padding: 8px 12px; border-radius: 12px; background: #ffe8f2; color: #a03060;
+  font-family: "Jua", sans-serif; font-size: 16px;
+}
+.inv-cell.part-target { outline: 3px solid #e0568a; outline-offset: 2px; }
+body.touch .hand-pick { min-height: 68px; }
+body.touch .town-mods .mod-part { min-height: 64px; padding: 10px 12px; }
+body.touch .inv-actions #inv-fit { min-height: 52px; font-size: 16px; flex: 1 1 100%; }
 .town-mods .mod-part { display: grid; grid-template-columns: auto 1fr; column-gap: 6px; row-gap: 1px; text-align: left; flex: 1 1 210px; }
 .town-mods .mod-part > svg, .town-mods .mod-part > .item-svg { grid-row: span 3; align-self: center; }
 .town-mods .mod-part > span, .town-mods .mod-part > small { grid-column: 2; }
