@@ -1,19 +1,38 @@
 import { MASTER_DEFAULT } from '../core/feel'
 import { ProcMusic, trackFor, type Scene } from './music'
 import { CUES, MUSIC, musicGains, pickVariant, stepMusic, type CueName, type MusicState } from './soundplan'
+import { AudioFocus, watchPage, type PageDoc, type PageWin } from './tabgate'
 
 const KEY = 'dream-nyang-3d-master'
 const BGM_KEY = 'dnr3d.bgm'
 const base = import.meta.env.BASE_URL
 
+type Store = Pick<Storage, 'getItem' | 'setItem'>
+
+export interface LiveVoices {
+  cut(): void
+  retarget(out: AudioNode): void
+}
+
+export interface AudioBusOptions {
+  storage?: Store | null
+  document?: PageDoc | null
+  window?: PageWin | null
+  context?: () => AudioContext
+}
+
 /**
  * Web Audio bus: decoded buffers (no per-shot <audio> elements), random variants and pitch,
  * and two looping music beds that crossfade between village calm and battle.
+ * A hidden tab silences the master output immediately. Music beds stay armed so they
+ * continue on return; one-shots already in the air are left on a muted bus and never replay.
  */
-class Bus {
-  master = read()
+export class AudioBus {
+  master: number
   /** Music-only level (배경음 slider), under the master. */
-  bgm = readBgm()
+  bgm: number
+  private readonly storage: Store | null
+  private readonly focus = new AudioFocus()
   private musicBus: GainNode | null = null
   private proc: ProcMusic | null = null
   private scene: Scene = 'town'
@@ -22,28 +41,85 @@ class Bus {
   private out: GainNode | null = null
   private sfxBus: GainNode | null = null
   private beds: { village: GainNode; battle: GainNode } | null = null
+  private voices: LiveVoices | null = null
   private readonly buffers = new Map<string, Promise<AudioBuffer | null>>()
   private readonly last = new Map<string, number>()
   private readonly lastVariant = new Map<string, number>()
   private music: MusicState = { mix: 0, calm: MUSIC.calm }
+  private readonly makeContext: (() => AudioContext) | null
+  private readonly win: PageWin | null
+
+  constructor(options: AudioBusOptions = {}) {
+    this.storage = options.storage === undefined ? safeStorage() : options.storage
+    this.master = readMaster(this.storage)
+    this.bgm = readBgm(this.storage)
+    this.makeContext = options.context ?? null
+    const doc = options.document === undefined ? (typeof document === 'undefined' ? null : document) : options.document
+    this.win = options.window === undefined ? (typeof window === 'undefined' ? null : window) : options.window
+    if (doc && this.win) watchPage(doc, this.win, (on) => this.setPageAudible(on))
+  }
+
+  /** False while the tab, mobile app, or frozen page is in the background. */
+  get pageAudible(): boolean {
+    return this.focus.pageOn
+  }
+
+  /** Resolves when a visibility suspend/resume has landed. */
+  settled(): Promise<void> {
+    return this.focus.settled()
+  }
+
+  /** Synth gun voices, so a hidden tab can cut them and move later shots to a live bus. */
+  attachVoices(voices: LiveVoices): void {
+    this.voices = voices
+  }
+
+  private setPageAudible(on: boolean): void {
+    if (this.focus.pageOn === on) return
+    this.focus.setPageOn(on)
+    if (!on) {
+      this.proc?.hold(true)
+      this.apply()
+      this.hushShots()
+    } else {
+      this.proc?.hold(false)
+      this.apply()
+    }
+    if (this.ctx) void this.focus.request(this.ctx)
+  }
+
+  /** Drop one-shots that are already sounding. Looping beds stay on the music bus. */
+  private hushShots(): void {
+    if (!this.ctx || !this.out || !this.sfxBus) return
+    const now = this.ctx.currentTime
+    const old = this.sfxBus
+    old.gain.cancelScheduledValues(now)
+    old.gain.setValueAtTime(0, now)
+    const next = this.ctx.createGain()
+    next.connect(this.out)
+    this.sfxBus = next
+    this.voices?.cut()
+    this.voices?.retarget(next)
+  }
 
   apply(): void {
-    if (this.out && this.ctx) this.out.gain.setTargetAtTime(this.master, this.ctx.currentTime, 0.05)
+    if (!this.out || !this.ctx) return
+    const level = this.focus.pageOn ? this.master : 0
+    const now = this.ctx.currentTime
+    this.out.gain.cancelScheduledValues(now)
+    if (!this.focus.pageOn) this.out.gain.setValueAtTime(0, now)
+    else this.out.gain.setTargetAtTime(level, now, 0.05)
   }
 
   setMaster(value: number): void {
     this.master = Math.max(0, Math.min(1, value))
-    localStorage.setItem(KEY, String(this.master))
+    this.write(KEY, String(this.master))
     this.apply()
   }
 
   setBgm(value: number): void {
     this.bgm = Math.max(0, Math.min(1, value))
-    try {
-      localStorage.setItem(BGM_KEY, String(this.bgm))
-    } catch {
-      /* private mode */
-    }
+    this.write(BGM_KEY, String(this.bgm))
     if (this.musicBus && this.ctx) this.musicBus.gain.setTargetAtTime(this.bgm, this.ctx.currentTime, 0.05)
   }
 
@@ -61,12 +137,11 @@ class Bus {
   /** Create the context; browsers keep it suspended until the first tap or key. */
   start(): void {
     if (this.ctx) return
-    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!Ctx) return
-    const ctx = new Ctx()
+    const ctx = this.openContext()
+    if (!ctx) return
     this.ctx = ctx
     this.out = ctx.createGain()
-    this.out.gain.value = this.master
+    this.out.gain.value = this.focus.pageOn ? this.master : 0
     this.out.connect(ctx.destination)
     this.sfxBus = ctx.createGain()
     this.sfxBus.connect(this.out)
@@ -81,12 +156,28 @@ class Bus {
     battle.connect(this.musicBus)
     this.proc = new ProcMusic(ctx, this.musicBus)
     this.proc.play(trackFor(this.scene, this.depth))
+    if (!this.focus.pageOn) this.proc.hold(true)
     this.beds = { village, battle }
-    const unlock = () => void ctx.resume()
-    for (const type of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(type, unlock, { passive: true })
+    const unlock = () => {
+      this.focus.unlock()
+      // Hidden: remember the gesture, but do not resume until the page is visible.
+      if (this.ctx) void this.focus.request(this.ctx)
+    }
+    if (this.win) {
+      for (const type of ['pointerdown', 'keydown', 'touchstart']) this.win.addEventListener(type, unlock, { passive: true })
+    }
     void this.loop(MUSIC.village, village)
     void this.loop(MUSIC.battle, battle)
     for (const cue of Object.values(CUES)) for (const file of cue.files) void this.buffer(file)
+    void this.focus.request(ctx)
+  }
+
+  private openContext(): AudioContext | null {
+    if (this.makeContext) return this.makeContext()
+    const w = typeof window === 'undefined' ? null : window
+    const Ctx = w?.AudioContext ?? (w as unknown as { webkitAudioContext?: typeof AudioContext } | null)?.webkitAudioContext
+    if (!Ctx) return null
+    return new Ctx()
   }
 
   /** Call every frame with whether a foe is near; drives the crossfade. */
@@ -104,9 +195,10 @@ class Bus {
     this.beds.battle.gain.setTargetAtTime(battle * MUSIC.level, now, 0.08)
   }
 
-  /** Live context + sfx bus for synthesised sounds (null until audio has started). */
+  /** Live context + sfx bus for synthesised sounds (null until audio has started, or while hidden). */
   context(): { ctx: AudioContext; bus: GainNode } | null {
-    return this.ctx && this.sfxBus ? { ctx: this.ctx, bus: this.sfxBus } : null
+    if (!this.focus.pageOn || !this.ctx || !this.sfxBus) return null
+    return { ctx: this.ctx, bus: this.sfxBus }
   }
 
   get battleMix(): number {
@@ -114,17 +206,18 @@ class Bus {
   }
 
   sfx(name: CueName, gain = 1): void {
-    if (this.master <= 0.001 || !this.ctx || !this.sfxBus || this.ctx.state !== 'running') return
+    // Dropped, not queued: a fight that kept going in a hidden tab must not dump its sounds on return.
+    if (!this.focus.pageOn || this.master <= 0.001 || !this.ctx || !this.sfxBus || this.ctx.state !== 'running') return
     const cue = CUES[name]
-    const now = performance.now()
-    if (now - (this.last.get(name) ?? -1e9) < cue.gap) return
-    this.last.set(name, now)
+    const nowMs = performance.now()
+    if (nowMs - (this.last.get(name) ?? -1e9) < cue.gap) return
+    this.last.set(name, nowMs)
     const index = pickVariant(cue.files.length, this.lastVariant.get(name) ?? -1, Math.random())
     this.lastVariant.set(name, index)
     const ctx = this.ctx
     const bus = this.sfxBus
     void this.buffer(cue.files[index]).then((buffer) => {
-      if (!buffer) return
+      if (!buffer || !this.focus.pageOn || this.sfxBus !== bus || ctx.state !== 'running') return
       const src = ctx.createBufferSource()
       src.buffer = buffer
       src.playbackRate.value = 1 + (Math.random() * 2 - 1) * cue.pitch
@@ -138,6 +231,14 @@ class Bus {
       }
       src.start()
     })
+  }
+
+  private write(key: string, value: string): void {
+    try {
+      this.storage?.setItem(key, value)
+    } catch {
+      /* private mode */
+    }
   }
 
   private buffer(file: string): Promise<AudioBuffer | null> {
@@ -166,20 +267,34 @@ class Bus {
   }
 }
 
-function read(): number {
-  const raw = localStorage.getItem(KEY)
-  if (raw === null) return MASTER_DEFAULT
-  const value = Number(raw)
-  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : MASTER_DEFAULT
+function safeStorage(): Store | null {
+  try {
+    if (typeof localStorage === 'undefined') return null
+    return localStorage
+  } catch {
+    return null
+  }
 }
 
-export const audio = new Bus()
-
-function readBgm(): number {
+function readMaster(storage: Store | null): number {
   try {
-    const v = Number(localStorage.getItem(BGM_KEY))
-    return localStorage.getItem(BGM_KEY) !== null && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8
+    const raw = storage?.getItem(KEY) ?? null
+    if (raw === null) return MASTER_DEFAULT
+    const value = Number(raw)
+    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : MASTER_DEFAULT
+  } catch {
+    return MASTER_DEFAULT
+  }
+}
+
+function readBgm(storage: Store | null): number {
+  try {
+    if (!storage || storage.getItem(BGM_KEY) === null) return 0.8
+    const v = Number(storage.getItem(BGM_KEY))
+    return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8
   } catch {
     return 0.8
   }
 }
+
+export const audio = new AudioBus()

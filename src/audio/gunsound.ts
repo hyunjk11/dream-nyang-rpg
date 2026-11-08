@@ -148,6 +148,13 @@ export class VoicePool<T> {
     return steal
   }
 
+  /** Every voice still counted as live, then the pool is empty. */
+  drain(): T[] {
+    const voices = this.live.map((row) => row.voice)
+    this.live.length = 0
+    return voices
+  }
+
   get size(): number {
     return this.live.length
   }
@@ -166,6 +173,7 @@ export class GunSound {
   private readonly bufs = new Map<GunCue, AudioBuffer[]>()
   private readonly pool = new VoicePool<Voice>(12)
   private readonly bus: GainNode
+  private readonly comp: DynamicsCompressorNode
   private lastVariant = -1
 
   constructor(
@@ -178,6 +186,7 @@ export class GunSound {
     comp.ratio.value = 6
     comp.attack.value = 0.002
     comp.release.value = 0.09
+    this.comp = comp
     this.bus = ctx.createGain()
     this.bus.gain.value = 1
     this.bus.connect(comp).connect(out)
@@ -191,6 +200,36 @@ export class GunSound {
       }
       this.bufs.set(cue, list)
     }
+  }
+
+  /** Stop voices already in the air (a hidden tab must not finish them on the way back). */
+  cut(): void {
+    const now = this.ctx.currentTime
+    for (const v of this.pool.drain()) {
+      try {
+        v.src.stop(now)
+      } catch {
+        // already ended
+      }
+      try {
+        v.src.disconnect()
+        v.gain.disconnect()
+        v.pan?.disconnect()
+      } catch {
+        // already unhooked
+      }
+    }
+  }
+
+  /** Point later shots at a fresh effects bus. Sounds left on the old bus stay silent. */
+  retarget(out: AudioNode): void {
+    this.cut()
+    try {
+      this.comp.disconnect()
+    } catch {
+      // already disconnected
+    }
+    this.comp.connect(out)
   }
 
   /** `pitch` nudges playback rate (heat makes the gun sing a little higher); `pan` -1..1 (dual pistols left/right). */

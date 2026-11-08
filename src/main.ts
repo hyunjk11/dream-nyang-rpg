@@ -2773,7 +2773,10 @@ function gunSfx(cue: GunCue, gain?: number, pitch?: number, pan?: number): void 
   if (audio.master <= 0.001) return
   const c = audio.context()
   if (!c) return
-  gunSound ??= new GunSound(c.ctx, c.bus)
+  if (!gunSound) {
+    gunSound = new GunSound(c.ctx, c.bus)
+    audio.attachVoices(gunSound)
+  }
   gunSound.play(cue, gain, pitch, pan)
 }
 

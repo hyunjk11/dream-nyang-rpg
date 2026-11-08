@@ -17,6 +17,8 @@ const NOTES: Record<Chime, { f: number[]; step: number; len: number; type: Oscil
 }
 
 export function playChime(ctx: AudioContext, bus: AudioNode, chime: Chime): void {
+  // A suspended context would hold the notes and dump them when audio resumes (tab return, gesture).
+  if (ctx.state !== 'running') return
   const spec = NOTES[chime]
   const t0 = ctx.currentTime + 0.01
   spec.f.forEach((f, i) => {
