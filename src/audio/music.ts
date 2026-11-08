@@ -82,11 +82,39 @@ export function notesAt(track: Track, step: number): Note[] {
 
 export const midiHz = (m: number): number => 440 * 2 ** ((m - 69) / 12)
 
+/** How far ahead the procedural scheduler may queue notes (seconds). */
+export const SCHEDULE_AHEAD = 0.25
+
+/**
+ * Cursor for one scheduler pass. While paused, or after the clock jumps (a backgrounded
+ * tab whose timer was throttled), missed steps are dropped instead of flushed at once.
+ */
+export function nextSchedulerAt(nextAt: number, now: number, running: boolean): { at: number; play: boolean } {
+  if (!running) return { at: now + 0.05, play: false }
+  if (nextAt < now - 0.5) return { at: now + 0.05, play: true }
+  return { at: nextAt, play: true }
+}
+
+/** How many steps one pass would voice. A long stall stays inside the look-ahead. */
+export function stepsInLookahead(nextAt: number, now: number, eighth: number, running: boolean): number {
+  const cursor = nextSchedulerAt(nextAt, now, running)
+  if (!cursor.play) return 0
+  let at = cursor.at
+  let steps = 0
+  while (at < now + SCHEDULE_AHEAD) {
+    steps += 1
+    at += eighth
+    if (steps > 10000) break
+  }
+  return steps
+}
+
 /** Look-ahead player: schedules ~0.25 s ahead from a 100 ms timer; cheap oscillators only. */
 export class ProcMusic {
   private track: Track | null = null
   private step = 0
   private nextAt = 0
+  private held = false
   private timer: ReturnType<typeof setInterval> | null = null
   private readonly gain: GainNode
 
@@ -101,6 +129,12 @@ export class ProcMusic {
 
   get playing(): string | null {
     return this.track?.id ?? null
+  }
+
+  /** Tab hidden: stop queueing notes. Time spent away is not played back later. */
+  hold(on: boolean): void {
+    this.held = on
+    this.nextAt = this.ctx.currentTime + 0.05
   }
 
   play(track: Track | null): void {
@@ -120,13 +154,12 @@ export class ProcMusic {
 
   private pump(): void {
     const t = this.track
-    if (!t || this.ctx.state !== 'running') {
-      this.nextAt = this.ctx.currentTime + 0.05
-      return
-    }
+    const running = !!t && !this.held && this.ctx.state === 'running'
+    const cursor = nextSchedulerAt(this.nextAt, this.ctx.currentTime, running)
+    this.nextAt = cursor.at
+    if (!cursor.play || !t) return
     const eighth = 30 / t.bpm
-    if (this.nextAt < this.ctx.currentTime - 0.5) this.nextAt = this.ctx.currentTime + 0.05
-    while (this.nextAt < this.ctx.currentTime + 0.25) {
+    while (this.nextAt < this.ctx.currentTime + SCHEDULE_AHEAD) {
       for (const n of notesAt(t, this.step)) this.voice(n, this.nextAt + n.at)
       this.step += 1
       this.nextAt += eighth
