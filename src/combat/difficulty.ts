@@ -25,12 +25,13 @@ export const DIFFICULTY = {
      */
     hp: 8.6,
     /** Was 0.62: tougher foes hit a little softer, so a fight lasts longer without being deadlier. */
-    /** Was 0.36: fights last ~8× longer, so each swing lands softer and less often (cooldown 1.45 → 2.1 s). 0.18 → 0.15 to smooth depth 3. */
-    damage: 0.15,
-    speed: 0.92,
-    /** Wind-up stays readable (0.44 s) so a step or a dash still leaves the swing. The rest between swings was 2.1 s: a pack on top of her only landed ~7 hits in 10 s. 1.55 s keeps the telegraph and closes that long breath. */
-    windup: 0.44,
-    cooldown: 1.55,
+    /** Was 0.15: a landed hit was a scratch once the %HP band clamped it, and most fights ended before anything landed. */
+    damage: 0.2,
+    speed: 1,
+    /** Wind-up stays long enough to read (flash + ground marker) and to dash out of. */
+    windup: 0.4,
+    /** Was 1.55 s: a single foe died before the second swing, and often before the first. */
+    cooldown: 1.2,
   },
   /**
    * Elite multipliers (were hp 4.5, damage 2). hp is ×6.5 a slime-sized foe; bigger kinds get only
@@ -67,12 +68,12 @@ export const DIFFICULTY = {
   delve: {
     /** Normal floors per depth before the boss floor. */
     floors: 3,
-    /** Foe hp / damage growth per extra floor inside a depth (hp +50%: gear and levels grow fast; damage +4%). */
+    /** Foe hp / damage growth per extra floor inside a depth. HP stays gentle; damage climbs so later floors hit harder. */
     hpPerFloor: 0.08,
-    damagePerFloor: 0.04,
-    /** ...and per extra depth: hp ×2.35 each depth (geometric, like the gear), damage +8% (was 14%: depth 3 was a wall in the sim). */
+    damagePerFloor: 0.05,
+    /** ...and per extra depth. HP is geometric and unchanged in spirit; damage +13% a depth so chapter 2 and the infinite tower outpace chapter 1. */
     hpDepthGrowth: 1.45,
-    damagePerDepth: 0.08,
+    damagePerDepth: 0.13,
     /** Floors start this many waves further into the roster (floor 1 of depth 1 = wave 1). */
     wavesPerFloor: 1,
     wavesPerDepth: 2,
@@ -105,12 +106,11 @@ export const DIFFICULTY = {
   /**
    * 챕터 1 섬 (꿈의 초원 · 몽환의 숲 · 버섯 골짜기 · 별빛 제단). hp 3 keeps the starter gun's chew
    * (normals 0.55–0.9 s, elites ~5 s, the altar bloom ~25 s). skillHp keeps town skill numbers.
-   * Incoming damage was 0.32, so a forest hit floated −2〜−3 and standing still lost ~14% in 10 s
-   * while the maze (THREAT) took ~70%. damage 1.5 is only foe→hero: a wild slime hits for 11, a bug
-   * for 15. guide softens the one meadow tutorial slime. bossHit is the bloom's petals on top.
-   * Wind-up stays long so a step still leaves the swing. The sewer and 꿈 미로 use horde, not this.
+   * Incoming damage is foe→hero only. A wild slime hits for 12, a bug for 17; guide softens the
+   * meadow tutorial slime. Attacks come out fast enough to land during a starter-gun fight, with a
+   * bright tell, and a dash (a sudden fast step off the marker) still whiffs. The sewer uses horde.
    */
-  town: { hp: 3, elite: 6.8, bossHp: 4.9, skillHp: 11, damage: 1.5, bossHit: 1.6, guide: 0.5, speed: 0.9, windup: 1.3 },
+  town: { hp: 3, elite: 6.8, bossHp: 4.9, skillHp: 11, damage: 1.72, bossHit: 1.55, guide: 0.85, speed: 1.08, windup: 1.15, cooldown: 0.78, shot: 18 },
 } as const
 
 /** Sewer wave size for wave n (1-based). */

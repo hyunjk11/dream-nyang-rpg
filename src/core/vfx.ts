@@ -307,8 +307,8 @@ export class Vfx {
     disc.visible = true
     disc.position.set(x, 0.035, z)
     const p = Number.isFinite(progress) ? Math.min(1, Math.max(0, progress)) : 0
-    disc.scale.setScalar(radius * (0.25 + 0.75 * p))
-    ;(disc.material as MeshBasicMaterial).opacity = 0.16 + 0.24 * p
+    disc.scale.setScalar(radius * (0.32 + 0.78 * p))
+    ;(disc.material as MeshBasicMaterial).opacity = 0.32 + 0.45 * p
     const edge = disc.children[0] as Mesh
     edge.scale.setScalar(1 / (0.25 + 0.75 * p))
   }

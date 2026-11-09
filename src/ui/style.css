@@ -45,8 +45,13 @@ button, .tag {
   border: 0; border-radius: 999px; color: #241433; background: rgba(255, 248, 252, 0.92);
   text-decoration: none; padding: 8px 12px;
 }
-.hp { width: min(280px, 42vw); height: 14px; border-radius: 99px; background: #efe4f2; overflow: hidden; }
-.hp span { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ff8fb4, #ffd0e4); }
+.hp { position: relative; width: 100%; height: 16px; border-radius: 99px; background: rgba(255, 236, 244, 0.55); overflow: hidden; box-shadow: inset 0 1px 2px rgba(80, 30, 60, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.45); }
+.hp span { position: absolute; left: 0; top: 0; display: block; height: 100%; width: 0; }
+#hp-trail { background: linear-gradient(90deg, #ffd0e0, #fff); opacity: 0.85; }
+#hp-fill { background: linear-gradient(90deg, #ff5f93, #ffb0d0 55%, #ffe0ef); box-shadow: 0 0 10px rgba(255, 120, 170, 0.65); }
+.hp small, .mp small, .xp small { position: absolute; inset: 0; text-align: center; font: 10px/16px "Jua", sans-serif; color: #4a2040; text-shadow: 0 1px 0 rgba(255,255,255,0.65); pointer-events: none; }
+.hp.low #hp-fill { animation: hp-low 0.7s ease-in-out infinite; }
+@keyframes hp-low { 50% { filter: brightness(1.35); } }
 #fps { margin-left: auto; color: white; text-shadow: 0 2px 0 #3a2448; }
 #note, #hint { background: rgba(255, 248, 252, 0.92); border-radius: 999px; padding: 8px 14px; }
 #note { margin: 0; }
@@ -292,9 +297,9 @@ body.sewer #recall { display: inline-grid; place-items: center; }
 #summary-close { display: block; margin: 0 auto; }
 
 /* ---- Stage 3: XP bar, skill hotbar, loot toasts, level-up card, bag & skill tree ---- */
-.xp { position: relative; width: min(180px, 26vw); height: 10px; border-radius: 99px; background: rgba(239, 228, 242, 0.85); overflow: hidden; }
-.xp span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffd66b, #fff2b0); transition: width 0.25s; }
-.xp small { position: absolute; inset: -2px 0 0; text-align: center; font-size: 9px; line-height: 14px; color: #5a3a2a; font-family: "Jua", sans-serif; }
+.xp { position: relative; width: 100%; height: 10px; border-radius: 99px; background: rgba(255, 244, 214, 0.55); overflow: hidden; box-shadow: inset 0 1px 2px rgba(80, 50, 20, 0.2); }
+.xp span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #f0a030, #ffd76a 60%, #fff6c8); box-shadow: 0 0 8px rgba(255, 210, 90, 0.7); transition: width 0.35s ease; }
+.xp small { line-height: 10px; font-size: 9px; color: #5a3a18; }
 #hotbar { position: fixed; left: 50%; bottom: var(--edge-b); transform: translateX(-50%); display: flex; gap: 8px; }
 #hotbar button {
   position: relative; width: 58px; height: 58px; border-radius: 16px; padding: 0; overflow: hidden;
@@ -305,7 +310,11 @@ body.sewer #recall { display: inline-grid; place-items: center; }
 #hotbar i { font-style: normal; font-size: 22px; color: #6a3a8a; line-height: 1; margin-top: -6px; display: grid; place-items: center; }
 #hotbar i .skill-svg { width: 30px; height: 30px; display: block; }
 #hotbar b { position: absolute; bottom: 3px; left: 0; right: 0; font-size: 10px; font-weight: 400; color: #4a3358; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
-#hotbar s { position: absolute; left: 0; right: 0; top: 0; height: 0; background: rgba(58, 36, 72, 0.55); text-decoration: none; }
+#hotbar s {
+  position: absolute; inset: 0; height: auto; text-decoration: none; pointer-events: none; border-radius: inherit;
+  background: conic-gradient(from -90deg, rgba(42, 16, 64, 0.78) calc(var(--cd, 0) * 1turn), transparent 0);
+  transition: background 0.05s linear;
+}
 #hotbar button.locked { opacity: 0.42; filter: grayscale(0.8); }
 #hotbar button.cooling i { opacity: 0.6; }
 body.compact #hotbar { position: static; transform: none; gap: 6px; }
@@ -1029,3 +1038,50 @@ body.touch .inv-bulk .bulk-r input { width: 20px; height: 20px; }
 .inv-hands .hand.off { color: #8a3f8f; }
 .inv-hands small { flex-basis: 100%; font-size: 12px; color: #6f4f80; }
 .inv-cell.blocked { opacity: 0.55; background: repeating-linear-gradient(135deg, rgba(160,140,180,0.15) 0 6px, transparent 6px 12px); }
+
+/* ==== Dream HUD: bars, hotbar sweep, panels ==== */
+.vitals { display: flex; flex-direction: column; gap: 3px; width: min(260px, 46vw); min-width: 132px; }
+.mp { position: relative; height: 10px; border-radius: 99px; background: rgba(230, 236, 255, 0.5); overflow: hidden; box-shadow: inset 0 1px 2px rgba(30, 40, 80, 0.22); }
+#mp-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #6f8cff, #b9c6ff 60%, #eef2ff); box-shadow: 0 0 8px rgba(140, 160, 255, 0.75); transition: width 0.25s ease; }
+.mp small { line-height: 10px; font-size: 9px; color: #243056; }
+.heat { height: 4px; border-radius: 99px; background: rgba(255, 244, 230, 0.35); overflow: hidden; }
+#heat-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffb15a, #ff6a4a); transition: width 0.12s linear; }
+.heat.hot #heat-fill { background: #ff4466; box-shadow: 0 0 8px #ff4466; }
+#hotbar button { transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease; }
+#hotbar button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 0 rgba(58, 36, 72, 0.28), 0 0 16px rgba(255, 180, 220, 0.55); }
+#hotbar button:active:not(:disabled) { transform: translateY(1px) scale(0.96); }
+#hotbar button.cooling { box-shadow: inset 0 0 0 2px rgba(255, 214, 120, 0.9), 0 3px 0 rgba(58, 36, 72, 0.35); }
+.dmg { animation: dmg-rise 0.7s ease-out; }
+.dmg.k-crit { animation: dmg-crit 0.75s ease-out; }
+@keyframes dmg-rise { 0% { filter: brightness(1.4); } 100% { filter: none; } }
+@keyframes dmg-crit { 0% { filter: brightness(1.8) drop-shadow(0 0 6px #ffe27a); } 40% { filter: brightness(1.3); } 100% { filter: none; } }
+.toast { border: 1px solid rgba(255, 255, 255, 0.7); backdrop-filter: blur(6px); }
+#tracker, #contract-hud > div.q, #guide {
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 22px rgba(40, 16, 60, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+#minimap { box-shadow: 0 0 0 3px rgba(255, 214, 236, 0.45), 0 10px 24px rgba(30, 12, 48, 0.35); border-radius: 16px; }
+.inv-card, .card {
+  background:
+    radial-gradient(90% 60% at 0% 0%, rgba(255, 214, 236, 0.55), transparent 46%),
+    linear-gradient(180deg, rgba(255, 252, 255, 0.98), rgba(246, 236, 252, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 22px 50px rgba(36, 12, 56, 0.38), 0 0 0 1px rgba(190, 140, 210, 0.28), inset 0 1px 0 #fff;
+}
+.inv-cell, #hotbar button, button, .tag { transition: transform 0.12s ease, filter 0.12s ease, background 0.12s ease; }
+button:hover:not(:disabled), .inv-cell:hover { filter: brightness(1.04); }
+button:active:not(:disabled), .inv-cell:active { transform: translateY(1px) scale(0.98); }
+.town-job button.primary, .town-sweet button.primary, #work-upgrade {
+  background: linear-gradient(180deg, #b06ad4, #8a4fb0);
+  box-shadow: 0 3px 0 #6a348c, 0 0 14px rgba(176, 106, 212, 0.45);
+}
+#settings { backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.75); }
+body.compact .vitals { width: min(168px, 48vw); }
+body.compact .hp { height: 14px; }
+body.compact .hp small, body.compact .mp small { font-size: 8px; line-height: 14px; }
+body.compact .mp { height: 9px; }
+body.compact .mp small { line-height: 9px; }
+@media (max-width: 420px) {
+  .vitals { width: min(150px, 44vw); }
+  .hp small { font-size: 8px; }
+}

@@ -14,7 +14,7 @@ import { migrateSave } from '../src/sim/migrate'
 import { freshSave } from '../src/sim/mutate'
 
 /** 브라우저와 같은 길: Horde.update → 진짜 Hero.hurt (무적·방어·반올림) → Hero.update 자연 회복. */
-function stand(plan: Parameters<typeof runFoeScale>[0] & Parameters<typeof floorMaze>[0], kinds: HordeKind[], maxHp = 150, isBoss = false, share = 0, drift = 0) {
+function stand(plan: Parameters<typeof runFoeScale>[0] & Parameters<typeof floorMaze>[0], kinds: HordeKind[], maxHp = 150, isBoss = false, share = 0, drift = 0, dodge = false) {
   const maze = floorMaze(plan)
   const h = new Horde(maze)
   h.rangedShare = share
@@ -45,7 +45,7 @@ function stand(plan: Parameters<typeof runFoeScale>[0] & Parameters<typeof floor
       at.x = s.x + Math.sin(ang) * drift
       at.z = s.z + Math.cos(ang) * drift
     }
-    h.update(dt, at, (amount, fx, fz) => {
+    h.update(dt, { ...at, dodge }, (amount, fx, fz) => {
       hero.hurt(amount, new Vector3(fx, 0, fz))
     })
     // 회복·무적 감소만 (Hero.update 와 같은 식).
@@ -59,11 +59,10 @@ function stand(plan: Parameters<typeof runFoeScale>[0] & Parameters<typeof floor
 }
 
 describe('실제 플레이: 미로·하수도·들판에서도 피가 빠진다 (미로 - 안빠짐)', () => {
-  it('미로·깊이 1–3 일반 무리 5마리에 10초 가만히 서 있으면 55–85% 깎인다 (위험하지만 즉사는 아님)', () => {
+  it('미로·깊이 1–3 일반 무리 5마리에 10초 가만히 서 있으면 대부분 깎이거나 쓰러진다', () => {
     for (const [d, f] of [[1, 1], [1, 3], [2, 2], [3, 2]] as const) {
       const r = stand(floorPlan(d, f), ['slime', 'slime', 'bug', 'slime', 'bat'])
-      expect(r.lost, `d${d}f${f}`).toBeGreaterThanOrEqual(0.55)
-      expect(r.lost, `d${d}f${f}`).toBeLessThan(0.85)
+      expect(r.lost, `d${d}f${f}`).toBeGreaterThanOrEqual(0.7)
     }
   })
 
@@ -77,8 +76,7 @@ describe('실제 플레이: 미로·하수도·들판에서도 피가 빠진다 
 
   it('레벨이 올라 최대 체력이 커져도(300) 같은 비율로 깎인다', () => {
     const r = stand(floorPlan(1, 2), ['slime', 'slime', 'bug', 'slime', 'bat'], 300)
-    expect(r.lost).toBeGreaterThanOrEqual(0.55)
-    expect(r.lost).toBeLessThan(0.85)
+    expect(r.lost).toBeGreaterThanOrEqual(0.7)
   })
 
   it('예전 배율(×1)이면 거의 안 빠졌다: 원인 재현', () => {
@@ -239,8 +237,8 @@ describe('맞는 한 대의 무게 (보스 > 기사 > 슬라임, 정예는 같�
     const slime = h.spawn('slime', 0, 0)!.damage / 150
     const knight = h.spawn('knight', 1, 0)!.damage / 150
     const elite = h.spawn('knight', 2, 0, true)!.damage / 150
-    expect(slime).toBeGreaterThanOrEqual(0.08)
-    expect(slime).toBeLessThanOrEqual(0.1)
+    expect(slime).toBeGreaterThanOrEqual(0.11)
+    expect(slime).toBeLessThanOrEqual(0.16)
     expect(knight).toBeGreaterThan(slime)
     expect(elite).toBe(knight)
     const touch = Math.round(BOSS.contact * bossRoomHit(150, 'boss')) / 150
@@ -257,15 +255,17 @@ describe('실제 플레이: 원거리가 절반 섞인 무리', () => {
       const melee = stand(floorPlan(d, f), ['slime', 'slime', 'bug', 'slime', 'bat'], 150, false, 0)
       const mixed = stand(floorPlan(d, f), ['slime', 'slime', 'bug', 'slime', 'bat'], 150, false, 0.5)
       if ((globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.RANGED_LOG) console.log(`d${d}f${f} 근접만 ${(melee.lost * 100).toFixed(1)}% 섞임 ${(mixed.lost * 100).toFixed(1)}%`)
-      expect(mixed.lost, `d${d}f${f}`).toBeGreaterThanOrEqual(0.6)
-      expect(mixed.lost, `d${d}f${f}`).toBeLessThan(0.95)
+      expect(mixed.lost, `d${d}f${f}`).toBeGreaterThanOrEqual(0.7)
       // Standing still, the shots finally add pressure instead of vanishing into the same i-frame budget.
       expect(mixed.lost, `d${d}f${f} ranged`).toBeGreaterThan(melee.lost - 0.02)
     }
   })
 
-  it('같은 무리를 3.5 m 원으로 돌면 10초에 15% 미만만 깎인다 (피하면 버틴다)', () => {
-    const r = stand(floorPlan(1, 1), ['slime', 'slime', 'bug', 'slime', 'bat'], 150, false, 0.5, 3.5)
-    expect(r.lost).toBeLessThan(0.15)
+  it('대시 무적이면 같은 무리가 10초 동안 거의 못 맞힌다', () => {
+    const still = stand(floorPlan(1, 1), ['slime', 'slime', 'bug', 'slime', 'bat'], 150, false, 0.5)
+    const dashed = stand(floorPlan(1, 1), ['slime', 'slime', 'bug', 'slime', 'bat'], 150, false, 0.5, 0, true)
+    expect(still.lost).toBeGreaterThan(0.6)
+    expect(dashed.lost).toBeLessThan(0.2)
+    expect(dashed.lost).toBeLessThan(still.lost)
   })
 })

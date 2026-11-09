@@ -83,7 +83,7 @@ describe('플레이테스트: 깊이 1 위협', () => {
   it('깊이 1 탐색 사격은 물총 스위트스팟(14m) 너머까지 나가고, 한 발은 체력의 한 자리다', () => {
     const sweet = engageFor('water').sweet
     expect(sweet).toBe(14)
-    expect(RANGED.maxShot).toBeLessThan(sweet)
+    expect(RANGED.maxShot).toBeGreaterThan(sweet)
     expect(EARLY_SHOT.max).toBeGreaterThan(sweet)
     expect(EARLY_SHOT.far).toBeGreaterThanOrEqual(sweet)
     const hp = hordeHp('slime', floorPlan(1, 1).scale.hp * EXPLORE.hp)
@@ -91,10 +91,10 @@ describe('플레이테스트: 깊이 1 위협', () => {
     const ttk = hp / dps
     const flight = sweet / (SHOT_STYLES.bubble.speed * EARLY_SHOT.speed)
     const arrive = SHOT_STYLES.bubble.aim + flight
-    // The shot is still in the air when an unupgraded slime dies, and lands if she stays on the pack.
+    // The bubble lands while an unupgraded slime is still up, so a single foe can hurt her.
     expect(ttk).toBeGreaterThan(1.5)
-    expect(ttk).toBeLessThan(arrive)
-    expect(arrive).toBeLessThan(3)
+    expect(arrive).toBeLessThan(ttk)
+    expect(arrive).toBeGreaterThan(0.7)
     const maxHp = DIFFICULTY.hero.maxHp
     const chip = FOE_HIT_BAND[0] * maxHp
     expect(chip).toBeGreaterThan(maxHp * 0.08)

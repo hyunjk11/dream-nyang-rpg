@@ -73,7 +73,7 @@ export const BOSS_LIVE = 8
  * move by this same factor, so a boss touch stays ~2.8× a slime and an elite stays 1× (1.1× enraged).
  * Player damage and skills are not part of it.
  */
-export const THREAT = 2.8
+export const THREAT = 3.15
 export const BOSS_ROOM_HIT = { adds: 4 * THREAT, boss: 2 * THREAT }
 /**
  * Every other floor (fix/real-play, "미로에서 피가 안 빠져"): #46 scaled only the boss room. Out on a
@@ -96,8 +96,11 @@ export function runFoeScale(plan: Pick<FloorPlan, 'scale' | 'objective'>, isBoss
   const scale: { hp: number; damage: number; hit?: readonly [number, number] } = { hp: plan.scale.hp, damage: plan.scale.damage }
   // 몽실 마을 (objective 'town') has no foes; every fighting floor hits for real.
   if (plan.objective === 'town') return scale
+  // The %HP band grows with the floor's damage step, so depth 3 hits harder than depth 1
+  // instead of every foe clamping into the same scratch.
+  const bite = Math.max(1, plan.scale.damage) * (isBoss ? 1.15 : 1)
   scale.damage *= isBoss ? bossRoomHit(maxHp, 'adds') : foeHit(maxHp)
-  scale.hit = [FOE_HIT_BAND[0] * maxHp, FOE_HIT_BAND[1] * maxHp]
+  scale.hit = [FOE_HIT_BAND[0] * maxHp * bite, FOE_HIT_BAND[1] * maxHp * bite]
   return scale
 }
 /** Share of ranged foes for a floor: 50% on fighting floors, a few on the boss floor, none in town. */
@@ -1490,7 +1493,7 @@ export class DungeonRun {
     }
     const strike = (amount: number, x: number, z: number) => this.host.hurt(amount, new Vector3(x, 0, z))
     // Dash i-frames let shots fly through her (the dodge).
-    this.horde.update(dt, { x: p.x, z: p.z, alive: hero.alive, dodge: hero.dashing || hero.iframes > 0 }, strike)
+    this.horde.update(dt, { x: p.x, z: p.z, alive: hero.alive, dodge: hero.dashing || hero.iframes > 0, vx: hero.vel.x, vz: hero.vel.z }, strike)
     for (const pop of this.horde.popped) if (!pop.hit) this.host.vfx.hit(new Vector3(pop.x, pop.y, pop.z), SHOT_LOOK[pop.style].color)
     if (!boss) return
     for (const ev of boss.update(dt, p.x, p.z, hero.alive, strike)) {

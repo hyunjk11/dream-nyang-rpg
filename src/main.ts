@@ -58,7 +58,7 @@ import { findItem } from './sim/inventory'
 import { ilvText, itemName, makeItem, type Drop } from './sim/loot'
 import { skillSvg } from './ui/skillicons'
 import { Help, hintHtml } from './ui/help'
-import { type ItemInstance } from './sim/types'
+import { POTION_CAP, type ItemInstance } from './sim/types'
 import { isUnique, itemColor } from './sim/rarity'
 import { InventoryUI, compareEquip, dpsOf } from './ui/inventory'
 import { TownUI, type TownPanel, type TownSuccess } from './ui/town'
@@ -1193,7 +1193,10 @@ function paintHotbar(): void {
     const label = hotbarName(def)
     if (name && name.textContent !== label) name.textContent = label
     const veil = el.querySelector('s') as HTMLElement | null
-    if (veil) veil.style.height = `${Math.round(ready * 100)}%`
+    if (veil) {
+      veil.style.height = ''
+      veil.style.setProperty('--cd', ready.toFixed(3))
+    }
     const tip = r > 0 ? `${def.name} [${i + 1}]\n${def.text(r)}${def.cooldown ? `\n대기 ${def.cooldown(r)}초` : ''}${ready > 0 ? '\n충전 중…' : ''}` : `${def.name}\n아직 안 배웠어. K 스킬 나무에서 배울 수 있어.`
     if (el.dataset.tip !== tip) el.dataset.tip = tip
     el.removeAttribute('title')
@@ -1228,6 +1231,28 @@ let showFps = true
 const floats: { el: HTMLElement; life: number; y: number; at: Vector3 }[] = []
 
 const hpFill = document.getElementById('hp-fill')
+const hpTrailEl = document.getElementById('hp-trail')
+const hpText = document.getElementById('hp-text')
+const mpFill = document.getElementById('mp-fill')
+const mpText = document.getElementById('mp-text')
+const heatFill = document.getElementById('heat-fill')
+let hpTrail = 1
+/** HP lags a pink ghost when she is hurt, candy fills the blue bar, gun heat sits under them. */
+function paintVitals(dt: number): void {
+  const hp = hero.maxHp > 0 ? Math.max(0, Math.min(1, hero.hp / hero.maxHp)) : 0
+  if (hp > hpTrail) hpTrail = hp
+  else hpTrail += (hp - hpTrail) * Math.min(1, dt * 2.4)
+  if (hpFill) hpFill.style.width = `${hp * 100}%`
+  if (hpTrailEl) hpTrailEl.style.width = `${hpTrail * 100}%`
+  if (hpText) hpText.textContent = `${Math.max(0, Math.ceil(hero.hp))}/${hero.maxHp}`
+  document.querySelector('.hp')?.classList.toggle('low', hp > 0 && hp < 0.3)
+  if (mpFill) mpFill.style.width = `${Math.min(100, (game.save.potions / POTION_CAP) * 100)}%`
+  if (mpText) mpText.textContent = `사탕 ${game.save.potions}`
+  if (heatFill) {
+    heatFill.style.width = `${Math.min(100, shooter.gun.heat * 100)}%`
+    heatFill.parentElement?.classList.toggle('hot', shooter.gun.overheated)
+  }
+}
 const fpsEl = document.getElementById('fps')
 const boot = document.getElementById('boot')
 const note = document.getElementById('note')
@@ -2483,7 +2508,7 @@ function frame(): void {
   audio.update(dt, threatNear(heroPos))
   vfx.update(dt)
   if (!frozen) autoCandy(raw)
-  if (hpFill) hpFill.style.width = `${Math.max(0, (hero.hp / hero.maxHp) * 100)}%`
+  paintVitals(dt)
   // Camera on her shoulder, then the crosshair ray from it, then the gun (same order as the sewer).
   if (combat.shake > 0.02) rig.shake = Math.max(rig.shake, combat.shake * 0.35)
   hero.object.visible = rig.place(dt, heroPos.x, heroPos.y, heroPos.z, townRay)
@@ -2556,7 +2581,7 @@ function sewerFrame(dt: number, raw: number): void {
   vfx.update(dt)
   audio.setScene(run.boss && run.boss.awake && run.boss.alive ? 'boss' : 'dungeon', run.plan.depth)
   audio.update(dt, run.threat)
-  if (hpFill) hpFill.style.width = `${Math.max(0, (hero.hp / hero.maxHp) * 100)}%`
+  paintVitals(raw)
   talkTip?.classList.toggle('hidden', !run.nearPortal)
   if (run.nearPortal && talkTip) {
     tipAt.copy(hero.object.position).setY(2.0).project(stage.camera)

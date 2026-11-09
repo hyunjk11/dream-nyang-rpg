@@ -80,8 +80,8 @@ describe('원거리 몬스터', () => {
     for (const s of Object.values(SHOT_STYLES)) {
       expect(s.aim).toBeGreaterThanOrEqual(0.4)
       expect(s.aim).toBeLessThanOrEqual(0.6)
-      expect(s.speed).toBeGreaterThanOrEqual(5)
-      expect(s.speed).toBeLessThanOrEqual(9)
+      expect(s.speed).toBeGreaterThanOrEqual(12)
+      expect(s.speed).toBeLessThanOrEqual(20)
     }
   })
 
