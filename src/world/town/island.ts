@@ -5,6 +5,14 @@ import { PLACES } from './places'
 export const ISLAND_RADIUS = 14.5
 export const WALK_RADIUS = 13.2
 
+/** Pull a point back inside a disc. Points already inside are left alone. */
+export function clampDisc(x: number, z: number, radius: number): { x: number; z: number } {
+  const r = Math.hypot(x, z)
+  if (r <= radius || r < 1e-6) return { x, z }
+  const k = radius / r
+  return { x: x * k, z: z * k }
+}
+
 export interface Budget {
   grass: number
   flowers: number

@@ -1,5 +1,6 @@
 import {
   AdditiveBlending,
+  NormalBlending,
   CircleGeometry,
   Color,
   CylinderGeometry,
@@ -35,6 +36,17 @@ void main() {
 }
 `
 
+export interface PortalColumn {
+  /** Column opacity. The sewer light stays faint; the village return column is solid enough to read. */
+  opacity?: number
+  /** Column height in metres. */
+  height?: number
+  /** Colour multiplier on the column (1 keeps the given tint). */
+  glow?: number
+  /** Keep the colour. Additive columns bloom to white when they are this bright. */
+  flat?: boolean
+}
+
 /** A floor portal: spinning ring, swirling disc and a soft light column. */
 export class Portal {
   readonly group = new Group()
@@ -43,8 +55,13 @@ export class Portal {
   private readonly swirl: ShaderMaterial
   private readonly column: Mesh
 
-  constructor(at: Vector3, color = 0x9ad7ff) {
+  constructor(at: Vector3, color = 0x9ad7ff, column?: PortalColumn) {
     const c = new Color(color)
+    const height = column?.height ?? 3.6
+    const opacity = column?.opacity ?? 0.22
+    const glow = column?.glow ?? 0.55
+    const flat = !!column?.flat
+    const columnBlend = flat ? NormalBlending : AdditiveBlending
     this.ring = new Mesh(
       new RingGeometry(0.7, 0.95, 40),
       new MeshBasicMaterial({ color: c.clone().multiplyScalar(2.2), transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false, side: DoubleSide }),
@@ -63,10 +80,18 @@ export class Portal {
     disc.rotation.x = -Math.PI / 2
     disc.position.y = 0.045
     this.column = new Mesh(
-      new CylinderGeometry(0.8, 0.95, 3.6, 24, 1, true).translate(0, 1.8, 0),
-      new MeshBasicMaterial({ color: c.clone().multiplyScalar(0.55), transparent: true, opacity: 0.22, blending: AdditiveBlending, depthWrite: false, side: DoubleSide }),
+      new CylinderGeometry(0.72, 0.95, height, 28, 1, true).translate(0, height / 2, 0),
+      new MeshBasicMaterial({ color: c.clone().multiplyScalar(glow), transparent: true, opacity, blending: columnBlend, depthWrite: false, side: DoubleSide }),
     )
     this.group.add(this.ring, disc, this.column)
+    if (opacity >= 0.5) {
+      const core = new Mesh(
+        new CylinderGeometry(0.22, 0.3, height * 0.94, 16, 1, true).translate(0, height * 0.47, 0),
+        new MeshBasicMaterial({ color: flat ? 0xffc56a : 0xfff1d6, transparent: true, opacity: flat ? 0.9 : 0.62, blending: columnBlend, depthWrite: false, side: DoubleSide }),
+      )
+      core.name = 'portal-core'
+      this.group.add(core)
+    }
     this.group.position.copy(at)
     this.group.name = 'sewer-portal'
   }

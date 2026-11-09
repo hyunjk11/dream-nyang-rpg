@@ -229,10 +229,16 @@ export function candyHeal(maxHp: number): number {
   return Math.max(30, Math.round(maxHp * 0.4))
 }
 
-/** Eat a heart candy (Q): returns how much it heals, or a reason. */
-export function eatCandy(save: SaveData, hp: number, maxHp: number): { ok: boolean; heal?: number; reason?: string } {
+/** Eat a heart candy (Q): returns how much it heals, or a reason.
+ *  The chapter-1 candy step passes `tutorial` so a full health bar (and an empty pocket) cannot stall it. */
+export function eatCandy(save: SaveData, hp: number, maxHp: number, opts?: { tutorial?: boolean }): { ok: boolean; heal?: number; reason?: string; tasted?: boolean } {
+  if (opts?.tutorial && save.potions <= 0) save.potions = 1
   if (save.potions <= 0) return { ok: false, reason: '하트 사탕이 없어. 포포 상점에서 살 수 있어.' }
-  if (hp >= maxHp) return { ok: false, reason: '체력이 이미 가득이야.' }
+  if (hp >= maxHp) {
+    if (!opts?.tutorial) return { ok: false, reason: '체력이 이미 가득이야.' }
+    save.potions -= 1
+    return { ok: true, heal: 0, tasted: true }
+  }
   save.potions -= 1
   return { ok: true, heal: Math.min(maxHp - hp, candyHeal(maxHp)) }
 }

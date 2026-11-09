@@ -14,6 +14,7 @@ import {
 import { FOE_SPECS, foePose, makeFoeBody, type FoeBody, type FoeKind } from './foes'
 import { toon } from '../core/materials'
 import { PLACES, insidePlace, pushOutOfPlaces, type Place } from '../world/town/places'
+import { WALK_RADIUS, clampDisc } from '../world/town/island'
 import type { Loot } from '../core/loop'
 import type { ZoneFoe } from '../world/town/zones3d'
 import type { CueName } from '../audio/soundplan'
@@ -23,6 +24,14 @@ import { freshElements, speedMul, tickElements } from './elements'
 import { rayCapsule, type AimTarget } from '../core/tps'
 
 const TOWN = DIFFICULTY.town
+/** Island foes stop short of the cliff so a chase cannot pull 자동 사냥 into the sea. */
+const FOE_RIM = WALK_RADIUS - 0.45
+
+function clampFoe(foe: { object: { position: { x: number; z: number } } }): void {
+  const p = clampDisc(foe.object.position.x, foe.object.position.z, FOE_RIM)
+  foe.object.position.x = p.x
+  foe.object.position.z = p.z
+}
 
 /** A 챕터 1 island foe's max HP (pure; the tutorial tuning lives in DIFFICULTY.town). */
 export function townFoeHp(kind: FoeKind, elite: boolean): number {
@@ -359,6 +368,7 @@ export class Combat {
       if (foe.dying > 0) {
         foe.dying += dt / DEATH_TIME
         foe.object.position.addScaledVector(foe.knock, dt)
+        clampFoe(foe)
         if (foe.dying >= 1) {
           foe.dying = 0
           foe.object.visible = false
@@ -417,6 +427,7 @@ export class Combat {
       const minGap = heroRadius * 0.6 + spec.radius
       const gap = Math.hypot(heroPos.x - foe.object.position.x, heroPos.z - foe.object.position.z)
       if (gap < minGap && gap > 1e-4) foe.object.position.addScaledVector(to, -(minGap - gap))
+      clampFoe(foe)
       // Turn smoothly toward Byeolha.
       const targetYaw = Math.atan2(to.x, to.z)
       let dy = targetYaw - foe.yaw

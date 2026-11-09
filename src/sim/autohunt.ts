@@ -62,6 +62,8 @@ export interface HuntQuery {
   paired?: boolean
   /** Maze grid. Without it she walks in a straight line and will not chase past engage.far. */
   grid?: HuntGrid | null
+  /** Open island: stay this many metres from the centre. Mazes leave it unset (their coords are huge). */
+  bound?: number
   foes: readonly HuntFoe[]
   drops: readonly HuntDrop[]
   skills: readonly HuntSkill[]
@@ -247,6 +249,23 @@ function foeMove(q: HuntQuery, fx: number, fz: number, dist: number, sweet: numb
   return { wishX: u.x, wishZ: u.z, running: true }
 }
 
+/**
+ * Stop an auto-hunt step from walking off an island. A wish that would cross `radius - margin`
+ * is dropped; inward steps (back toward the grass) stay. Manual stick input is not passed here.
+ */
+export function keepInside(px: number, pz: number, wishX: number, wishZ: number, radius: number, margin = 1.35): { x: number; z: number } {
+  if (wishX === 0 && wishZ === 0) return { x: 0, z: 0 }
+  const cap = Math.max(1, radius - margin)
+  const radial = Math.hypot(px, pz)
+  if (radial < 1e-4) return { x: wishX, z: wishZ }
+  const outward = (wishX * px + wishZ * pz) / radial
+  const nextR = Math.hypot(px + wishX * 1.2, pz + wishZ * 1.2)
+  if (radial < cap && nextR <= cap) return { x: wishX, z: wishZ }
+  if (outward > 0.05) return { x: 0, z: 0 }
+  if (nextR <= cap + 0.05) return { x: wishX, z: wishZ }
+  return { x: 0, z: 0 }
+}
+
 /** One frame of auto-hunt. `active: false` means the caller should leave input alone. */
 export function planHunt(q: HuntQuery): HuntPlan {
   if (!q.active) return { active: false, ...IDLE, aimYaw: q.yaw, aimPitch: q.pitch }
@@ -283,6 +302,12 @@ export function planHunt(q: HuntQuery): HuntPlan {
   const seen = !!foe && dist <= band.far && (!q.grid || worldClear(q.px, q.pz, foe.foe.x, foe.foe.z, q.grid))
   const hp = q.maxHp > 0 ? q.hp / q.maxHp : 1
   const kite = band.sweet * KITE_AT
+  if (q.bound && !q.manual) {
+    const held = keepInside(q.px, q.pz, wishX, wishZ, q.bound)
+    wishX = held.x
+    wishZ = held.z
+    if (wishX === 0 && wishZ === 0) running = false
+  }
   return {
     active: true,
     wishX,

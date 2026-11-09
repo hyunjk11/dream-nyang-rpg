@@ -102,13 +102,15 @@ describe('플레이테스트: 깊이 1 위협', () => {
   })
 })
 
-describe('플레이테스트: 가이드가 슬라임 셋을 말한다', () => {
-  it('사격은 짧은 연사고, 처치 단계 제목에 3마리가 있다', () => {
+describe('플레이테스트: 가이드가 다음 단계를 말한다', () => {
+  it('사격 다음은 대시이고, 처치 단계 제목에 슬라임 3마리가 있다', () => {
     const shoot = GUIDE.find((g) => g.id === 'shoot')!
     const kill = GUIDE.find((g) => g.id === 'kill')!
     expect(shoot.goal).toBeLessThanOrEqual(8)
-    expect(shoot.keys).toContain('슬라임 3')
+    expect(shoot.keys).toContain('대시')
+    expect(shoot.say.text).toContain('대시')
     expect(kill.title).toContain('3')
     expect(kill.keys).toContain('3')
+    expect(kill.keys).toContain('슬라임')
   })
 })
