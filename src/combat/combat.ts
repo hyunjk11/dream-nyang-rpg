@@ -77,6 +77,12 @@ export interface Foe {
   elite?: string
   /** Zone foes sleep for good once beaten (until she comes back to the zone). */
   once: boolean
+  /** Where the tell locked her (a dash off this spot whiffs). */
+  lockX: number
+  lockZ: number
+  locked: boolean
+  /** Stable key for the ground marker under the tell. */
+  mark: object
   /** 서늘 / 끈적 timers (same rules as the sewer horde). */
   chill: number
   goo: number
@@ -146,6 +152,11 @@ export class Combat {
   private dummy = new Object3D()
   private root: Object3D
   private time = 0
+  private heroVX = 0
+  private heroVZ = 0
+  private heroLX = 0
+  private heroLZ = 0
+  private heroPrimed = false
 
   constructor(root: Object3D) {
     this.root = root
@@ -160,6 +171,7 @@ export class Combat {
   setRoster(roster: readonly ZoneFoe[]): void {
     for (const foe of this.foes) {
       this.vfx?.endTelegraph(foe)
+      this.vfx?.endTelegraph(foe.mark)
       foe.object.removeFromParent()
     }
     this.foes.length = 0
@@ -250,6 +262,7 @@ export class Combat {
     foe.dying = 0.001
     foe.windup = 0
     this.vfx?.endTelegraph(foe)
+    this.vfx?.endTelegraph(foe.mark)
     foe.respawn = spec.respawn
     foe.bar.group.visible = false
     foe.knock.multiplyScalar(1.6)
@@ -295,6 +308,10 @@ export class Combat {
       tags,
       elite,
       once,
+      lockX: x,
+      lockZ: z,
+      locked: false,
+      mark: {},
       ...freshElements(),
     })
   }
@@ -358,6 +375,13 @@ export class Combat {
   update(dt: number, heroPos: Vector3, heroRadius: number, onHeroHit: (amount: number, from: Vector3) => void): { text: string; at: Vector3 }[] {
     const notes: { text: string; at: Vector3 }[] = []
     this.time += dt
+    if (this.heroPrimed && dt > 1e-4) {
+      this.heroVX = (heroPos.x - this.heroLX) / dt
+      this.heroVZ = (heroPos.z - this.heroLZ) / dt
+    }
+    this.heroLX = heroPos.x
+    this.heroLZ = heroPos.z
+    this.heroPrimed = true
     for (const foe of this.foes) {
       const spec = FOE_SPECS[foe.kind]
       foe.flash = Math.max(0, foe.flash - dt)
@@ -436,20 +460,36 @@ export class Combat {
       foe.object.rotation.set(0, foe.yaw, 0)
 
       if (foe.windup > 0) {
-        // Ground warning that fills as the strike nears, so every attack can be read and dodged.
-        const reach = foe.kind === 'bloom' ? 2.6 : spec.ranged ? 0.9 : heroRadius + 1.2
-        this.vfx?.telegraph(foe, foe.object.position.x, foe.object.position.z, reach, 1 - foe.windup / (spec.windup * TOWN.windup), foe.kind === 'bloom' ? 0xff6fae : spec.ranged ? 0xb48cff : 0xff8aa8)
+        const full = Math.max(0.36, spec.windup * TOWN.windup)
+        const progress = 1 - foe.windup / full
+        // Track her until the tell commits, then the marker freezes so a dash can leave it.
+        if (!foe.locked) {
+          foe.lockX = heroPos.x
+          foe.lockZ = heroPos.z
+          if (progress > 0.55) foe.locked = true
+        }
+        const reach = foe.kind === 'bloom' ? 2.8 : spec.ranged ? 1.15 : heroRadius + 1.6
+        const color = foe.kind === 'bloom' ? 0xff6fae : spec.ranged ? 0xb48cff : 0xff8aa8
+        this.vfx?.telegraph(foe, foe.object.position.x, foe.object.position.z, reach, progress, color)
+        this.vfx?.telegraph(foe.mark, foe.lockX, foe.lockZ, spec.ranged ? 1.15 : 1.35, progress, 0xffe27a)
+        // Melee rushes the last of the tell so the ring is the danger, not a hint after she has left.
+        if (!spec.ranged && dist > heroRadius) foe.object.position.addScaledVector(to, Math.min(spec.speed * 3.4, 8) * dt)
         foe.windup -= dt
         if (foe.windup <= 0) {
           foe.windup = 0
-          foe.attack = spec.cooldown
+          foe.attack = spec.cooldown * TOWN.cooldown
+          foe.locked = false
           this.vfx?.endTelegraph(foe)
+          this.vfx?.endTelegraph(foe.mark)
           this.strike(foe, heroPos, heroRadius, dist, to, onHeroHit)
         }
       } else if (foe.attack <= 0 && foe.spawn >= 1) {
-        const inReach = spec.ranged ? dist < (foe.kind === 'bloom' ? 8 : 7.5) && dist > 1.4 : dist < heroRadius + 0.85
+        const inReach = spec.ranged ? dist < (foe.kind === 'bloom' ? 11 : 12.5) && dist > 1.3 : dist < 8.5
         if (inReach) {
-          foe.windup = spec.windup * TOWN.windup
+          foe.windup = Math.max(0.36, spec.windup * TOWN.windup)
+          foe.lockX = heroPos.x
+          foe.lockZ = heroPos.z
+          foe.locked = false
           if (foe.kind === 'bloom') this.sound('windup')
         }
       }
@@ -478,10 +518,21 @@ export class Combat {
         continue
       }
       if (!shot.fromHero) {
+        const speedNow = Math.hypot(this.heroVX, this.heroVZ)
+        if (speedNow < 7) {
+          const tx = heroPos.x - shot.mesh.position.x
+          const tz = heroPos.z - shot.mesh.position.z
+          const td = Math.hypot(tx, tz) || 1
+          const sp = Math.hypot(shot.vel.x, shot.vel.z) || 1
+          const steer = Math.min(1, dt * 3.2)
+          shot.vel.x += ((tx / td) * sp - shot.vel.x) * steer
+          shot.vel.z += ((tz / td) * sp - shot.vel.z) * steer
+        }
         const body = heroPos.clone()
         body.y = 0.9
-        if (body.distanceTo(shot.mesh.position) < 0.3 + shot.radius) {
-          onHeroHit(shot.damage, shot.mesh.position)
+        if (body.distanceTo(shot.mesh.position) < 0.42 + shot.radius) {
+          // A dash is a sudden fast step: the bubble slips past.
+          if (speedNow < 7) onHeroHit(shot.damage, shot.mesh.position)
           shot.life = 0
         }
         continue
@@ -512,6 +563,7 @@ export class Combat {
           foe.dying = 0.001
           foe.windup = 0
           this.vfx?.endTelegraph(foe)
+          this.vfx?.endTelegraph(foe.mark)
           foe.respawn = spec.respawn
           foe.bar.group.visible = false
           foe.knock.multiplyScalar(1.6)
@@ -570,21 +622,26 @@ export class Combat {
     return notes
   }
 
-  private strike(foe: Foe, heroPos: Vector3, heroRadius: number, dist: number, to: Vector3, onHeroHit: (amount: number, from: Vector3) => void): void {
+  private strike(foe: Foe, heroPos: Vector3, _heroRadius: number, _dist: number, to: Vector3, onHeroHit: (amount: number, from: Vector3) => void): void {
     const spec = FOE_SPECS[foe.kind]
+    const slipped = Math.hypot(heroPos.x - foe.lockX, heroPos.z - foe.lockZ) > 1.65 || Math.hypot(this.heroVX, this.heroVZ) > 7
     if (spec.ranged) {
       const origin = this.centre(foe)
-      const dir = heroPos.clone().setY(0.9).sub(origin)
+      const aim = new Vector3(foe.lockX, 0.9, foe.lockZ)
+      const dir = aim.sub(origin)
+      const speed = foe.kind === 'bloom' ? 9 : TOWN.shot
+      if (slipped && foe.kind !== 'bloom') return
       if (foe.kind === 'bloom') {
         // Five-petal fan the player can weave through.
-        for (let i = -2; i <= 2; i += 1) this.fire(origin, dir.clone().applyAxisAngle(UP, i * 0.24), townHit(foe.kind, foe.tags.includes('tutorial')), false, 0xff9ad8, 5.2, 0.16)
+        for (let i = -2; i <= 2; i += 1) this.fire(origin, dir.clone().applyAxisAngle(UP, i * 0.24), townHit(foe.kind, foe.tags.includes('tutorial')), false, 0xff9ad8, speed, 0.16)
         this.shake = Math.max(this.shake, 0.06)
-      } else this.fire(origin, dir, townHit(foe.kind, foe.tags.includes('tutorial')), false, 0xd7b6ff, 6.5)
+      } else this.fire(origin, dir, townHit(foe.kind, foe.tags.includes('tutorial')), false, 0xd7b6ff, speed, 0.18)
       return
     }
-    // Melee lunge: a short hop forward, hits only if she is still close.
-    foe.knock.copy(to).multiplyScalar(foe.kind === 'bug' ? 4.5 : 3.6)
-    if (dist < heroRadius + 1.2) onHeroHit(townHit(foe.kind, foe.tags.includes('tutorial')), foe.object.position)
+    // The lunge reaches the locked marker. Leaving it (a dash) whiffs.
+    foe.knock.copy(to).multiplyScalar(foe.kind === 'bug' ? 6.5 : 5.2)
+    const gap = Math.hypot(heroPos.x - foe.object.position.x, heroPos.z - foe.object.position.z)
+    if (!slipped && gap < 8.2) onHeroHit(townHit(foe.kind, foe.tags.includes('tutorial')), foe.object.position)
   }
 
   /** Push overlapping foes apart so a crowd reads as separate bodies. */
@@ -660,7 +717,7 @@ const UP = new Vector3(0, 1, 0)
 
 function paintHurt(foe: Foe): void {
   const hot = foe.flash > 0 || (foe.dying > 0 && foe.dying < 0.3)
-  const warn = foe.windup > 0 ? Math.min(1, 1 - foe.windup / FOE_SPECS[foe.kind].windup + 0.3) : 0
+    const warn = foe.windup > 0 ? Math.min(1, 1 - foe.windup / Math.max(0.36, FOE_SPECS[foe.kind].windup) + 0.35) : 0
   for (const mat of foe.body.mats) {
     const base = (mat.userData.lift as number | undefined) ?? 0
     // Meshy bodies carry their texture as emissiveMap, so the flash reads as a bright tint.
@@ -668,7 +725,8 @@ function paintHurt(foe: Foe): void {
     // 서늘 reads as a frosty blue tint, 끈적 as candy pink (below the hit flash and telegraph).
     const tint = foe.chill > 0 ? 0x9fdcff : foe.goo > 0 ? 0xff9fd2 : 0
     mat.emissive.set(hot ? 0xfff6ea : warn > 0 ? 0xff7ab4 : tint ? tint : hasMap ? 0xffffff : 0x000000)
-    mat.emissiveIntensity = hot ? (hasMap ? 1.4 : 0.55) : warn > 0 ? base + 0.45 * warn : tint ? (hasMap ? Math.max(base, 1) : base + 0.35) : base
+    const pulse = warn > 0 ? 0.55 + 0.45 * Math.abs(Math.sin(foe.windup * 36)) : 0
+    mat.emissiveIntensity = hot ? (hasMap ? 1.4 : 0.55) : warn > 0 ? base + 0.9 * pulse : tint ? (hasMap ? Math.max(base, 1) : base + 0.35) : base
   }
 }
 

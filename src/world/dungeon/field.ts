@@ -31,7 +31,7 @@ export const FIELD = {
    */
   recycle: 96,
   /** Wake range and leash (m). */
-  aggro: 14,
+  aggro: 16,
   leash: 22,
   leashTime: 6,
   /** Was 5: more packs out, a few more may chase (melee turn-taking: SWING_CAP in horde.ts). */

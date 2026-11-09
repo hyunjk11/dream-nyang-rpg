@@ -425,7 +425,7 @@ export class HordeView {
       if (f.dying <= 0 && d < 400) {
         if (f.windup > 0 && rings < TELL_CAP) {
           const k = 1 - f.windup / DIFFICULTY.horde.windup
-          const r = (f.radius + 0.95) * (0.45 + 0.55 * k)
+          const r = (f.radius + 1.15) * (0.5 + 0.7 * k)
           this.p.set(f.x, 0.04, f.z)
           this.s.set(r, 1, r)
           this.q.identity()
@@ -444,6 +444,17 @@ export class HordeView {
           this.rings.setMatrixAt(rings, this.m)
           this.rings.setColorAt(rings, this.c.copy(TELL_RANGED).multiplyScalar(0.7 + 0.3 * k))
           rings += 1
+          // Ground marker where the bubble will land, so the tell is the spot to leave.
+          if (f.marking && rings < TELL_CAP) {
+            const mk = 0.55 + 0.85 * k
+            this.p.set(f.markX, 0.06, f.markZ)
+            this.s.set(mk, 1, mk)
+            this.m.compose(this.p, this.q, this.s)
+            this.rings.setMatrixAt(rings, this.m)
+            const flash = 0.75 + 0.45 * Math.abs(Math.sin(time * (10 + 16 * k)))
+            this.rings.setColorAt(rings, this.c.setRGB(1, 0.92, 0.45).multiplyScalar(flash))
+            rings += 1
+          }
         }
         if (f.chargeWind > 0 && lanes < TELL_CAP) {
           const k = 1 - f.chargeWind / DIFFICULTY.elite.chargeWind
@@ -507,9 +518,10 @@ export class HordeView {
       if (f.kind === 'lord') this.c.copy(this.tints[f.id % this.tints.length])
       else if (f.elite) this.c.copy(f.rage ? RAGE_TINT : ELITE_TINT)
       // Charging a shot: a warm glow that quickens as it fills (≤ 1.35, under the flash cap).
-      if (f.aim > 0) {
-        const k = 1 - f.aim / f.aimTime
-        this.c.lerp(TELL_RANGED, 0.25 + 0.35 * k * (0.6 + 0.4 * Math.sin(time * (14 + 20 * k))))
+      if (f.aim > 0 || f.windup > 0 || f.chargeWind > 0) {
+        const k = f.aim > 0 ? 1 - f.aim / f.aimTime : f.windup > 0 ? 1 - f.windup / DIFFICULTY.horde.windup : 1 - f.chargeWind / Math.max(0.2, f.chargeWind + 0.05)
+        const flash = 0.35 + 0.55 * Math.abs(Math.sin(time * (16 + 22 * Math.min(1, k))))
+        this.c.lerp(f.windup > 0 ? TELL_MELEE : TELL_RANGED, flash * (0.45 + 0.55 * Math.min(1, k)))
       }
       // Crouching to charge: a hot shimmer.
       if (f.chargeWind > 0) this.c.lerp(RAGE_TINT, 0.5 + 0.5 * Math.sin(time * 40))

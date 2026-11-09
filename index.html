@@ -12,9 +12,12 @@
     <canvas id="view"></canvas>
     <div id="ui">
       <div class="top">
-        <div class="hp" aria-label="체력"><span id="hp-fill"></span></div>
-        <span class="tag" id="lv">Lv 1</span>
-        <div class="xp" aria-label="경험치"><span id="xp-fill"></span><small id="xp-text"></small></div>
+        <div class="vitals">
+          <div class="hp" aria-label="체력"><span id="hp-trail"></span><span id="hp-fill"></span><small id="hp-text"></small></div>
+          <div class="mp" aria-label="사탕"><span id="mp-fill"></span><small id="mp-text">사탕 0</small></div>
+          <div class="heat" aria-hidden="true"><span id="heat-fill"></span></div>
+          <div class="xp" aria-label="경험치"><span id="xp-fill"></span><small id="xp-text"></small></div>
+        </div>
         <span class="tag" id="dust">골드 0</span>
         <span class="tag" id="mats" title="재료: H 도움말에서 쓰임새를 볼 수 있어">꿈가루 0 · 부품 0 · 별조각 0</span>
         <span id="fps">FPS</span>

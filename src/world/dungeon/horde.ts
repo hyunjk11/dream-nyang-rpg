@@ -78,7 +78,7 @@ export const ELITE = { scale: 1.45, hp: DIFFICULTY.elite.hp, damage: DIFFICULTY.
  * They need a clear line (walls block, the 몽실 river does not), at most SHOT_CAP charge at once,
  * and each hit is RANGED.damage × the foe's melee hit (inside the same %maxHP band).
  */
-export const RANGED = { share: 0.5, near: 7, far: 11, kite: 5.2, maxShot: 13, minShot: 1.4, damage: 0.85, life: 2.6, radius: 0.3, sightEvery: 0.2 }
+export const RANGED = { share: 0.5, near: 7.5, far: 14, kite: 5.4, maxShot: 17, minShot: 1.4, damage: 0.92, life: 2.2, radius: 0.34, sightEvery: 0.2, homing: 3.4 }
 /**
  * Depth-1 sewer explore only. The starter water gun holds at 14 m and default shots stop at 13 m,
  * so auto-hunt cleared packs without a single hit (playtest: 8 kills, ~1m43s, HP full).
@@ -86,7 +86,7 @@ export const RANGED = { share: 0.5, near: 7, far: 11, kite: 5.2, maxShot: 13, mi
  * A landed hit stays in the existing band, about 13–22 HP at 150 max (9–15%), not a one-shot.
  * +5 is still ×1.20 gun damage, so the slime's ~1.9 s TTK drops under the travel time and the shot often misses the fight.
  */
-export const EARLY_SHOT = { far: 15, max: 16.5, speed: 1.25 }
+export const EARLY_SHOT = { far: 15.5, max: 18, speed: 1.12 }
 /** Most ranged foes charging a shot at once (like SWING_CAP for melee). */
 export const SHOT_CAP = 3
 /** Live shots in the pool (the view's instance buffers are sized from it). */
@@ -94,10 +94,10 @@ export const SHOTS_CAP = 48
 export type ShotStyle = 'bubble' | 'star' | 'spore' | 'moon'
 /** Each archetype's projectile: charge time (s) and speed (m/s, slow to medium). */
 export const SHOT_STYLES: Record<ShotStyle, { aim: number; speed: number }> = {
-  bubble: { aim: 0.55, speed: 6.0 },
-  spore: { aim: 0.5, speed: 6.5 },
-  star: { aim: 0.42, speed: 8.0 },
-  moon: { aim: 0.6, speed: 7.0 },
+  bubble: { aim: 0.48, speed: 15 },
+  spore: { aim: 0.45, speed: 16 },
+  star: { aim: 0.42, speed: 18 },
+  moon: { aim: 0.5, speed: 16 },
 }
 export const SHOT_STYLE: Record<HordeKind, ShotStyle> = {
   slime: 'bubble',
@@ -214,6 +214,10 @@ export interface HordeFoe {
   losT: number
   /** Strafe side while holding range (±1). */
   side: number
+  /** Ranged: the ground marker the shot will fly to (tracks, then the projectile commits). */
+  markX: number
+  markZ: number
+  marking: boolean
 }
 
 export type FoeMode = 'idle' | 'chase' | 'home'
@@ -312,9 +316,33 @@ export interface HordeTarget {
   x: number
   z: number
   alive: boolean
-  /** Mid-dash: shots pass through her. */
+  /** Mid-dash: shots pass through her and stop steering. */
   dodge?: boolean
+  /** Ground velocity (m/s). Shots and pounces lead it, then commit to a marker. */
+  vx?: number
+  vz?: number
 }
+
+/**
+ * Where a shot or a pounce is headed: a short lead on her walk, capped so a dash
+ * (a sudden fast step) leaves the marker. Pure.
+ */
+export function shotAim(fx: number, fz: number, target: { x: number; z: number; vx?: number; vz?: number }, speed: number): { x: number; z: number } {
+  const dx = target.x - fx
+  const dz = target.z - fz
+  const dist = Math.hypot(dx, dz) || 1
+  const flight = dist / Math.max(1, speed)
+  const lead = Math.min(0.38, flight * 0.62)
+  const vx = target.vx ?? 0
+  const vz = target.vz ?? 0
+  const step = Math.hypot(vx, vz) * lead
+  const cap = 1.8
+  const k = step > cap ? cap / step : 1
+  return { x: target.x + vx * lead * k, z: target.z + vz * lead * k }
+}
+
+/** Melee gap-closer: crouch (the lane on the ground), then rush that line. A dash slips past. */
+export const POUNCE = { min: 2.2, max: 10.4, wind: 0.4, speed: 18, time: 0.62 }
 
 /** Hard cap: the view's instance buffers are sized from it. */
 export const HORDE_CAP = 220
@@ -492,7 +520,7 @@ export class Horde {
       stun: 0,
       windup: 0,
       // First swing staggered too (a pack that arrives together must not swing as one).
-      cooldown: 0.3 + ((this.nextId * 0.618) % 1) * 0.9,
+      cooldown: 0.12 + ((this.nextId * 0.618) % 1) * 0.45,
       beat: (this.nextId * 0.381) % 1,
       phase: (this.nextId * 0.381) % 1,
       far: false,
@@ -517,6 +545,9 @@ export class Horde {
       los: false,
       losT: ((this.nextId * 0.41) % 1) * RANGED.sightEvery,
       side: this.nextId % 2 ? 1 : -1,
+      markX: x,
+      markZ: z,
+      marking: false,
     }
     this.foes.push(foe)
     return foe
@@ -565,8 +596,9 @@ export class Horde {
         continue
       }
       if (f.elite && this.charge(f, step, dx, dz, d, target, strike)) continue
+      if (!f.elite && this.pounce(f, step, dx, dz, d, target, strike)) continue
       this.steer(f, step, dx, dz, d, target.alive)
-      this.melee(f, step, d, target, strike)
+      this.melee(f, step, dx, dz, d, target, strike)
     }
     this.flyShots(dt, target, strike)
     this.separate()
@@ -712,10 +744,10 @@ export class Horde {
         sz = -uz
       } else {
         // Holding range: a slow strafe that flips now and then.
-        want = f.speed * 0.25
+        want = f.speed * 0.45
         sx = -uz * f.side
         sz = ux * f.side
-        if (((this.time + f.id * 1.7) % 4) < dt) f.side = -f.side
+        if (((this.time + f.id * 1.7) % 3.2) < dt) f.side = -f.side
       }
       if (f.aim > 0) want *= 0.2
       if (f.age < SPAWN_TIME) want *= 0.5
@@ -732,12 +764,24 @@ export class Horde {
       f.yaw += turn * Math.min(1, dt * 10)
     }
     if (f.aim > 0) {
+      const sp = SHOT_STYLES[SHOT_STYLE[f.kind]].speed * this.shotSpeed
+      const aim = shotAim(f.x, f.z, target, sp)
+      if (!f.marking) {
+        f.markX = aim.x
+        f.markZ = aim.z
+        f.marking = true
+      } else {
+        const k = Math.min(1, dt * 8)
+        f.markX += (aim.x - f.markX) * k
+        f.markZ += (aim.z - f.markZ) * k
+      }
       f.aim -= dt
       if (f.aim <= 0) {
         f.aim = 0
         this.aiming = Math.max(0, this.aiming - 1)
         f.cooldown = shotRest(f)
         if (target.alive && f.los) this.fire(f, target)
+        f.marking = false
       }
       return
     }
@@ -748,17 +792,22 @@ export class Horde {
     }
     this.aiming += 1
     f.aim = f.aimTime
+    const sp0 = SHOT_STYLES[SHOT_STYLE[f.kind]].speed * this.shotSpeed
+    const aim0 = shotAim(f.x, f.z, target, sp0)
+    f.markX = aim0.x
+    f.markZ = aim0.z
+    f.marking = true
   }
 
-  /** Let a charged shot go at where she stands now (no lead: moving dodges it). */
+  /** Let a charged shot go at the ground marker (it tracked her walk; a dash has already left it). */
   private fire(f: HordeFoe, target: HordeTarget): void {
     const slot = this.shots.find((s) => !s.alive)
     if (!slot) return
     const style = SHOT_STYLE[f.kind]
     const sp = SHOT_STYLES[style].speed * this.shotSpeed
     const y = Math.max(0.55, Math.min(1.3, HORDE[f.kind].chest * (f.elite ? ELITE.scale : 1)))
-    const dx = target.x - f.x
-    const dz = target.z - f.z
+    const dx = (f.marking ? f.markX : target.x) - f.x
+    const dz = (f.marking ? f.markZ : target.z) - f.z
     const d = Math.hypot(dx, dz) || 1
     const out = f.radius + 0.15
     slot.alive = true
@@ -777,13 +826,21 @@ export class Horde {
 
   private flyShots(dt: number, target: HordeTarget, strike: (amount: number, x: number, z: number) => void): void {
     this.popped.length = 0
-    const reach = RANGED.radius + 0.42
     for (const s of this.shots) {
       if (!s.alive) continue
       s.life -= dt
       // Sub-step so a medium shot never tunnels past her or through a thin wall.
       const steps = 2
       for (let k = 0; k < steps && s.alive; k += 1) {
+        if (target.alive && !target.dodge) {
+          const tx = target.x - s.x
+          const tz = target.z - s.z
+          const td = Math.hypot(tx, tz) || 1
+          const sp = Math.hypot(s.vx, s.vz) || 1
+          const steer = Math.min(1, (RANGED.homing * dt) / steps)
+          s.vx += ((tx / td) * sp - s.vx) * steer
+          s.vz += ((tz / td) * sp - s.vz) * steer
+        }
         s.x += (s.vx * dt) / steps
         s.z += (s.vz * dt) / steps
         if (this.solidAt(s.x, s.z)) {
@@ -791,6 +848,7 @@ export class Horde {
           this.popped.push({ x: s.x - (s.vx * dt) / steps, y: s.y, z: s.z - (s.vz * dt) / steps, style: s.style, hit: false })
           break
         }
+        const reach = RANGED.radius + 0.55
         if (target.alive && Math.hypot(target.x - s.x, target.z - s.z) < reach) {
           if (target.dodge) {
             if (!s.dodged) this.dodged += 1
@@ -919,7 +977,8 @@ export class Horde {
     }
     const gl = Math.hypot(gx, gz)
     let want = hunt ? f.speed : 0
-    // Brake into a ring around her instead of stacking on her feet.
+    // Close the gap a little faster, then brake into a ring around her.
+    if (hunt && d > 3.2) want *= 1.28
     if (d < f.radius + 0.75) want = 0
     if (f.windup > 0) want *= 0.15
     if (f.age < SPAWN_TIME) want *= 0.5
@@ -982,20 +1041,79 @@ export class Horde {
     return true
   }
 
-  private melee(f: HordeFoe, dt: number, d: number, target: HordeTarget, strike: (amount: number, x: number, z: number) => void): void {
+  /**
+   * A short rush from a few metres out: the ground lane is the tell, the line is committed,
+   * and a dash (target.dodge) is not struck. True while the pounce owns this frame.
+   */
+  private pounce(f: HordeFoe, dt: number, _dx: number, _dz: number, d: number, target: HordeTarget, strike: (amount: number, x: number, z: number) => void): boolean {
+    if (f.chargeRun > 0) {
+      f.chargeRun -= dt
+      if (!target.dodge && target.alive) {
+        const tx = target.x - f.x
+        const tz = target.z - f.z
+        const td = Math.hypot(tx, tz) || 1
+        const steer = Math.min(1, dt * 1.5)
+        f.chargeX += (tx / td - f.chargeX) * steer
+        f.chargeZ += (tz / td - f.chargeZ) * steer
+        const len = Math.hypot(f.chargeX, f.chargeZ) || 1
+        f.chargeX /= len
+        f.chargeZ /= len
+      }
+      const v = POUNCE.speed * speedMul(f)
+      f.vx = f.chargeX * v
+      f.vz = f.chargeZ * v
+      f.x += f.vx * dt
+      f.z += f.vz * dt
+      const nd = Math.hypot(target.x - f.x, target.z - f.z)
+      if (nd < f.radius + 1.05 && target.alive && !target.dodge) {
+        strike(f.damage, f.x, f.z)
+        f.chargeRun = 0
+        f.cooldown = swingRest(f)
+      }
+      if (f.chargeRun <= 0 && f.cooldown <= 0) f.cooldown = swingRest(f) * 0.65
+      return true
+    }
+    if (f.chargeWind > 0) {
+      f.chargeWind -= dt
+      f.vx *= 0.45
+      f.vz *= 0.45
+      f.yaw = Math.atan2(f.chargeX, f.chargeZ)
+      if (f.chargeWind <= 0) f.chargeRun = POUNCE.time
+      return true
+    }
+    if (f.cooldown > 0 || f.windup > 0 || !target.alive || f.age < SPAWN_TIME || f.stun > 0 || target.dodge) return false
+    if (d < POUNCE.min || d > POUNCE.max) return false
+    const aim = shotAim(f.x, f.z, target, POUNCE.speed)
+    const ax = aim.x - f.x
+    const az = aim.z - f.z
+    const ad = Math.hypot(ax, az) || 1
+    f.chargeX = ax / ad
+    f.chargeZ = az / ad
+    f.chargeWind = POUNCE.wind
+    return true
+  }
+
+  private melee(f: HordeFoe, dt: number, dx: number, dz: number, d: number, target: HordeTarget, strike: (amount: number, x: number, z: number) => void): void {
     f.cooldown = Math.max(0, f.cooldown - dt)
-    const reach = f.radius + 0.95
+    const reach = f.radius + 1.15
     if (f.windup > 0) {
+      // Hop in during the tell so the ring on the ground is the danger, then strike.
+      if (d > 0.35) {
+        const hop = Math.min(3.4, f.speed * 1.8) * dt
+        f.x += (dx / d) * hop
+        f.z += (dz / d) * hop
+      }
       f.windup -= dt
       if (f.windup <= 0) {
         f.windup = 0
         this.winding = Math.max(0, this.winding - 1)
         f.cooldown = swingRest(f)
-        if (d < reach + 0.35 && target.alive) strike(f.damage, f.x, f.z)
+        const nd = Math.hypot(target.x - f.x, target.z - f.z)
+        if (nd < reach + 0.55 && target.alive && !target.dodge) strike(f.damage, f.x, f.z)
       }
       return
     }
-    if (f.cooldown <= 0 && d < reach && target.alive && f.age >= SPAWN_TIME) {
+    if (f.cooldown <= 0 && d < reach && target.alive && !target.dodge && f.age >= SPAWN_TIME) {
       if (this.winding >= this.swingCap) {
         // Her turn-taking: wait a short beat (different per foe) and try again.
         f.cooldown = 0.12 + 0.2 * ((f.beat + f.id * 0.37) % 1)

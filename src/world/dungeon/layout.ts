@@ -30,7 +30,7 @@ export const EXPLORE = {
    * long sight lines, so 13 → 10 m, chase cap 4 → 3, packs 6-9 → 5-8 and nests wake at 8 m (alcoves sit
    * right off the rooms): the sim's new-player deaths went back to the tile-maze level on depth 1.
    */
-  aggro: 10,
+  aggro: 13,
   /** Give up after this long (s) out of sight or farther than `leash` (m), then walk home. */
   leash: 18,
   leashTime: 6,
