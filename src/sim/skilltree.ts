@@ -1,5 +1,5 @@
 /** Learning, ranks and respec for the skill tree (data/tree.ts). Pure save rules. */
-import { LEVEL_CAP, TIER_LEVEL, TREE, TREE_BY_ID, type Branch } from '../data/tree'
+import { ACTIVES, LEVEL_CAP, TIER_LEVEL, TREE, TREE_BY_ID, type Branch } from '../data/tree'
 import type { SaveData } from './types'
 
 export type Build = NonNullable<SaveData['build']>
@@ -24,6 +24,18 @@ export function buildOf(save: SaveData): Build {
 
 export function rank(save: SaveData, id: string): number {
   return buildOf(save).ranks[id] ?? 0
+}
+
+/**
+ * Chapter-1 skill step: hand her 거품 폭탄 if no active is learned yet.
+ * Does not spend a point, so the K menu is not a gate and her first point stays hers.
+ * Returns false when she already has an active (nothing to grant).
+ */
+export function grantGuideSkill(save: SaveData): boolean {
+  const b = buildOf(save)
+  if (ACTIVES.some((id) => (b.ranks[id] ?? 0) > 0)) return false
+  b.ranks.bubble_bomb = 1
+  return true
 }
 
 export function spentIn(save: SaveData, branch: Branch): number {

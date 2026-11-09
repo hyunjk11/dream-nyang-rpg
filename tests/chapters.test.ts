@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { freshSave } from '../src/sim/mutate'
+import { rank } from '../src/sim/skilltree'
 import {
   ACTIVE_CAP,
   CHAPTER2,
@@ -72,6 +73,16 @@ describe('챕터 1 가이드 챕터', () => {
 
   it('가이드는 이동·사격·대시·처치·스킬·장비·사탕·마을·하수도·귀환·보스 순서다', () => {
     expect(GUIDE.map((g) => g.id)).toEqual(['move', 'shoot', 'dash', 'kill', 'skill', 'equip', 'candy', 'shop', 'workshop', 'board', 'sewer', 'recall', 'boss'])
+    const shoot = GUIDE.find((g) => g.id === 'shoot')!
+    expect(shoot.keys).toContain('대시')
+    expect(shoot.touch).toContain('대시')
+    expect(shoot.say.text).toContain('대시')
+    expect(shoot.keys.includes('슬라임')).toBe(false)
+    expect(shoot.say.text.includes('슬라임')).toBe(false)
+    const skill = GUIDE.find((g) => g.id === 'skill')!
+    expect(skill.goal).toBe(1)
+    expect(skill.gift).toBe('skill')
+    expect(skill.keys).toContain('거품 폭탄')
     for (const g of GUIDE) {
       expect(g.say.text.length, g.id).toBeGreaterThan(4)
       expect(['별하', '모찌']).toContain(g.say.who)
@@ -101,14 +112,19 @@ describe('챕터 1 가이드 챕터', () => {
     const bag = save.items.length
     let gear = false
     let candy = false
+    let skill = false
     for (let k = 0; k < 20 && guideStep(save)?.id !== 'shop'; k += 1) {
       const step = guideStep(save)!
       const o = guideEvent(save, { type: step.id, amount: step.goal }, seeded(k))
       if (o.gift === 'gear') gear = true
       if (o.gift === 'candy') candy = true
+      if (o.gift === 'skill') skill = true
     }
     expect(gear).toBe(true)
     expect(candy).toBe(true)
+    expect(skill).toBe(true)
+    expect(rank(save, 'bubble_bomb')).toBe(1)
+    expect(save.build?.points).toBe(1)
     expect(save.items.length).toBe(bag + 1)
     expect(save.potions).toBeGreaterThanOrEqual(1)
   })

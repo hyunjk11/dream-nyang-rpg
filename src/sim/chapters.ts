@@ -17,6 +17,7 @@ import { addItem } from './inventory'
 // Cycle with dreamstory (it reads chapter2Open): both only call each other inside functions.
 import { dreamOf } from './dreamstory'
 import { makeItem } from './loot'
+import { grantGuideSkill } from './skilltree'
 import { gainGold, gainXp } from './stats'
 import { RARITY_KO, emptyResult, type MutationResult, type Rarity, type SaveData } from './types'
 
@@ -44,7 +45,7 @@ export interface GuideStep {
   /** Short line when the step begins (별하 or 모찌). */
   say: { who: '별하' | '모찌'; text: string }
   /** Gift handed over as the step begins (so the step can always be done). */
-  gift?: 'gear' | 'candy' | 'dust'
+  gift?: 'gear' | 'candy' | 'dust' | 'skill'
   /** Quest-row place ("n장 · 이름"). */
   at: PlaceId
   /** Extra tail on that place ("북쪽 포포", "깊이 1"). */
@@ -53,12 +54,12 @@ export interface GuideStep {
 
 export const GUIDE: GuideStep[] = [
   { id: 'move', title: '걸어 보기', keys: 'WASD로 움직이기 · 꿈의 초원', touch: '왼쪽 스틱으로 움직이기 · 꿈의 초원', goal: 5, at: 'meadow', say: { who: '모찌', text: '여기가 꿈의 초원이야. 천천히 걸어 봐냥.' } },
-  { id: 'shoot', title: '조준하고 쏘기', keys: '클릭을 누르고 연사 8발 · 다음은 초원 슬라임 3마리', touch: '공격 길게 8발 · 다음은 슬라임 3마리', goal: 8, at: 'meadow', say: { who: '별하', text: '물총이네. 잠깐만 연사해 봐. 그 다음엔 초원 슬라임 셋을 잠재울 차례야.' } },
+  { id: 'shoot', title: '조준하고 쏘기', keys: '클릭을 누르고 연사 8발 · 다음은 대시로 피하기', touch: '공격 길게 8발 · 다음은 대시', goal: 8, at: 'meadow', say: { who: '별하', text: '물총이네. 잠깐만 연사해 봐. 그 다음엔 대시로 피하는 법을 알려 줄게.' } },
   { id: 'dash', title: '대시로 피하기', keys: 'Space로 대시', touch: '대시 버튼', goal: 2, at: 'meadow', say: { who: '모찌', text: '공격이 오면 휙 비켜! 대시는 짧게 무적이야.' } },
   { id: 'kill', title: '초원 슬라임 3마리', keys: '꿈의 초원 솜사탕 슬라임 3마리 · 서쪽 별문으로 나가기 전에', touch: '초원 슬라임 3마리 · 나가기 전에', goal: 3, at: 'meadow', spot: '슬라임 3', say: { who: '별하', text: '초원에 솜사탕 슬라임이 셋이야. 서쪽 별문으로 마을에 가기 전에 셋 다 잠재우자.' } },
-  { id: 'skill', title: '스킬 써 보기', keys: '1·2·3·4 키 (아래 스킬 칸)', touch: '아래 스킬 칸 누르기', goal: 2, at: 'meadow', say: { who: '모찌', text: '스킬 칸 보이지? 나도 같이 뛰어든다냥!' } },
+  { id: 'skill', title: '스킬 써 보기', keys: '1 거품 폭탄 · 방금 배워 둠', touch: '아래 1번 거품 폭탄', goal: 1, at: 'meadow', say: { who: '모찌', text: '거품 폭탄을 미리 배워 뒀어. 1을 한 번 눌러 봐. K는 나중에 다른 걸 배울 때!' }, gift: 'skill' },
   { id: 'equip', title: '장비 장착하기', keys: 'G로 바로 장착 · I 가방에서 비교', touch: '"바로 장착" 또는 가방에서 장착', goal: 1, at: 'meadow', say: { who: '모찌', text: '반짝이는 거 주웠어! 별하한테 어울릴 것 같아.' }, gift: 'gear' },
-  { id: 'candy', title: '하트 사탕 먹기', keys: 'Q로 사탕 먹기', touch: '사탕 버튼', goal: 1, at: 'meadow', say: { who: '모찌', text: '아플 땐 하트 사탕! 한 개 챙겨 뒀어냥.' }, gift: 'candy' },
+  { id: 'candy', title: '하트 사탕 먹기', keys: 'Q로 사탕 먹기 · 체력이 가득해도 돼', touch: '사탕 버튼 · 가득해도 돼', goal: 1, at: 'meadow', say: { who: '모찌', text: '하트 사탕이야. 안 아플 때도 한 입은 괜찮아. Q로 먹어 봐냥.' }, gift: 'candy' },
   { id: 'shop', title: '포포 상점 둘러보기', keys: '서쪽 별문 → 꿈의 마을 · 북쪽 포포에게 E', touch: '서쪽 별문 → 마을 · 북쪽 포포', goal: 1, at: 'village', spot: '북쪽 포포', say: { who: '별하', text: '서쪽 별문이 꿈의 마을로 열려. 포포는 마을 북쪽, 사탕이랑 두루마리는 거기서.' } },
   { id: 'workshop', title: '키키 공방 들르기', keys: '꿈의 마을 북쪽 키키에게 E · 총 +1 강화', touch: '북쪽 키키에게 대화 · 총 +1', goal: 1, at: 'village', spot: '북쪽 키키', gift: 'dust', say: { who: '모찌', text: '키키도 마을 북쪽이야. 꿈가루 두 줌 챙겼어. +1은 골드랑 가루 한 줌이면 돼.' } },
   { id: 'board', title: '퀘스트 게시판 보기', keys: '꿈의 마을 게시판 앞에서 E', touch: '마을 게시판 앞에서 대화', goal: 1, at: 'village', spot: '게시판', say: { who: '별하', text: '게시판은 마을에 있어. 의뢰를 맡으면 다녀와서 보상을 받아.' } },
@@ -197,7 +198,7 @@ export interface ChapterOut {
   /** Toasts (quest progress, rewards). */
   toasts: string[]
   /** A gift was handed over for the new step. */
-  gift: 'gear' | 'candy' | 'dust' | null
+  gift: 'gear' | 'candy' | 'dust' | 'skill' | null
 }
 
 const out = (): ChapterOut => ({ advanced: -1, say: null, cleared: 0, toasts: [], gift: null })
@@ -223,7 +224,8 @@ export const GUIDE_PLUS1_GOLD = 28
 export const GUIDE_DUST = 2
 
 /** Put the step's gift in her hands (gear, a heart candy, or the first 강화's 꿈가루). */
-function giveGift(save: SaveData, step: GuideStep, rng: () => number): 'gear' | 'candy' | 'dust' | null {
+function giveGift(save: SaveData, step: GuideStep, rng: () => number): 'gear' | 'candy' | 'dust' | 'skill' | null {
+  if (step.gift === 'skill') return grantGuideSkill(save) ? 'skill' : null
   if (step.gift === 'gear') {
     const id = GEAR_IDS[Math.floor(rng() * GEAR_IDS.length)] ?? 'hat_pin'
     addItem(save, makeItem(id, 'uncommon', rng, Math.max(1, save.level)))

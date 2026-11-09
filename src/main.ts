@@ -22,7 +22,7 @@ import { installTooltips } from './ui/tooltip'
 import { Landmarks } from './world/town/landmarks'
 import { Mochi } from './actors/mochi'
 import { killLoot, GameState, type Storageish } from './core/loop'
-import { nearestTalk, placesFor, pushOutOfPlaces, type Place } from './world/town/places'
+import { RETURN_COLUMN, RETURN_SPOT, nearestTalk, placesFor, pushOutOfPlaces, type Place } from './world/town/places'
 import { fadeThrough, hideTitle, LEVELUP_MS, openQuestLog, paintStats, playIntro, playOnce, showEnding, showTitle, titleReady, toast, zoneBanner } from './ui/screens'
 import { TalkBox, type TalkChoice, type TalkDef } from './ui/talk'
 import { isPlace, placeLabel } from './sim/places'
@@ -160,9 +160,8 @@ let delveUnlocked = -1
  * (this session only). Walking back in puts her on the same spot with the cleared foes gone.
  */
 let parked: { run: DungeonRun; mod: typeof import('./world/dungeon/run'); depth: number; floor: number; salt: number; field: FloorPlan | null; area?: AreaId | null; areaFloor?: number } | null = null
-/** Where the return portal stands in the village (beside the 별문). */
-const RETURN_SPOT = { x: -7.6, z: 6.4 }
-const returnPortal = new Portal(new Vector3(RETURN_SPOT.x, 0, RETURN_SPOT.z), 0xffc46b)
+/** Where the return portal stands in the village (beside the west 별문). */
+const returnPortal = new Portal(new Vector3(RETURN_SPOT.x, 0, RETURN_SPOT.z), RETURN_COLUMN.color, RETURN_COLUMN)
 returnPortal.active = false
 const RETURN_PLACE: Place = { kind: 'portal', x: RETURN_SPOT.x, z: RETURN_SPOT.z, turn: 0, height: 2.4, solid: 0, talk: 'return' }
 
@@ -932,6 +931,9 @@ function chapterOut(o: ChapterOut): void {
   } else if (o.gift === 'gear') {
     const item = game.save.items[game.save.items.length - 1]
     if (item) lootPing(item)
+  } else if (o.gift === 'skill') {
+    paintHotbar()
+    toast('거품 폭탄을 배워 뒀어. 1을 눌러 봐!', 'reward')
   }
   for (const t of o.toasts) {
     toast(t, 'quest')
@@ -1119,8 +1121,21 @@ function paintCandy(): void {
 /** Q / 사탕: a heart candy from the pocket. */
 function eatCandyNow(): void {
   if (!hero.alive) return
-  const r = eatCandy(game.save, hero.hp, hero.maxHp)
-  if (!r.ok || !r.heal) {
+  const tutorial = guideStep(game.save)?.id === 'candy'
+  const r = eatCandy(game.save, hero.hp, hero.maxHp, { tutorial })
+  if (!r.ok) {
+    toast(r.reason ?? '지금은 못 먹어.', 'info')
+    return
+  }
+  if (r.tasted) {
+    guideHit({ type: 'candy' })
+    toast('체력이 가득해도 한 입은 괜찮아. 아플 땐 회복해.', 'info')
+    audio.sfx('heal')
+    paintCandy()
+    game.persist(store)
+    return
+  }
+  if (!r.heal) {
     toast(r.reason ?? '지금은 못 먹어.', 'info')
     return
   }
@@ -1548,7 +1563,11 @@ function beginPlay(): void {
   else if (ch.card) queueClearCard()
   else {
     const step = guideStep(game.save)
-    if (step) window.setTimeout(() => chapterUI.say(step.say.who, step.say.text), game.save.flags.metMochi ? 900 : 400)
+    if (step) window.setTimeout(() => {
+      // She may already be on the next step; don't talk over it with the opening line.
+      const now = guideStep(game.save)
+      if (now && now.id === step.id) chapterUI.say(now.say.who, now.say.text)
+    }, game.save.flags.metMochi ? 900 : 400)
   }
   paintContracts()
 }
@@ -2348,6 +2367,7 @@ function takeHunt(dt: number): HuntPlan | null {
     kind: stats.weaponKind,
     paired: !!offGun(game.save),
     grid: huntGrid(),
+    bound: huntGrid() ? undefined : WALK_RADIUS,
     foes: seen.foes,
     drops: seen.drops,
     skills: skillsNow,
@@ -2607,7 +2627,7 @@ function paintReturnTag(): void {
   const on = returnPortal.active && mode === 'play' && game.zone === 'village' && !run
   returnTag.classList.toggle('hidden', !on)
   if (!on) return
-  tipAt.set(RETURN_SPOT.x, 2.8, RETURN_SPOT.z).project(stage.camera)
+  tipAt.set(RETURN_SPOT.x, RETURN_COLUMN.height * 0.72, RETURN_SPOT.z).project(stage.camera)
   const behind = tipAt.z > 1
   returnTag.classList.toggle('hidden', behind)
   if (behind) return

@@ -5,6 +5,8 @@ import { Delve, delveOf, delveThemeName, floorLabel, portalChoices } from '../sr
 import { enterMaze, passMaze } from '../src/sim/dreamstory'
 import { delveGateRows, shouldParkFloor, storyGateRows } from '../src/sim/portals'
 import { placeLabel } from '../src/sim/places'
+import { RETURN_COLUMN, RETURN_SPOT, PLACES } from '../src/world/town/places'
+import { WALK_RADIUS, clampDisc } from '../src/world/town/island'
 import { themeFor } from '../src/world/dungeon/theme'
 
 describe('별문: 이야기 길과 무한 탐험', () => {
@@ -69,6 +71,22 @@ describe('별문: 이야기 길과 무한 탐험', () => {
 })
 
 describe('돌아가기 포털', () => {
+  it('서쪽 별문 옆 잔디에 서고, 기둥은 광장에서 보이는 주황이다', () => {
+    const gate = PLACES.find((p) => p.kind === 'portal')!
+    const dist = Math.hypot(RETURN_SPOT.x - gate.x, RETURN_SPOT.z - gate.z)
+    expect(dist).toBeGreaterThan(1.6)
+    expect(dist).toBeLessThan(2.8)
+    expect(Math.hypot(RETURN_SPOT.x, RETURN_SPOT.z)).toBeLessThan(WALK_RADIUS - 0.8)
+    expect(RETURN_COLUMN.color).toBe(0xff6a12)
+    expect(RETURN_COLUMN.opacity).toBeGreaterThan(0.6)
+    expect(RETURN_COLUMN.height).toBeGreaterThan(5)
+    expect(RETURN_COLUMN.flat).toBe(true)
+    const off = clampDisc(20, 0, WALK_RADIUS - 0.45)
+    expect(off.x).toBeCloseTo(WALK_RADIUS - 0.45, 5)
+    expect(off.z).toBe(0)
+    expect(clampDisc(2, 3, 12)).toEqual({ x: 2, z: 3 })
+  })
+
   it('귀환과 쓰러짐은 층을 남기고, 클리어·보스·마을은 남기지 않는다', () => {
     expect(shouldParkFloor('recall', { town: false, bossBeaten: false, justUnlocked: false })).toBe(true)
     expect(shouldParkFloor('down', { town: false, bossBeaten: false, justUnlocked: false })).toBe(true)

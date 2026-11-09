@@ -113,6 +113,17 @@ describe('포포 상점 가격', () => {
     const save = freshSave()
     save.potions = 1
     expect(eatCandy(save, 100, 100).ok).toBe(false)
+    expect(eatCandy(save, 100, 100).reason).toContain('가득')
+    const full = eatCandy(save, 100, 100, { tutorial: true })
+    expect(full.ok).toBe(true)
+    expect(full.tasted).toBe(true)
+    expect(full.heal).toBe(0)
+    expect(save.potions).toBe(0)
+    save.potions = 0
+    const topped = eatCandy(save, 100, 100, { tutorial: true })
+    expect(topped.tasted).toBe(true)
+    expect(save.potions).toBe(0)
+    save.potions = 1
     const r = eatCandy(save, 90, 100)
     expect(r.heal).toBe(10)
     expect(save.potions).toBe(0)

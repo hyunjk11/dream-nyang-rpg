@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { engageFor } from '../src/data/guns'
-import { HUNT_ENGAGE, HUNT_LOOT, aimAt, autoHuntAfterKey, huntAllowed, huntIsTown, planHunt, stepAim, type HuntQuery, type HuntSkill } from '../src/sim/autohunt'
+import { HUNT_ENGAGE, HUNT_LOOT, aimAt, autoHuntAfterKey, huntAllowed, huntIsTown, keepInside, planHunt, stepAim, type HuntQuery, type HuntSkill } from '../src/sim/autohunt'
 import type { HuntGrid } from '../src/sim/huntpath'
 
 function query(over: Partial<HuntQuery> = {}): HuntQuery {
@@ -228,6 +228,29 @@ describe('자동 사냥', () => {
     expect(huntIsTown({ parked: false, mongsil: true, inRun: true, village: false })).toBe(true)
     expect(huntIsTown({ parked: false, mongsil: false, inRun: false, village: true })).toBe(true)
     expect(huntAllowed({ on: true, alive: true, talking: false, menu: false, town: huntIsTown({ parked: false, mongsil: false, inRun: true, village: false }), recalling: false })).toBe(true)
+  })
+
+  it('섬 가장자리에서는 바다 쪽으로 더 걷지 않고, 안쪽에서는 다가간다', () => {
+    const rim = planHunt(query({
+      px: 12.4,
+      pz: 0,
+      bound: 13.2,
+      foes: [{ x: 5.5, z: 0, r: 0.4, hp: 20, priority: 0 }],
+    }))
+    expect(rim.wishX).toBe(0)
+    expect(rim.wishZ).toBe(0)
+    expect(rim.fire).toBe(true)
+    const held = keepInside(12.4, 0, 1, 0, 13.2)
+    expect(held.x).toBe(0)
+    const inland = planHunt(query({
+      px: 0,
+      pz: 0,
+      bound: 13.2,
+      foes: [{ x: 20, z: 0, r: 0.4, hp: 20, priority: 0 }],
+    }))
+    expect(inland.wishX).toBeGreaterThan(0.5)
+    const back = keepInside(12.4, 0, -1, 0, 13.2)
+    expect(back.x).toBeLessThan(0)
   })
 
   it('시선은 목표 쪽으로만 조금씩 돈다', () => {

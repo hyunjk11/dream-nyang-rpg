@@ -16,6 +16,14 @@ export interface Place {
   talk?: string
 }
 
+/**
+ * Return portal, just northeast of the west 별문 and still on the grass.
+ * Close enough to read as "beside the gate", far enough not to sit on the lantern.
+ */
+export const RETURN_SPOT = { x: -10, z: 6.15 } as const
+/** Tall orange column so a recall is visible from the plaza, not a faint gold haze. */
+export const RETURN_COLUMN = { color: 0xff6a12, opacity: 0.72, height: 5.8, glow: 1, flat: true } as const
+
 /** Face from (x, z) toward the island centre. */
 export function faceCentre(x: number, z: number): number {
   return Math.atan2(-x, -z)
