@@ -104,6 +104,8 @@ export class Hero {
   /** How she holds the equipped gun (actors/holds). */
   private style: HoldStyle = holdFor('water')
   private recoilL = 0
+  /** 0..1 tuck while she swaps weapon sets. */
+  private swapT = 0
   private readonly chestAt = new Vector3()
   private readonly fwdAt = new Vector3()
   private readonly rightAt = new Vector3()
@@ -369,6 +371,7 @@ export class Hero {
     this.blendHold(HOLD_POSES[hold], dt)
     this.recoilT = settleKick(this.recoilT, dt, this.style.settle)
     this.recoilL = settleKick(this.recoilL, dt, this.style.settle)
+    this.swapT = Math.max(0, this.swapT - dt * 5)
     if (!this.usingClips && this.puppet) {
       this.puppet.pose(this.walkPhase, this.moving || this.dashing, this.running || this.dashing, this.hitT, upper)
     }
@@ -488,6 +491,7 @@ export class Hero {
     const gun = this.gun
     if (!gun) return
     buildToyGun(gun, this.muzzle, kind, look, gem)
+    gun.visible = true
     if (this.grip) gun.scale.setScalar((GUN_SIZE / this.grip.handScale) * look.size)
     // 쌍권총 only with a real second gun in the off hand (its own look); one pistol = one hand.
     this.style = holdFor(kind, !!off)
@@ -499,6 +503,17 @@ export class Hero {
       }
       left.visible = this.style.dual
     }
+  }
+
+  /** Both toys away (an empty weapon set). */
+  hideGuns(): void {
+    if (this.gun) this.gun.visible = false
+    if (this.gunL) this.gunL.visible = false
+  }
+
+  /** A short tuck as the sets change hands. */
+  beginSwap(): void {
+    this.swapT = 1
   }
 
   /** How she holds the equipped gun (QA and the report). */
@@ -566,15 +581,16 @@ export class Hero {
     const fwd = this.fwdAt.set(Math.sin(frameYaw), 0, Math.cos(frameYaw))
     const right = this.rightAt.set(-fwd.z, 0, fwd.x)
     const kick = this.recoilT * this.recoilT
+    const tuck = this.swapT * this.swapT
     const r = this.hold.reach
     // Hold poses are tuned in metres for a 0.5 m arm; the chibi arm is shorter, so scale them.
     const k = arm.span / ARM_REFERENCE
     const side = st.centre ? st.reach.right : r.right
     const target = _v4
       .copy(chestPos)
-      .addScaledVector(fwd, (r.fwd + st.reach.fwd - kick * st.kickBack) * k)
+      .addScaledVector(fwd, (r.fwd + st.reach.fwd - kick * st.kickBack - tuck * 0.08) * k)
       .addScaledVector(right, side * k)
-    target.y += (r.up + st.reach.up + kick * st.kickBack * 0.25) * k
+    target.y += (r.up + st.reach.up + kick * st.kickBack * 0.25 - tuck * 0.05) * k
     arm.solve(target, fwd, right)
     if (this.grip && this.rightHand) this.orientHand(this.rightHand, this.grip, this.muzzle, aimYaw, kick, 0.18)
     const armL = this.armL

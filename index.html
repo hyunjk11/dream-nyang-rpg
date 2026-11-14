@@ -44,6 +44,7 @@
       <div id="waypoint" class="hidden" aria-label="길 안내"><i></i><span></span><button type="button" aria-label="길 안내 끄기" title="길 안내 끄기">✕</button></div>
       <div class="stick" id="stick"><div id="knob"></div></div>
       <div class="actions" id="actions">
+        <button id="swap" type="button" title="무기 교체 (F)">A</button>
         <button id="dash" type="button">대시</button>
         <button id="talk" class="hidden" type="button">대화</button>
         <button id="recall" type="button" title="귀환 주문서 (T)">귀환</button>
@@ -72,7 +73,7 @@
           <button id="guide-skip" type="button" title="가이드 챕터를 건너뛰고 챕터 2 열기">가이드 건너뛰기</button>
         </fieldset>
       </div>
-      <div id="crosshair" class="hidden"><i></i><i></i><i></i><i></i><b></b></div>
+      <div id="crosshair" class="hidden" data-hold="pistol"><i></i><i></i><i></i><i></i><b></b></div>
       <div id="hurt-flash"></div>
       <div id="floats"></div>
       <span id="talk-tip" class="hidden">E 대화</span>

@@ -3,6 +3,7 @@
  * left open by a reload (its run gold is banked as if she had recalled). Safe to run twice.
  */
 import { fixHands } from './hands'
+import { ensureSets } from './weaponset'
 import { ITEMS } from '../data/items'
 import { buildOf } from './skilltree'
 import { delveOf, settleOpenRun, type OpenRun } from './delve'
@@ -38,6 +39,8 @@ export function migrateSave(save: SaveData): Migration {
   save.equipment = eq
   // 쌍권총: an old save's mirrored dual pistol is just the main hand; a bad off hand goes.
   fixHands(save)
+  // 무기 세트: old saves grow an empty holster. Guns already in the bag stay in the bag.
+  ensureSets(save)
   // No difficulty setting any more: an old 'difficulty' / 'diff' field in the save or its settings goes.
   const loose = save as unknown as Record<string, unknown>
   delete loose.difficulty

@@ -46,6 +46,7 @@ let mapQueued = false
 let recallQueued = false
 let candyQueued = false
 let equipQueued = false
+let swapQueued = false
 /** Active skill slots pressed (keys 1–4 or the hotbar), oldest first. */
 const skillQueue: number[] = []
 /** I / Tab = bag, K = skill tree. */
@@ -257,6 +258,7 @@ export function installInput(canvas: HTMLCanvasElement): void {
     if (event.code === 'KeyT' && !event.repeat) recallQueued = true
     if (event.code === 'KeyQ' && !event.repeat) candyQueued = true
     if (event.code === 'KeyG' && !event.repeat) equipQueued = true
+    if (event.code === 'KeyF' && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey) swapQueued = true
     if (event.code === 'Tab') event.preventDefault()
     if (event.repeat) return
     if (event.code === 'KeyV') autoHuntKeyListener?.()
@@ -380,6 +382,11 @@ export function installInput(canvas: HTMLCanvasElement): void {
     event.stopPropagation()
     candyQueued = true
   })
+  document.getElementById('swap')?.addEventListener('pointerdown', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    swapQueued = true
+  })
   document.getElementById('bag-btn')?.addEventListener('pointerdown', (event) => {
     event.preventDefault()
     menuQueued = 'bag'
@@ -425,6 +432,13 @@ export function consumeQuickEquip(): boolean {
   return had
 }
 
+/** F / the 교체 button: draw the other weapon set. */
+export function consumeSwap(): boolean {
+  const had = swapQueued
+  swapQueued = false
+  return had
+}
+
 /** Next pressed active slot (0–3), or -1. */
 export function consumeSkill(): number {
   return skillQueue.shift() ?? -1
@@ -443,6 +457,7 @@ export function clearQueued(): void {
   menuQueued = null
   candyQueued = false
   equipQueued = false
+  swapQueued = false
 }
 
 export function consumeDash(): boolean {

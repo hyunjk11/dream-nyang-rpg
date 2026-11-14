@@ -17,7 +17,7 @@ import { placeLabel } from './places'
 import { isUnique } from './rarity'
 import { DIFFICULTY } from '../combat/difficulty'
 import { MATERIAL_KO } from '../data/items'
-import { addItem } from './inventory'
+import { addItem, rescueMods } from './inventory'
 import { itemName, maxRarityFor, rollDrops, sellValue, type Drop } from './loot'
 import { addMaterial } from './quests'
 import type { OpenRun, ItemInstance, Rarity, SaveData } from './types'
@@ -492,6 +492,7 @@ export class Delve {
     }
     if (drop.kind === 'item' && drop.item) {
       if (autoSell?.(drop.item)) {
+        rescueMods(save, drop.item)
         const v = sellValue(drop.item)
         this.gold += v
         this.autoSold += 1
@@ -508,6 +509,8 @@ export class Delve {
       this.loot.push({ name, rarity: isUnique(item) ? 'unique' : item.rarity })
       return { heal: 0, text: `${name} 획득!` }
     }
+    // The gun itself becomes gold, but 부품 on it come back to the bag (even past the cap).
+    rescueMods(save, item)
     const v = sellValue(item)
     this.gold += v
     return { heal: 0, text: `가방이 가득 · ${name} → ${v} 골드` }

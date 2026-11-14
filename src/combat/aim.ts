@@ -92,3 +92,14 @@ export function reticlePx(halfRad: number, fovDeg: number, viewPx: number): numb
   const px = (Math.tan(Math.max(0, halfRad)) / Math.tan((fov * Math.PI) / 360)) * (span / 2)
   return Math.min(RETICLE.max, Math.max(RETICLE.min, px))
 }
+
+/**
+ * How far the bracket gap opens past the raw cone: walking loosens the stance, a kick
+ * (camera recoil, rad) blooms it, and both fall back to 1 when she is steady.
+ * The cone itself still sets the identity (sniper stays a pin, dual stays wide).
+ */
+export function aimSpreadScale(moving: boolean, kickPitch: number): number {
+  const move = moving ? 0.38 : 0
+  const kick = Math.min(0.95, Math.max(0, kickPitch) * 8)
+  return 1 + move + kick
+}
