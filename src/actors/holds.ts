@@ -37,15 +37,15 @@ export interface HoldStyle {
 
 export const HOLD_STYLES: Record<HoldType, HoldStyle> = {
   // 한 손 권총: one gun out in the right hand, a touch off-centre, quick light kicks.
-  pistol: { type: 'pistol', label: '한 손 권총', twoHanded: false, dual: false, reach: { fwd: 0.02, right: 0.12, up: 0.03 }, centre: true, fore: 0, kickBack: 0.05, kickUp: 10, settle: 14, pitch: 0 },
-  // 쌍권총: both arms out, guns a hand-width apart, light quick kicks that alternate.
-  dual: { type: 'dual', label: '쌍권총 (한 손씩)', twoHanded: false, dual: true, reach: { fwd: 0.02, right: 0.17, up: 0.03 }, centre: true, fore: 0, kickBack: 0.05, kickUp: 10, settle: 14, pitch: 0 },
-  // 3점사 소총: tucked in at the chest, off hand on the barrel, small tight kicks.
-  rifle: { type: 'rifle', label: '양손 소총 (가슴 앞)', twoHanded: true, dual: false, reach: { fwd: -0.02, right: 0.035, up: 0.05 }, centre: true, fore: 0.62, kickBack: 0.045, kickUp: 5, settle: 12, pitch: 1 },
-  // 비눗방울 산탄총: held low at the hip, big shove and muzzle climb (펑!).
-  shotgun: { type: 'shotgun', label: '양손 산탄총 (허리춤)', twoHanded: true, dual: false, reach: { fwd: -0.04, right: 0.05, up: -0.03 }, centre: true, fore: 0.56, kickBack: 0.1, kickUp: 16, settle: 7, pitch: 2 },
-  // 저격총: shouldered high near the eye line, long reach for the foregrip, a heavy slow kick (탕!).
-  sniper: { type: 'sniper', label: '양손 저격총 (어깨 견착)', twoHanded: true, dual: false, reach: { fwd: -0.07, right: 0.02, up: 0.11 }, centre: true, fore: 0.7, kickBack: 0.13, kickUp: 11, settle: 5, pitch: 2 },
+  pistol: { type: 'pistol', label: '한 손 권총', twoHanded: false, dual: false, reach: { fwd: 0.02, right: 0.12, up: 0.03 }, centre: true, fore: 0, kickBack: 0.042, kickUp: 8, settle: 16, pitch: 0 },
+  // 쌍권총: both arms out, guns a hand-width apart. Each hand's kick is lighter and returns before that hand fires again.
+  dual: { type: 'dual', label: '쌍권총 (한 손씩)', twoHanded: false, dual: true, reach: { fwd: 0.02, right: 0.17, up: 0.03 }, centre: true, fore: 0, kickBack: 0.032, kickUp: 6, settle: 22, pitch: 0 },
+  // 3점사 소총: tucked in at the chest, off hand on the barrel. A short climb across the burst, then it settles in the rest.
+  rifle: { type: 'rifle', label: '양손 소총 (가슴 앞)', twoHanded: true, dual: false, reach: { fwd: -0.02, right: 0.035, up: 0.05 }, centre: true, fore: 0.62, kickBack: 0.05, kickUp: 8, settle: 9, pitch: 1 },
+  // 비눗방울 산탄총: held low at the hip, one big shove and muzzle climb (펑!), mostly straight up.
+  shotgun: { type: 'shotgun', label: '양손 산탄총 (허리춤)', twoHanded: true, dual: false, reach: { fwd: -0.04, right: 0.05, up: -0.03 }, centre: true, fore: 0.56, kickBack: 0.12, kickUp: 18, settle: 5.2, pitch: 2 },
+  // 저격총: shouldered high, one heavy slow kick (탕!) that is gone before the next shot.
+  sniper: { type: 'sniper', label: '양손 저격총 (어깨 견착)', twoHanded: true, dual: false, reach: { fwd: -0.07, right: 0.02, up: 0.11 }, centre: true, fore: 0.7, kickBack: 0.16, kickUp: 15, settle: 2.8, pitch: 2 },
 }
 
 /** Which hold each gun base uses. */

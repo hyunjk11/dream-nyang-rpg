@@ -65,6 +65,7 @@ button, .tag {
 .actions { display: none; gap: 10px; align-items: end; justify-content: flex-end; }
 .actions button { width: var(--btn); height: var(--btn); padding: 0; flex: none; }
 #fire { width: var(--fire); height: var(--fire); background: linear-gradient(180deg, #d7f4ff, #8fd0ff); }
+#swap { background: linear-gradient(180deg, #ffe7fb, #e7c6ff); color: #4a2868; font-size: 15px; }
 body.touch .stick { display: grid; }
 body.touch .actions { display: flex; }
 body.touch #hint { display: none; }
@@ -178,38 +179,49 @@ button:disabled { opacity: 0.55; cursor: default; }
 #quest-body small { color: #8a7898; }
 body.menu #ui { visibility: hidden; }
 
-/* Shoulder camera (town + sewer): centre crosshair. Ticks and the cone oval follow the equipped
-   gun (--spread-x / --spread-y, px). Dark outline so it reads on bright grass; pink over a foe. */
+/* Shoulder camera: bracket reticle `[  ]`. The gap (--spread-x / --spread-y) is the aim cone,
+   so it opens while moving or recoiling and shuts when the gun is steady. Each hold has its own
+   arm length, thickness and tint. A dark edge keeps it readable on bright grass. */
 @property --spread-x { syntax: '<length>'; inherits: true; initial-value: 7px; }
 @property --spread-y { syntax: '<length>'; inherits: true; initial-value: 7px; }
-#crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; --spread: 7px; --spread-x: 7px; --spread-y: 7px; pointer-events: none; }
-#crosshair::before {
-  content: '';
-  position: absolute;
-  width: calc(var(--spread-x) * 2);
-  height: calc(var(--spread-y) * 2);
-  left: calc(var(--spread-x) * -1);
-  top: calc(var(--spread-y) * -1);
-  border-radius: 50%;
-  border: 1.5px solid rgba(255, 246, 251, 0.62);
-  box-shadow: 0 0 0 1px rgba(40, 22, 54, 0.4);
-  transition: width 0.08s linear, height 0.08s linear, left 0.08s linear, top 0.08s linear, border-color 0.08s;
+#crosshair {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+  --spread: 7px; --spread-x: 7px; --spread-y: 7px; --arm: 12px; --thick: 2.5px; --ink: #fff6fb;
+  pointer-events: none;
 }
-#crosshair i { position: absolute; background: #fff6fb; box-shadow: 0 0 0 1.5px rgba(40, 22, 54, 0.9), 0 0 4px rgba(40, 22, 54, 0.5); border-radius: 2px; transition: background 0.08s, top 0.08s linear, left 0.08s linear; }
-#crosshair.near i { background: #ffc6e4; }
-#crosshair.near::before { border-color: rgba(255, 198, 228, 0.9); }
-#crosshair.on i { background: #ff5fae; }
-#crosshair.on::before { border-color: #ff5fae; }
-#crosshair.on b { background: #ff5fae; box-shadow: 0 0 6px #ff9fd2; }
-#crosshair.wide::before { border-width: 2px; }
-#crosshair.pin i:nth-child(1), #crosshair.pin i:nth-child(2) { height: 6px; }
-#crosshair.pin i:nth-child(3), #crosshair.pin i:nth-child(4) { width: 6px; }
-#crosshair.pin::before { opacity: 0.45; }
-#crosshair i:nth-child(1) { width: 2px; height: 9px; left: -1px; top: calc(-9px - var(--spread-y)); }
-#crosshair i:nth-child(2) { width: 2px; height: 9px; left: -1px; top: var(--spread-y); }
-#crosshair i:nth-child(3) { width: 9px; height: 2px; top: -1px; left: calc(-9px - var(--spread-x)); }
-#crosshair i:nth-child(4) { width: 9px; height: 2px; top: -1px; left: var(--spread-x); }
-#crosshair b { position: absolute; width: 4px; height: 4px; left: -2px; top: -2px; border-radius: 50%; background: #fff6fb; box-shadow: 0 0 0 1.5px rgba(40, 22, 54, 0.9); }
+#crosshair i {
+  position: absolute; width: 11px; height: var(--arm); background: none;
+  border: var(--thick) solid var(--ink); border-radius: 1px;
+  filter: drop-shadow(0 0 1px rgba(40, 22, 54, 0.95));
+  transition: border-color 0.08s, top 0.1s linear, left 0.1s linear, height 0.1s linear, width 0.1s linear;
+}
+#crosshair i:nth-child(1) { border-right: 0; border-bottom: 0; left: calc(var(--spread-x) * -1 - 11px); top: calc(var(--arm) * -1); }
+#crosshair i:nth-child(2) { border-right: 0; border-top: 0; left: calc(var(--spread-x) * -1 - 11px); top: 0; }
+#crosshair i:nth-child(3) { border-left: 0; border-bottom: 0; left: var(--spread-x); top: calc(var(--arm) * -1); }
+#crosshair i:nth-child(4) { border-left: 0; border-top: 0; left: var(--spread-x); top: 0; }
+#crosshair b {
+  position: absolute; width: 3px; height: 3px; left: -1.5px; top: -1.5px; border-radius: 50%;
+  background: var(--ink); box-shadow: 0 0 0 1px rgba(40, 22, 54, 0.9);
+}
+#crosshair.near { --ink: #ffc6e4; }
+#crosshair.on { --ink: #ff5fae; }
+#crosshair.on b { box-shadow: 0 0 6px #ff9fd2; }
+#crosshair[data-hold="sniper"] { --ink: #f7f2ff; }
+#crosshair[data-hold="sniper"] i { width: 9px; filter: drop-shadow(0 0 1px #241433) drop-shadow(0 0 1px #241433); }
+#crosshair[data-hold="sniper"] b { width: 3px; height: 3px; left: -1.5px; top: -1.5px; box-shadow: 0 0 0 1px #241433, 0 0 5px #c8b6ff; }
+#crosshair[data-hold="rifle"] { --ink: #ffe7a8; }
+#crosshair[data-hold="dual"] { --ink: #ffd0ea; }
+#crosshair[data-hold="shotgun"] { --ink: #d8fff4; }
+#crosshair[data-hold="shotgun"] i, #crosshair[data-hold="dual"] i { width: 13px; }
+#crosshair.flash i, #crosshair.flash b { animation: bracket-tick 0.12s ease-out; }
+#crosshair.flash-crit { --ink: #ffe58a; }
+#crosshair.flash-crit i, #crosshair.flash-crit b { animation: bracket-tick 0.16s ease-out; }
+#crosshair.flash-kill { --ink: #ff5fae; }
+#crosshair.flash-kill i, #crosshair.flash-kill b { animation: bracket-kill 0.2s ease-out; }
+#crosshair.swapping i { animation: bracket-swap 0.22s ease-out; }
+@keyframes bracket-tick { 0% { filter: drop-shadow(0 0 1px rgba(40, 22, 54, 0.95)) brightness(2.2); } 100% { filter: drop-shadow(0 0 1px rgba(40, 22, 54, 0.95)); } }
+@keyframes bracket-kill { 0% { transform: scale(1.35); filter: brightness(1.8); } 100% { transform: none; filter: none; } }
+@keyframes bracket-swap { 0% { transform: translateY(3px) scale(0.86); opacity: 0.4; } 100% { transform: none; opacity: 1; } }
 body.menu #crosshair, #crosshair.hidden { display: none; }
 #sens { width: 90px; }
 #sens-out { display: inline-block; min-width: 2.4em; font-variant-numeric: tabular-nums; }
@@ -362,6 +374,17 @@ body.compact #loot-toasts > :nth-last-child(n+3) { display: none; }
 .inv-card h3 { margin: 0 0 6px; font: 18px "Jua", sans-serif; color: #8a4fb0; }
 .inv-card h3 small { font-size: 13px; color: #9a7aa8; }
 #inv-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.inv-sets { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.set-pick, .set-swap, .set-park {
+  flex: 1 1 40%; min-width: 0; min-height: 44px; padding: 4px 8px; border-radius: 12px;
+  border: 2px solid var(--rar, #e2d4ea); background: #f7f0fa; color: #4a3358; text-align: left; cursor: pointer;
+}
+.set-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.set-pick b { font-family: "Jua", sans-serif; font-weight: 400; font-size: 14px; }
+.set-pick small { font-size: 11px; color: #6f4f80; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.set-pick.on { background: color-mix(in srgb, var(--rar, #ffd0e4) 28%, #fff); box-shadow: inset 0 0 0 1px var(--rar, #ff9ec4); }
+.set-swap, .set-park { flex: 0 0 auto; font-family: "Jua", sans-serif; }
+#inv-count.over { color: #c45a3a; font-weight: 700; }
 #inv-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
 .inv-cell {
   position: relative; aspect-ratio: 1; min-width: 0; padding: 0; border-radius: 12px; background: #f3e9f6;

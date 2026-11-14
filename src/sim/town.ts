@@ -7,7 +7,7 @@
  */
 import { stripMods } from './mods'
 import { GEAR_IDS, WEAPON_IDS } from '../data/items'
-import { addItem, bagItems, findItem, isEquipped, removeItem } from './inventory'
+import { addItem, bagItems, findItem, gunHeld, isEquipped, removeItem } from './inventory'
 import { delveOf, itemLevelFor } from './delve'
 import { baseValue, capRarity, makeItem, maxRarityFor, rollRarity, sellValue } from './loot'
 import { fallbackItemLevel, migrateItem } from './migrate-item'
@@ -176,7 +176,7 @@ export function sellItem(save: SaveData, id: string): ShopResult {
   const item = findItem(save, id)
   if (!item) return { ok: false, reason: '없는 물건이야.' }
   if (item.locked) return { ok: false, reason: '🔒 잠긴 물건이야. 잠금을 풀면 돼.' }
-  if (save.equipment.weapon === id) return { ok: false, reason: '쓰고 있는 총은 팔 수 없어.' }
+  if (gunHeld(save, id)) return { ok: false, reason: '손에 든 총이나 다른 무기 세트의 총은 팔 수 없어.' }
   stripMods(save, item)
   const before = computeStats(save).maxHp
   const gold = sellValue(item)

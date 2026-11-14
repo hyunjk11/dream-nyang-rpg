@@ -15,7 +15,7 @@ import { Shooter, type ShotWorld } from './combat/shooter'
 import { TPS, loadSens, rayCapsule, setSens, SENS, type AimTarget } from './core/tps'
 import { WALK_RADIUS } from './world/town/island'
 import { Hero } from './actors/hero'
-import { autoRunOn, onAutoRun, setAutoRun, axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeTalk, aimHint, gestureActive, installInput, lockState, onAutoHuntKey, pad, resumeView, runningHeld, shoulder, syncCursor } from './core/input'
+import { autoRunOn, onAutoRun, setAutoRun, axis, clearQueued, consumeCandy, consumeDash, consumeMenu, consumeQuickEquip, consumeSkill, consumeSwap, consumeTalk, aimHint, gestureActive, installInput, lockState, onAutoHuntKey, pad, resumeView, runningHeld, shoulder, syncCursor } from './core/input'
 import { ALT_LABEL, cursor, installAlt, saveAltMode, setAlt } from './core/cursor'
 import { aimZone, hudArena, installLayout, placePocket } from './ui/layout'
 import { installTooltips } from './ui/tooltip'
@@ -52,6 +52,7 @@ import { GUN_PROFILES } from './data/guns'
 import { rank } from './sim/skilltree'
 import { computeStats, gainXp, type ComputedStats } from './sim/stats'
 import { handStats, offGun, pairRate } from './sim/hands'
+import { activeSet, setName, swapLoadout } from './sim/weaponset'
 import { bossXp, killXp, nestXp, objectiveXp, townKillXp } from './sim/xp'
 import { xpToNext } from './sim/formulas'
 import { findItem } from './sim/inventory'
@@ -294,8 +295,8 @@ function loadDungeon(): Promise<typeof import('./world/dungeon/run')> {
 const crosshair = document.getElementById('crosshair')
 const help = new Help(document.getElementById('ui') ?? document.body)
 const hint = document.getElementById('hint')
-const TPS_HINT_MOUSE = '클릭 조준·사격 · WASD 이동 · Space 대시 · 1–4 스킬 · I 가방 · H 도움말'
-const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · 공격 길게 눌러 연사 · 대시 · 사탕 버튼으로 회복'
+const TPS_HINT_MOUSE = '클릭 조준·사격 · WASD 이동 · Space 대시 · F 무기교체 · 1–4 스킬 · I 가방 · H 도움말'
+const TPS_HINT_TOUCH = '왼쪽 스틱 이동 · 오른쪽 드래그 시점 · 공격 길게 눌러 연사 · 교체 버튼으로 무기 세트 · 대시 · 사탕 버튼으로 회복'
 /** Same controls everywhere now, so one hint; it fades after a few seconds like the sewer's. */
 function showHint(): void {
   if (!hint) return
@@ -515,11 +516,14 @@ function applyBuild(): void {
     }
     return { look, gem, load }
   }
-  const main = handOf(stats, findItem(game.save, game.save.equipment.weapon))
+  const gunItem = findItem(game.save, game.save.equipment.weapon)
+  const main = handOf(stats, gunItem)
   const offItem = hands.off ? offGun(game.save) : undefined
   const off = hands.off && offItem ? handOf(hands.off, offItem) : null
-  shooter.setLoadout({ ...main.load, fireRate: pairRate(stats, hands.off), off: off?.load })
-  hero.setGunLook(stats.weaponKind, main.look, main.gem, off && hands.off ? { kind: hands.off.weaponKind, look: off.look, gem: off.gem } : undefined)
+  shooter.setLoadout({ ...main.load, fireRate: pairRate(stats, hands.off), off: off?.load, armed: !!gunItem })
+  if (!gunItem) hero.hideGuns()
+  else hero.setGunLook(stats.weaponKind, main.look, main.gem, off && hands.off ? { kind: hands.off.weaponKind, look: off.look, gem: off.gem } : undefined)
+  paintSwap()
   const worn = (slot: 'hat' | 'outfit' | 'shoes') => {
     const item = findItem(game.save, game.save.equipment[slot])
     return item ? { id: item.defId, rarity: item.rarity } : undefined
@@ -531,6 +535,29 @@ function applyBuild(): void {
 
 const xpFill = document.getElementById('xp-fill')
 const xpText = document.getElementById('xp-text')
+function paintSwap(): void {
+  const btn = document.getElementById('swap')
+  if (!btn) return
+  const which = setName(activeSet(game.save))
+  btn.textContent = which
+  btn.title = `무기 교체 (F) · 지금 세트 ${which}`
+}
+
+/** Draw the other weapon set. Heat and the trigger timer stay with each gun; parts stay on the gun. */
+function swapWeapons(): void {
+  const tag = document.activeElement?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return
+  const incoming = shooter.exchange()
+  const r = swapLoadout(game.save)
+  applyBuild()
+  shooter.adopt(incoming)
+  hero.beginSwap()
+  audio.sfx('ui')
+  toast(r.now ?? '무기 교체', 'info')
+  game.persist(store)
+  inventory.paint()
+}
+
 function paintXp(): void {
   const s = game.save
   const cap = s.level >= 30
@@ -579,6 +606,7 @@ const inventory = new InventoryUI({
   },
   toast: (text) => toast(text, 'info'),
   sfx: (cue) => audio.sfx(cue),
+  swapWeapons: () => swapWeapons(),
   // The bag pauses the sewer (foes everywhere) but not the island: in town the world keeps
   // living (NPCs, Mochi, water, lanterns) while Byeolha stands still; zone foes hold their ground.
   opened: () => {
@@ -1212,6 +1240,7 @@ function handleKeys(): void {
     return
   }
   if (consumeCandy() && !menuUp() && !travelling) eatCandyNow()
+  if (consumeSwap() && !talk.open && !travelling && !townUI.isOpen && !help.isOpen) swapWeapons()
   if (consumeQuickEquip() && !menuUp() && !travelling) quickEquip()
   for (let slot = consumeSkill(); slot >= 0; slot = consumeSkill()) {
     if (talk.open || travelling || menuUp()) continue

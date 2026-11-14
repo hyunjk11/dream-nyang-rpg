@@ -15,8 +15,8 @@ import {
   ASSIST, AUTO_AIM, TPS, anglesTo, assistPick, createView, kick, look, overlapsHer, perPixel, pose, rayCapsule, recover, wishFrom,
   type AimTarget, type RayFn, type TpsView,
 } from '../core/tps'
-import { reticlePx, shotCone, splitDamage } from './aim'
-import { Gun, hitStopFor, rollDamage, spreadFan } from './gunfeel'
+import { aimSpreadScale, reticlePx, shotCone, splitDamage } from './aim'
+import { EMPTY_GUN_RUNTIME, Gun, SWAP_DELAY, coolRuntime, hitStopFor, rollDamage, spreadFan, type GunRuntime } from './gunfeel'
 import { firingHand } from '../actors/holds'
 import { GUN_PROFILES, engageFor, falloffAt, type GunProfile } from '../data/guns'
 import { GunFx } from './gunfx'
@@ -52,6 +52,11 @@ export class ShoulderRig {
   punch = 0
   /** ⚙ 화면 흔들림: 1 = on, 0 = off (shake and shot shove both scale by it). */
   shakeScale = 1
+  /** How fast the last shot's kick / shake / shove settles (1/s). Heavy guns linger, spray snaps back. */
+  recoilRate: number = TPS.recover
+  shakeRate = 22
+  punchRate = 16
+  fovRate = 14
   /** Last look came from a finger (touch gets a gentle pull toward foes). */
   touch = false
   /** ⚙ 자동 조준: the wide AUTO_AIM cone instead of the mild assist. */
@@ -82,14 +87,17 @@ export class ShoulderRig {
    * punch and lens shake. Returns true when the lens is far enough from her head to draw her.
    */
   place(dt: number, px: number, py: number, pz: number, ray: RayFn | null): boolean {
-    recover(this.view, dt)
+    recover(this.view, dt, this.recoilRate)
     const cam = pose(this.view, ray, px, py, pz, dt)
     const c = this.camera
     c.position.set(cam.x, cam.y, cam.z)
     c.lookAt(cam.x + cam.fx, cam.y + cam.fy, cam.z + cam.fz)
-    this.fovKick *= Math.exp(-dt * 14)
-    this.shake *= Math.exp(-dt * 22)
-    this.punch *= Math.exp(-dt * 16)
+    this.fovKick *= Math.exp(-dt * this.fovRate)
+    this.shake *= Math.exp(-dt * this.shakeRate)
+    this.punch *= Math.exp(-dt * this.punchRate)
+    if (this.fovKick < 0.01) this.fovKick = 0
+    if (this.shake < 0.0004) this.shake = 0
+    if (this.punch < 0.0004) this.punch = 0
     const fov = TPS.fov + this.fovKick
     if (Math.abs(c.fov - fov) > 0.01) {
       c.fov = fov
@@ -241,6 +249,8 @@ export interface Loadout {
   combos?: ComboId[]
   /** 쌍권총: the off-hand gun's own droplet (left-hand shots use it). `fireRate` above is then the pair's cadence. */
   off?: Omit<Loadout, 'off'>
+  /** False when that weapon set has no gun (an empty swap). Absent = armed. */
+  armed?: boolean
 }
 
 export function defaultLoadout(): Loadout {
@@ -274,6 +284,8 @@ export class Shooter {
   landed = 0
   /** The equipped gun and her stats (setLoadout). */
   loadout: Loadout = defaultLoadout()
+  /** Holstered gun's heat and trigger timer (the other weapon set). */
+  private stowed: GunRuntime = { ...EMPTY_GUN_RUNTIME }
   /** Bonus crit chance while overdrive runs. */
   overdriveCrit = 0
   /** Which hand's gun fired last (QA: per-hand damage numbers). */
@@ -320,6 +332,23 @@ export class Shooter {
     return this.rig.view
   }
 
+  /**
+   * Park the live gun's heat and trigger timer and hand back the holstered one's.
+   * Call `adopt` after the new profile is loaded (`setFeel` keeps heat until then).
+   */
+  exchange(): GunRuntime {
+    const incoming = this.stowed
+    this.stowed = this.gun.snapshot()
+    return incoming
+  }
+
+  /** Put a holstered runtime on the live gun and hold the trigger for a short swap. */
+  adopt(s: GunRuntime): void {
+    this.gun.restore(s)
+    this.gun.cooldown = Math.max(this.gun.cooldown, SWAP_DELAY)
+    this.hudFx.pulse()
+  }
+
   /** Swap in a gun / stat set: cadence, droplet damage, procs and tracer colour. */
   setLoadout(l: Loadout): void {
     this.loadout = l
@@ -334,7 +363,9 @@ export class Shooter {
   update(dt: number, trigger: boolean, world: ShotWorld): void {
     const { hero } = this.host
     const wasHot = this.gun.overheated
-    const shots = this.gun.update(dt, trigger && hero.alive)
+    coolRuntime(this.stowed, dt)
+    const armed = this.loadout.armed !== false
+    const shots = this.gun.update(dt, trigger && hero.alive && armed)
     // Two shots on a long frame still alternate hands: number each one, not the gun's final count.
     for (let i = 0; i < shots; i += 1) this.fireOne(world, this.gun.shots - shots + 1 + i)
     if (this.gun.overheated && !wasHot) {
@@ -344,7 +375,8 @@ export class Shooter {
     }
     const cone = shotCone(hero.holdStyle.type, this.gun.bloom)
     const viewH = this.host.hud?.clientHeight || (typeof globalThis.innerHeight === 'number' ? globalThis.innerHeight : 0) || 720
-    this.hudFx.aim(reticlePx(cone.yaw, this.host.camera.fov, viewH), reticlePx(cone.pitch, this.host.camera.fov, viewH), this.gun.heat, this.gun.overheated)
+    const scale = aimSpreadScale(hero.moving || hero.dashing, this.rig.view.kickPitch)
+    this.hudFx.aim(reticlePx(cone.yaw, this.host.camera.fov, viewH) * scale, reticlePx(cone.pitch, this.host.camera.fov, viewH) * scale, this.gun.heat, this.gun.overheated, hero.holdStyle.type)
     this.hudFx.target(this.rig.onTarget ? 2 : this.rig.near ? 1 : 0)
     this.tickTracers(dt)
     this.juice.update(dt, world)
@@ -454,9 +486,16 @@ export class Shooter {
     // 쌍권총: 1/DUAL_PACE kick per shot, so the view climbs as fast as with one gun (twice the shots would otherwise walk the crosshair off).
     const pace = this.loadout.off ? 1 / DUAL_PACE : 1
     this.rig.punch = Math.min(0.22, this.rig.punch + p.punch * pace)
-    // Each gun kicks its own way: the 연사 gun barely twitches, the sniper throws the view up.
-    kick(this.rig.view, p.kickUp * pace * (1 + gun.bloom * 0.6), (Math.random() - 0.5) * 2 * p.kickSide * pace)
+    // 쌍권총: each hand nudges its own way, so the yaw averages back to centre instead of random-walking.
+    const side = recoilSide(hero.holdStyle.dual, hand, p.kickSide, pace, Math.random())
+    // Each gun kicks its own way: the 연사 gun barely twitches, the sniper throws the view up once.
+    kick(this.rig.view, p.kickUp * pace * (1 + Math.min(0.35, gun.bloom * 0.45)), side)
     const feel = fireFeel(p)
+    const decay = feelDecay(p.voice)
+    this.rig.recoilRate = decay.recoil
+    this.rig.shakeRate = decay.shake
+    this.rig.punchRate = decay.punch
+    this.rig.fovRate = decay.fov
     this.rig.fovKick = Math.min(feel.fovCap, this.rig.fovKick + p.fovKick)
     this.rig.shake = Math.min(feel.shakeCap, this.rig.shake + p.fireShake)
     const pan = hero.holdStyle.dual ? (hand === 'left' ? -0.35 : 0.35) : 0
@@ -591,6 +630,23 @@ export function fireFeel(p: Pick<GunProfile, 'voice'>): { fovCap: number; shakeC
   if (p.voice === 'boom') return { fovCap: 2.6, shakeCap: 0.06 }
   if (p.voice === 'burst') return { fovCap: 1.6, shakeCap: 0.025 }
   return { fovCap: 1.2, shakeCap: 0.014 }
+}
+
+/**
+ * How fast that shot settles (1/s). The sniper's 탕! hangs, then is gone before the next round;
+ * the water pistol snaps back so a spray cannot drift the aim.
+ */
+/** Side kick: dual pistols alternate left/right so the aim does not random-walk; other guns jitter evenly. */
+export function recoilSide(dual: boolean, hand: 'left' | 'right', kickSide: number, pace: number, rand: number): number {
+  if (dual) return (hand === 'left' ? -1 : 1) * kickSide * 0.85 * pace
+  return (rand - 0.5) * 2 * kickSide * pace
+}
+
+export function feelDecay(voice: GunProfile['voice']): { recoil: number; shake: number; punch: number; fov: number } {
+  if (voice === 'crack') return { recoil: 3.6, shake: 9, punch: 6.5, fov: 6 }
+  if (voice === 'boom') return { recoil: 6.2, shake: 14, punch: 9, fov: 8 }
+  if (voice === 'burst') return { recoil: 9, shake: 20, punch: 14, fov: 12 }
+  return { recoil: 16, shake: 28, punch: 20, fov: 18 }
 }
 
 /** The sounds one shot makes: [cue, gain, pitch] — each gun has its own voice. */

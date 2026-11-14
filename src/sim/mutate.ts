@@ -5,7 +5,7 @@ import { stripMods } from './mods'
 import { ITEMS, SHOP } from '../data/items'
 import { SKILLS } from '../data/skills'
 import { dismantleYield, makeItem, rerollCost, rollAffixes, sellValue } from './loot'
-import { addItem, equipItem, findItem, removeItem, unequipItem } from './inventory'
+import { addItem, equipItem, findItem, gunHeld, removeItem, unequipItem, type EquipOutcome } from './inventory'
 import { addMaterial, initialQuestState, onTalk, startQuest, turnIn } from './quests'
 import { computeStats, gainGold, healAmount, healFull, reclampHp, spendGold } from './stats'
 import {
@@ -51,6 +51,7 @@ export function freshSave(settings = DEFAULT_SETTINGS): SaveData {
     settings: { ...settings },
     delve: { unlocked: 1, cleared: 0, checkpoint: null, runs: 0, open: null },
     build: { points: 1, ranks: {} },
+    weaponSets: { active: 0, stowed: {} },
   }
   const gun = makeItem('gun_water', 'common', () => 0.2, 1)
   // 특수 부품 첫 맛: the starter gun comes with a 도탄 part fitted (stars every 7th droplet, as it always felt).
@@ -89,7 +90,7 @@ export function learnSkill(save: SaveData, id: string): { ok: boolean; reason?: 
   return { ok: true }
 }
 
-export function tryEquip(save: SaveData, id: string, prefer?: EquipSlot): { ok: boolean; reason?: string } {
+export function tryEquip(save: SaveData, id: string, prefer?: EquipSlot): EquipOutcome {
   const before = computeStats(save).maxHp
   const result = equipItem(save, id, prefer)
   if (!result.ok) return result
@@ -109,7 +110,7 @@ export function sellOwned(save: SaveData, id: string): { ok: boolean; reason?: s
   const item = findItem(save, id)
   if (!item) return { ok: false, reason: '없는 물건이야.' }
   if (item.locked) return { ok: false, reason: '🔒 잠긴 물건이야. 잠금을 풀면 돼.' }
-  if (save.equipment.weapon === id) return { ok: false, reason: '쓰고 있는 총은 팔 수 없어.' }
+  if (gunHeld(save, id)) return { ok: false, reason: '손에 든 총이나 다른 무기 세트의 총은 팔 수 없어.' }
   stripMods(save, item)
   const before = computeStats(save).maxHp
   const gold = sellValue(item)
@@ -124,7 +125,7 @@ export function dismantleOwned(save: SaveData, id: string): { ok: boolean; reaso
   const item = findItem(save, id)
   if (!item) return { ok: false, reason: '없는 물건이야.' }
   if (item.locked) return { ok: false, reason: '🔒 잠긴 물건이야. 잠금을 풀면 돼.' }
-  if (save.equipment.weapon === id) return { ok: false, reason: '쓰고 있는 총은 분해할 수 없어.' }
+  if (gunHeld(save, id)) return { ok: false, reason: '손에 든 총이나 다른 무기 세트의 총은 분해할 수 없어.' }
   stripMods(save, item)
   const before = computeStats(save).maxHp
   const got = dismantleYield(item)

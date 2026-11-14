@@ -123,6 +123,24 @@ export interface SaveData {
   dream?: import('./dreamstory').DreamSave
   /** 전설 도감: fixed legendaries found, and pity tries per source. */
   legends?: import('./legends').LegendSave
+  /**
+   * Second weapon set. `active` 0 = set A is in `equipment` (weapon / offhand), 1 = set B.
+   * `stowed` is the set that is not in her hands. Old saves omit it; migrate fills an empty holster.
+   * Parts stay on the gun item, so a holstered gun keeps its 부품.
+   */
+  weaponSets?: WeaponSets
+}
+
+/** One pair of hands: main gun and, for a one-handed pair, the off hand. */
+export interface WeaponSet {
+  weapon?: string
+  offhand?: string
+}
+
+/** Which pair is live. The other pair is holstered (`stowed`) and is not in the bag. */
+export interface WeaponSets {
+  active: 0 | 1
+  stowed: WeaponSet
 }
 
 export interface OpenRun {

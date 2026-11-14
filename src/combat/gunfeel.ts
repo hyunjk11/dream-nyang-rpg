@@ -18,9 +18,9 @@ export const GUN = {
    */
   spreadMin: 0.024,
   spreadMax: 0.046,
-  /** Camera kick per shot (rad up, ± rad sideways). */
-  kickUp: 0.0048,
-  kickSide: 0.0042,
+  /** Camera kick per shot (rad up, ± rad sideways). Light: full-auto must not walk the aim. */
+  kickUp: 0.0032,
+  kickSide: 0.0024,
   /** Heat 0..1: full auto for ~6 s before the tank boils over. */
   heatPerShot: 0.0095,
   coolDelay: 0.22,
@@ -76,11 +76,24 @@ export class Gun {
   private rest = 1
   private burstLeft = 0
 
-  /** Swap the gun base (keeps heat; a fresh burst). */
+  /** Swap the gun base (keeps heat, bloom and cooldown; a fresh burst until restore). */
   setFeel(feel: GunFeel, rate = 1): void {
     this.feel = feel
     this.rate = Math.max(0.25, rate)
     this.burstLeft = 0
+  }
+
+  /** Heat, bloom and the trigger timer, so a holstered gun can cool on its own. */
+  snapshot(): GunRuntime {
+    return { cooldown: this.cooldown, bloom: this.bloom, heat: this.heat, overheated: this.overheated, burstLeft: this.burstLeft }
+  }
+
+  restore(s: GunRuntime): void {
+    this.cooldown = Math.max(0, s.cooldown)
+    this.bloom = Math.min(1, Math.max(0, s.bloom))
+    this.heat = Math.min(1, Math.max(0, s.heat))
+    this.overheated = s.overheated && this.heat > GUN.resumeAt
+    this.burstLeft = Math.max(0, s.burstLeft)
   }
 
   /**
@@ -136,6 +149,31 @@ export class Gun {
   get gapPx(): number {
     return GUN.gapPx + GUN.spreadPx * this.bloom + (this.feel.spreadMin > 0.02 ? 10 : 0)
   }
+}
+
+/** Runtime a holstered gun keeps: its own heat and the rest of its trigger timer. */
+export interface GunRuntime {
+  cooldown: number
+  bloom: number
+  heat: number
+  overheated: boolean
+  burstLeft: number
+}
+
+export const EMPTY_GUN_RUNTIME: GunRuntime = { cooldown: 0, bloom: 0, heat: 0, overheated: false, burstLeft: 0 }
+
+/** Seconds a weapon swap locks the trigger, on top of whatever cooldown the gun already had. */
+export const SWAP_DELAY = 0.28
+
+/** Cool a holstered gun. Heat vents, bloom closes, the trigger timer runs down. It never climbs. */
+export function coolRuntime(s: GunRuntime, dt: number): void {
+  if (!(dt > 0)) return
+  s.cooldown = Math.max(0, s.cooldown - dt)
+  s.bloom = Math.max(0, s.bloom - dt * GUN.bloomDecay)
+  if (s.overheated) {
+    s.heat = Math.max(0, s.heat - dt * GUN.ventRate)
+    if (s.heat <= GUN.resumeAt) s.overheated = false
+  } else s.heat = Math.max(0, s.heat - dt * GUN.coolRate)
 }
 
 /** Damage for one droplet: a few crits so the numbers dance. */

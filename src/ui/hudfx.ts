@@ -3,6 +3,7 @@
  * pooled floating damage numbers, and a heat ring under the crosshair.
  */
 import { Vector3, type Camera } from 'three'
+import type { HoldType } from '../actors/holds'
 
 interface Num {
   el: HTMLElement
@@ -116,6 +117,7 @@ export class HudFx {
   private lastGap = ''
   private lastHeat = ''
   private lastTarget = -1
+  private lastHold = ''
   private readonly tallyEl: HTMLElement | null = null
   readonly streak: TallyState = newTally()
   private readonly tallyAt = new Vector3()
@@ -145,20 +147,29 @@ export class HudFx {
   }
 
   /**
-   * Crosshair gaps (px) for the horizontal and vertical cone edges, heat 0..1, and whether
-   * the tank is venting. A wide x and a short y draws the 쌍권총 ellipse; a tiny pair is the sniper dot.
+   * Bracket gap (px) for the horizontal and vertical cone edges, heat 0..1, and whether
+   * the tank is venting. The gap is the aim cone: wide for 쌍권총, a pin for the sniper.
+   * `hold` picks the bracket's own look (thickness, tint, arm length).
    */
-  aim(spreadX: number, spreadY: number, heat: number, overheated: boolean): void {
+  aim(spreadX: number, spreadY: number, heat: number, overheated: boolean, hold: HoldType = 'pistol'): void {
     const x = Math.round(spreadX * 2) / 2
     const y = Math.round(spreadY * 2) / 2
-    const key = `${x},${y}`
+    const key = `${x},${y},${hold}`
     if (this.cross && key !== this.lastGap) {
       this.lastGap = key
       this.cross.style.setProperty('--spread-x', `${x}px`)
       this.cross.style.setProperty('--spread-y', `${y}px`)
       this.cross.style.setProperty('--spread', `${Math.max(x, y)}px`)
-      this.cross.classList.toggle('wide', x > y * 1.4)
-      this.cross.classList.toggle('pin', x <= 3 && y <= 3)
+      const arm = hold === 'sniper' ? 18 : hold === 'rifle' ? 13 : hold === 'shotgun' ? 9 : hold === 'dual' ? 10 : 12
+      const thick = hold === 'shotgun' || hold === 'dual' ? 3.5 : hold === 'sniper' ? 1.5 : 2.5
+      this.cross.style.setProperty('--arm', `${arm}px`)
+      this.cross.style.setProperty('--thick', `${thick}px`)
+      this.cross.classList.toggle('wide', x > y * 1.4 || hold === 'dual' || hold === 'shotgun')
+      this.cross.classList.toggle('pin', hold === 'sniper' || (x <= 4 && y <= 4))
+      if (hold !== this.lastHold) {
+        this.lastHold = hold
+        this.cross.dataset.hold = hold
+      }
     }
     if (this.heat) {
       const heatKey = `${Math.round(heat * 50)}${overheated}`
@@ -179,11 +190,26 @@ export class HudFx {
     this.cross.classList.toggle('on', level === 2)
   }
 
-  /** A droplet connected; kill swaps the white tick for a bigger pink X. */
+  /** A droplet connected; the brackets tick, and a kill swaps the white mark for a bigger pink X. */
   hit(kill: boolean, crit: boolean): void {
-    if (!this.marker) return
-    this.markT = kill ? 0.2 : 0.09
-    this.marker.className = kill ? 'on kill' : crit ? 'on crit' : 'on'
+    if (this.marker) {
+      this.markT = kill ? 0.2 : 0.09
+      this.marker.className = kill ? 'on kill' : crit ? 'on crit' : 'on'
+    }
+    this.flash(kill ? 'flash-kill' : crit ? 'flash-crit' : 'flash')
+  }
+
+  /** Brackets dip and brighten for a weapon swap. */
+  pulse(): void {
+    this.flash('swapping')
+  }
+
+  private flash(kind: string): void {
+    const el = this.cross
+    if (!el) return
+    el.classList.remove('flash', 'flash-crit', 'flash-kill', 'swapping')
+    void el.offsetWidth
+    el.classList.add(kind)
   }
 
   number(amount: number, at: Vector3, kind: NumberKind): void {
@@ -337,7 +363,8 @@ export class HudFx {
     this.cross?.style.setProperty('--spread', '7px')
     this.cross?.style.setProperty('--spread-x', '7px')
     this.cross?.style.setProperty('--spread-y', '7px')
-    this.cross?.classList.remove('near', 'on', 'wide', 'pin')
+    this.cross?.classList.remove('near', 'on', 'wide', 'pin', 'flash', 'flash-crit', 'flash-kill', 'swapping')
+    if (this.cross) delete this.cross.dataset.hold
   }
 }
 

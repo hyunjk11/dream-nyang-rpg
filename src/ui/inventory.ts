@@ -9,6 +9,8 @@ import { ITEMS, MATERIAL_HELP, MATERIAL_KO } from '../data/items'
 import { BRANCH_KO, TIER_LEVEL, TREE, type Branch, type TreeSkill } from '../data/tree'
 import { xpToNext } from '../sim/formulas'
 import { bagItems, findItem, isEquipped, slotFor, equipItem, slotFits, oneHanded } from '../sim/inventory'
+import { itemColor } from '../sim/rarity'
+import { ensureSets, parkWeapon, setBlurb, setName, stowedSet } from '../sim/weaponset'
 import { ilvText, itemLines, itemName, itemPower } from '../sim/loot'
 import { fillCell, ilvRow, nameTitle } from './itemcell'
 import { tryEquip, tryUnequip } from '../sim/mutate'
@@ -49,6 +51,8 @@ export interface InventoryHost {
   changed(): void
   toast(text: string): void
   sfx(cue: 'ui' | 'coin' | 'quest' | 'pop'): void
+  /** F / the 교체 button / a set chip: draw the other weapon set. */
+  swapWeapons?: () => void
   opened(): void
   closed(): void
   /** The bag's 도감 button: the legend codex (it closes the bag first). */
@@ -442,6 +446,7 @@ export class InventoryUI {
     const mats = document.getElementById('inv-mats')
     if (!slots || !grid || !stats || !detail) return
     slots.replaceChildren()
+    this.renderSets(save, slots)
     for (const slot of EQUIP_SLOTS) {
       const c = this.cell(findItem(save, save.equipment[slot]), SLOT_KO[slot])
       c.dataset.slot = slot
@@ -462,8 +467,12 @@ export class InventoryUI {
       this.dropZone(grid, null)
     }
     const bag = bagItems(save)
-    for (let i = 0; i < BAG_CAP; i += 1) grid.append(this.cell(bag[i]))
-    if (count) count.textContent = `${bag.length}/${BAG_CAP}`
+    // Past the cap (an old overflow) the extra cells stay visible, so a gun is never hidden.
+    for (let i = 0; i < Math.max(BAG_CAP, bag.length); i += 1) grid.append(this.cell(bag[i]))
+    if (count) {
+      count.textContent = bag.length > BAG_CAP ? `${bag.length}/${BAG_CAP} 넘침` : `${bag.length}/${BAG_CAP}`
+      count.classList.toggle('over', bag.length > BAG_CAP)
+    }
     this.renderTools(save)
     if (mats) {
       mats.replaceChildren()
@@ -922,13 +931,80 @@ export class InventoryUI {
     box.append(row)
   }
 
+  /** Repaint if the bag is open (a weapon swap from the key or the 교체 button). */
+  paint(): void {
+    if (this.isOpen) this.render()
+  }
+
+  private renderSets(save: SaveData, slots: HTMLElement): void {
+    const sets = ensureSets(save)
+    const row = el('div', 'inv-sets')
+    row.id = 'inv-sets'
+    for (const which of [0, 1] as const) {
+      const live = sets.active === which
+      const hands = live ? { weapon: save.equipment.weapon, offhand: save.equipment.offhand } : sets.stowed
+      const gun = findItem(save, hands.weapon)
+      const b = el('button', `set-pick${live ? ' on' : ''}`)
+      b.type = 'button'
+      b.id = which === 0 ? 'inv-set-a' : 'inv-set-b'
+      if (gun) {
+        b.style.setProperty('--rar', itemColor(gun))
+        b.dataset.rarity = gun.rarity
+        if (ITEMS[gun.defId]?.legend) b.dataset.unique = '1'
+      }
+      b.append(el('b', '', `세트 ${setName(which)}`), el('small', '', setBlurb(save, hands)))
+      b.title = live ? '지금 들고 있는 세트 (F로 교체)' : '누르면 이 세트로 바꿔 (F)'
+      b.addEventListener('click', () => {
+        if (live) return
+        this.host.swapWeapons?.()
+      })
+      row.append(b)
+    }
+    const swap = el('button', 'set-swap', '교체')
+    swap.type = 'button'
+    swap.id = 'inv-set-swap'
+    swap.title = '무기 세트 교체 (F)'
+    swap.addEventListener('click', () => this.host.swapWeapons?.())
+    row.append(swap)
+    const picked = this.picked ? findItem(save, this.picked) : undefined
+    if (picked && !isEquipped(save, picked.uid) && ITEMS[picked.defId]?.slot === 'weapon') {
+      const park = el('button', 'set-park', '다른 세트에 넣기')
+      park.type = 'button'
+      park.id = 'inv-set-park'
+      park.title = '고른 총을 들고 있지 않은 세트에 넣어. 그 칸에 있던 총은 가방으로 돌아와.'
+      park.addEventListener('click', () => this.park(picked.uid))
+      row.append(park)
+    }
+    slots.append(row)
+  }
+
+  /** Put the picked bag gun into the holstered set (parts stay on it). */
+  private park(id: string): void {
+    const save = this.host.save()
+    const stowed = stowedSet(save)
+    const item = findItem(save, id)
+    const hand = item && oneHanded(item) && oneHanded(findItem(save, stowed.weapon)) && stowed.weapon ? 'offhand' : 'weapon'
+    // A second one-handed gun fills the holster's off hand when that set already has a pistol; otherwise it becomes the main.
+    const prefer = hand === 'offhand' && !stowed.offhand ? 'offhand' : 'weapon'
+    const r = parkWeapon(save, id, prefer)
+    if (!r.ok) this.host.toast(r.reason ?? '넣을 수 없어.')
+    else {
+      const back = r.toBag?.map((i) => itemName(i)).join(', ')
+      this.host.toast(back ? `다른 세트에 넣었어. ${back}은(는) 가방으로.` : '다른 세트에 넣었어.')
+      this.host.sfx('pop')
+      this.host.changed()
+    }
+    this.render()
+  }
+
   private equip(id: string, prefer?: EquipSlot): void {
     const save = this.host.save()
     const r = tryEquip(save, id, prefer)
     if (!r.ok) this.host.toast(r.reason ?? '장착할 수 없어.')
     else {
       const item = findItem(save, id)
-      if (item) this.host.toast(prefer === 'offhand' ? `${itemName(item)} 보조 손에 장착! 쌍권총이야` : `${itemName(item)} 장착!`)
+      const back = r.toBag?.length ? ` (${r.toBag.map((i) => itemName(i)).join(', ')} → 가방)` : ''
+      if (item) this.host.toast(prefer === 'offhand' ? `${itemName(item)} 보조 손에 장착! 쌍권총이야${back}` : `${itemName(item)} 장착!${back}`)
       this.host.sfx('pop')
       this.host.changed()
     }

@@ -101,16 +101,24 @@ export function perPixel(touch: boolean, friction = 1, sens = SENS.value): numbe
   return (touch ? TPS.touch : TPS.mouse) * sens * friction
 }
 
-/** Recoil: a little climb and a random sideways nudge, both springing back. */
+/**
+ * Recoil: a climb and a sideways nudge, both springing back.
+ * Pitch is capped so a held trigger cannot walk the aim off the screen; the last sliver
+ * snaps to 0 in `recover` so a residual never becomes a permanent drift.
+ */
+export const KICK_CAP = { pitch: 0.15, yaw: 0.028 }
+
 export function kick(view: TpsView, up: number, side: number): void {
-  view.kickPitch = Math.min(0.12, view.kickPitch + up)
-  view.kickYaw = Math.max(-0.03, Math.min(0.03, view.kickYaw + side))
+  view.kickPitch = Math.max(0, Math.min(KICK_CAP.pitch, view.kickPitch + up))
+  view.kickYaw = Math.max(-KICK_CAP.yaw, Math.min(KICK_CAP.yaw, view.kickYaw + side))
 }
 
-export function recover(view: TpsView, dt: number): void {
-  const k = Math.exp(-TPS.recover * dt)
+export function recover(view: TpsView, dt: number, rate: number = TPS.recover): void {
+  const k = Math.exp(-Math.max(0.5, rate) * dt)
   view.kickPitch *= k
   view.kickYaw *= k
+  if (Math.abs(view.kickPitch) < 0.0004) view.kickPitch = 0
+  if (Math.abs(view.kickYaw) < 0.0004) view.kickYaw = 0
 }
 
 /** Unit view direction for yaw/pitch (pitch + looks down). */
