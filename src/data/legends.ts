@@ -10,6 +10,9 @@ export type LegendSource =
   | { kind: 'areaBoss'; area: AreaId }
   | { kind: 'areaChest'; area: AreaId }
   | { kind: 'mazeElite' }
+  | { kind: 'storyElite'; area: AreaId }
+  /** Handed over by the story (never a random chest roll). */
+  | { kind: 'quest' }
 
 export interface LegendDef {
   id: string
@@ -23,6 +26,8 @@ export interface LegendDef {
   sources: LegendSource[]
   where: string
   look: { body: number; tank: number; barrel: number; tracer: number; barrelLen: number; size: number }
+  /** 달무리 세트 조각. 두 자루를 양손에 차면 SETS 보너스. */
+  set?: 'halo'
 }
 
 export const LEGENDS: LegendDef[] = [
@@ -75,6 +80,35 @@ export const LEGENDS: LegendDef[] = [
     sources: [{ kind: 'areaBoss', area: 'moon' }], where: '달빛 둥지 · 꿈먹는 밤나방',
     look: { body: 0x3d3566, tank: 0xbfe9ff, barrel: 0x9fd8ff, tracer: 0xd6f0ff, barrelLen: 1.5, size: 1.08 },
   },
+  {
+    id: 'leg_lullaby', name: '자장가 물총', gun: 'water', set: 'halo',
+    stats: { lifesteal: 0.016, fireRate: 0.1, candy: 0.12, damage: 0.06 },
+    signature: '자장가가 물줄기에 실려 나온다 · 맞힐수록 조금씩 회복 · 달무리 세트의 한 짝',
+    sources: [{ kind: 'storyElite', area: 'tower' }], where: '멈춘 시계탑 · 똑딱 파수꾼',
+    look: { body: 0xfff1d2, tank: 0xffd0e4, barrel: 0xffe7a8, tracer: 0xfff6d4, barrelLen: 1.05, size: 1.05 },
+  },
+  {
+    id: 'leg_halo', name: '달무리 물총', gun: 'water', set: 'halo',
+    stats: { sparkle: 0.14, damage: 0.09, ice: 0.12, fireRate: 0.05 },
+    signature: '달무리가 물방울을 감싼다 · 자장가 물총과 양손에 차면 세트가 깨어난다',
+    sources: [{ kind: 'quest' }], where: '달빛 둥지 이야기 보상 · 달무리 세트의 한 짝',
+    look: { body: 0xe4dcff, tank: 0xbfe9ff, barrel: 0xfff6c8, tracer: 0xe8f4ff, barrelLen: 1.15, size: 1.06 },
+  },
 ]
+
+/** 양손(물총+물총)에 두 조각이 모두 있을 때의 보너스. 숫자는 작다: 세트의 맛이지, 피해 폭주가 아니다. */
+export const HALO_SET = {
+  id: 'halo' as const,
+  name: '달무리 세트',
+  pieces: ['leg_lullaby', 'leg_halo'] as const,
+  bonus: { damage: 0.06, lifesteal: 0.01 } as const,
+  text: '자장가 물총과 달무리 물총을 양손에 차면 · 피해 +6% · 흡혈 +1%',
+}
+
+export function haloPair(a?: string, b?: string): boolean {
+  if (!a || !b || a === b) return false
+  const have = new Set([a, b])
+  return HALO_SET.pieces.every((id) => have.has(id))
+}
 
 export const LEGEND_BY_ID: Record<string, LegendDef> = Object.fromEntries(LEGENDS.map((l) => [l.id, l]))

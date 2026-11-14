@@ -71,7 +71,7 @@ import { CHAPTER2, FLUFF, GUIDE, chapter2Open, chaptersOf, fieldNeeds, guideEven
 import { delveGateRows, shouldParkFloor, storyGateRows, type PortalRow } from './sim/portals'
 import { ChapterUI } from './ui/chapters'
 import { GROUP_KO, pinsOf, questBook, togglePin, trackedQuests, type QuestGroup } from './sim/questbook'
-import { AREAS, MAZE_ELITE, RESCUE_NAME, dreamOf, enterMaze, mongsilOpen, mazeCleared, mazeEvent, mazeQuest, openAreas, passMaze, storyEvent, storyTalk, wantsSparks, type AreaId, type DreamOut } from './sim/dreamstory'
+import { AREAS, MAZE_ELITE, MOTH_KIND, RESCUE_NAME, TOWER_WARDEN, dreamOf, enterMaze, mongsilOpen, mazeCleared, mazeEvent, mazeQuest, noteTinker, openAreas, passMaze, storyEvent, storyHud, storyQuest, storyTalk, wantsMoths, wantsSparks, wantsWarden, type AreaId, type DreamOut } from './sim/dreamstory'
 
 const base = import.meta.env.BASE_URL
 const canvas = document.querySelector('canvas')
@@ -668,7 +668,13 @@ const townUI = new TownUI({
     clearQueued()
     document.body.classList.remove('bag-open')
     paintHotbar()
+    const tinkered = noteTinker(game.save)
+    if (tinkered) {
+      toast(tinkered, 'quest')
+      game.persist(store)
+    }
     paintContracts()
+    aimStory()
   },
   viewed: (panel) => {
     if (panel === 'shop' || panel === 'workshop' || panel === 'board') guideHit({ type: panel })
@@ -756,7 +762,56 @@ function setWaypoint(next: Waypoint | null): void {
 }
 
 /** The tracker row → a waypoint (chapter-2 quests and board contracts). */
+/** Main-story trail: 몽이, 볼트, the gate, the warden, mothlings, or the boss. */
+function storyWaypoint(): Waypoint | null {
+  const q = storyQuest(game.save)
+  const d = dreamOf(game.save)
+  if (!q) {
+    if (d.story.done) return { id: 'main', label: '3장 · 다음 챕터 준비 중 · 별문', goal: { kind: 'gate' } }
+    return null
+  }
+  const leg = !run ? 'island' : inMongsil() ? 'mongsil' : delve?.plan.objective === 'field' ? 'field' : (delve?.area ?? 'elsewhere')
+  if (d.story.state === 'offer' || d.story.state === 'ready') {
+    if (leg === 'mongsil') return { id: 'main', label: `${q.title} · 몽이`, goal: { kind: 'spot', id: 'mongi' } }
+    return { id: 'main', label: `${q.title} · 별문 → 몽실 마을 몽이`, goal: { kind: 'gate' } }
+  }
+  if (q.kind === 'tinker') {
+    if (leg === 'mongsil') return { id: 'main', label: '볼트 · 강화 또는 부품', goal: { kind: 'spot', id: 'bolt' } }
+    return { id: 'main', label: '볼트의 개조 · 별문 → 몽실 마을', goal: { kind: 'gate' } }
+  }
+  if (q.kind === 'spark' || q.kind === 'hunt') {
+    if (leg === 'field') return { id: 'main', label: q.title, goal: q.kind === 'hunt' ? { kind: 'foe', target: MOTH_KIND } : { kind: 'foe' } }
+    if (leg === 'mongsil') return { id: 'main', label: `${q.title} · 별문 → 몽실 들판`, goal: { kind: 'gate' } }
+    return { id: 'main', label: `${q.title} · 별문 → 몽실 마을 → 들판`, goal: { kind: 'gate' } }
+  }
+  if (q.kind === 'boss') {
+    if (leg === 'moon') return { id: 'main', label: AREAS.moon.boss?.name ?? '꿈먹는 밤나방', goal: { kind: 'boss' } }
+    return { id: 'main', label: '달빛 둥지 · 별문', goal: { kind: 'gate' } }
+  }
+  const area = q.where
+  if (area !== 'field' && area !== 'mongsil' && leg === area) {
+    if (area === 'tower' && delve?.areaLast) return { id: 'main', label: TOWER_WARDEN.name, goal: { kind: 'quest' } }
+    return { id: 'main', label: `${AREAS[area].name} 출구`, goal: { kind: 'exit' } }
+  }
+  if (area !== 'field' && area !== 'mongsil') {
+    if (leg === 'mongsil') return { id: 'main', label: `${AREAS[area].name} · 별문`, goal: { kind: 'gate' } }
+    return { id: 'main', label: `${AREAS[area].name} · 출구로 나가 별문`, goal: { kind: 'exit' } }
+  }
+  return { id: 'main', label: q.title, goal: { kind: 'gate' } }
+}
+
+/** Keep the main trail pointed at the current story step (a click on 메인 still toggles it). */
+function aimStory(): void {
+  if (!storyHud(game.save) && !dreamOf(game.save).story.done) return
+  if (waypoint && waypoint.id !== 'main') return
+  const next = storyWaypoint()
+  if (!next) return
+  if (waypoint?.label === next.label && waypoint.goal.kind === next.goal.kind) return
+  setWaypoint(next)
+}
+
 function waypointFor(id: string): Waypoint | null {
+  if (id === 'main') return storyWaypoint()
   const quest = CHAPTER2.find((d) => d.id === id)
   if (quest) {
     const row = questHud(game.save).find((q) => q.id === id)
@@ -1114,7 +1169,9 @@ function enterField(): void {
   if (!inMongsil()) dropParked()
   travelling = true
   audio.sfx('windup', 0.7)
-  const trip = Delve.field(game.save, fieldNeeds(game.save))
+  const needs = fieldNeeds(game.save)
+  if (wantsMoths(game.save) && !needs.kinds.includes(MOTH_KIND)) needs.kinds.push(MOTH_KIND)
+  const trip = Delve.field(game.save, needs)
   void loadDungeon().then((mod) => fadeThrough(() => {
     dropTown()
     talk.close()
@@ -1479,8 +1536,21 @@ contractHud?.addEventListener('click', (event) => {
   }
   if (!row?.dataset.id || mode !== 'play') return
   if (row.dataset.id === 'main') {
-    if (guideStep(game.save)) chapterUI.toggle()
-    else openQuests('main')
+    if (guideStep(game.save)) {
+      chapterUI.toggle()
+      return
+    }
+    if (waypoint?.id === 'main') {
+      setWaypoint(null)
+      return
+    }
+    const next = storyWaypoint()
+    if (!next) {
+      openQuests('main')
+      return
+    }
+    setWaypoint(next)
+    toast(`길 안내: ${next.label}`, 'quest')
     return
   }
   // 편의성: a click tracks the quest (trail on the ground, minimap pin, distance); again clears it.
@@ -1720,8 +1790,10 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
       kill: (elite, kind) => {
         delve?.kill(elite)
         giveXp(killXp(plan.depth, elite))
-        if (field) questHit({ type: 'kill', kind, elite })
-        else if (area === 'maze') dreamHit(mazeEvent(game.save, 'kill'))
+        if (field) {
+          questHit({ type: 'kill', kind, elite })
+          if (kind === MOTH_KIND) dreamHit(storyEvent(game.save, { type: 'hunt', kind: MOTH_KIND }))
+        } else if (area === 'maze') dreamHit(mazeEvent(game.save, 'kill'))
         else if (!area) contractHit({ type: 'kill', depth: plan.depth, elite })
         guideHit({ type: 'kill' })
       },
@@ -1730,8 +1802,16 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
       spot: (id) => spotUsed(id),
       questFoe: (id) => {
         if (id === 'm_elite') dreamHit(mazeEvent(game.save, 'elite'))
+        if (id === 'tower_warden') {
+          zoneBanner('출구가 열렸어', '금빛 계단으로 몽실 마을에 보고하자')
+          if (run) run.stairsHint = '몽실 마을로 · 몽이에게 보고'
+        }
       },
-      stairsBlock: () => (area === 'maze' && delve?.areaLast && !mazeCleared(game.save) ? '모찌: 아직 미로가 우릴 놓아주지 않아. 모찌 퀘스트를 마저 하자!' : null),
+      stairsBlock: () => {
+        if (area === 'maze' && delve?.areaLast && !mazeCleared(game.save)) return '모찌: 아직 미로가 우릴 놓아주지 않아. 모찌 퀘스트를 마저 하자!'
+        if (area === 'tower' && delve?.areaLast && run?.questFoeAlive('tower_warden')) return '똑딱 파수꾼이 출구를 막고 있어. 화살표를 따라가!'
+        return null
+      },
       named: (ev) => {
         if (ev === 'down') questHit({ type: 'named' })
       },
@@ -1811,8 +1891,12 @@ function buildFloor(mod: typeof import('./world/dungeon/run'), plan: FloorPlan):
     plan,
   )
   skills.reset()
-  if (area && delve?.areaLast) run.stairsHint = area === 'maze' ? '미로 밖으로 (몽실 마을)' : '끝까지 왔어 · 몽실 마을로'
+  if (area && delve?.areaLast) run.stairsHint = area === 'maze' ? '미로 밖으로 (몽실 마을)' : area === 'tower' ? '파수꾼을 쓰러뜨리면 열리는 출구' : '끝까지 왔어 · 몽실 마을로'
   if (area === 'maze') placeMazeQuest(plan.areaFloor === 1)
+  if (area === 'tower' && plan.areaFloor === AREAS.tower.floors && wantsWarden(game.save)) {
+    run.spawnQuestFoe('tower_warden', TOWER_WARDEN.kind, TOWER_WARDEN.name, TOWER_WARDEN.hp, '시계탑 끝에서 째깍거려 · 화살표를 따라가')
+  }
+  aimStory()
 }
 
 /** A gear pickup: a jingle by rarity and a coloured toast with its name. */
@@ -2147,6 +2231,7 @@ function dreamHit(o: DreamOut): void {
   if (o.cleared) queueClearCard()
   paintContracts()
   game.persist(store)
+  aimStory()
 }
 
 /** Put 모찌's current maze quest on this floor (fragment, 뭉게 in the web, or the 미로지기). */

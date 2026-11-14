@@ -21,6 +21,7 @@ export type LegendEvent =
   | { kind: 'boss'; depth: number; area?: AreaId }
   | { kind: 'chest'; area?: AreaId }
   | { kind: 'mazeElite' }
+  | { kind: 'storyElite'; area: AreaId }
 
 /** Base chance and pity step per source kind. Boss: certain on the 6th try; chests are many, so lower. */
 export const LEGEND_ODDS = {
@@ -28,6 +29,8 @@ export const LEGEND_ODDS = {
   areaBoss: { base: 0.25, step: 0.19 },
   areaChest: { base: 0.05, step: 0.035 },
   mazeElite: { base: 1, step: 0 },
+  storyElite: { base: 1, step: 0 },
+  quest: { base: 0, step: 0 },
 } as const
 /** A legend already in the 도감 drops again at this share of the base chance, with no pity. */
 export const DUPE_SHARE = 0.35
@@ -73,6 +76,8 @@ function matches(src: LegendSource, ev: LegendEvent): boolean {
   if (src.kind === 'boss') return ev.kind === 'boss' && !ev.area && ev.depth === src.depth
   if (src.kind === 'areaBoss') return ev.kind === 'boss' && ev.area === src.area
   if (src.kind === 'areaChest') return ev.kind === 'chest' && ev.area === src.area
+  if (src.kind === 'storyElite') return ev.kind === 'storyElite' && ev.area === src.area
+  if (src.kind === 'quest') return false
   return ev.kind === 'mazeElite'
 }
 
@@ -92,7 +97,7 @@ const keyOf = (def: LegendDef, src: LegendSource) => `${def.id}:${src.kind}`
 export function legendChance(save: SaveData, def: LegendDef, src: LegendSource): number {
   const odds = LEGEND_ODDS[src.kind]
   const l = legendsOf(save)
-  if (l.found.includes(def.id)) return src.kind === 'mazeElite' ? 0 : odds.base * DUPE_SHARE
+  if (l.found.includes(def.id)) return src.kind === 'mazeElite' || src.kind === 'storyElite' ? 0 : odds.base * DUPE_SHARE
   return Math.min(1, odds.base + odds.step * (l.tries[keyOf(def, src)] ?? 0))
 }
 

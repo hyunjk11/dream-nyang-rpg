@@ -12,7 +12,7 @@
  */
 import { CHAPTER2, GUIDE, chapter2Open, chapter3Open, fieldOpen, chaptersOf, guideStep, questRewardText, type ChapterQuestDef } from './chapters'
 import { REPEAT_ICON, activeContracts, contractRuns, rewardText as contractReward, type Contract } from './contracts'
-import { AREAS, MAZE_CHAIN, STORY, dreamOf, mazeOpen, mongsilOpen, type StoryQuest } from './dreamstory'
+import { AREAS, MAZE_CHAIN, MOTH_KO, STORY, TOWER_WARDEN, dreamOf, mazeOpen, mongsilOpen, type StoryQuest } from './dreamstory'
 import { objectiveLine, rewardText as islandReward } from './quests'
 import { QUESTS, QUEST_ORDER } from '../data/quests'
 import { townOf } from './town'
@@ -57,7 +57,10 @@ const STORY_AT: Record<string, PlaceId> = { q_awaken: 'meadow', q_dust: 'forest'
 
 function storyLine(q: StoryQuest): string {
   if (q.kind === 'spark') return '몽실 들판에서 등불 불씨 모으기'
-  if (q.kind === 'boss') return `${AREAS.moon.name}에서 ${AREAS.moon.boss?.name ?? '보스'} 잠재우기`
+  if (q.kind === 'hunt') return `몽실 들판의 ${MOTH_KO} ${q.goal}마리`
+  if (q.kind === 'tinker') return '몽실 마을 볼트에게 강화 또는 부품'
+  if (q.kind === 'boss') return `${AREAS.moon.name}에서 ${AREAS.moon.boss?.name ?? '보스'} 잠재우기 · 고리의 빈칸을 보고 피하기`
+  if (q.where === 'tower') return `${AREAS.tower.name} 끝 ${TOWER_WARDEN.name}을 쓰러뜨리고 계단으로`
   return `${AREAS[q.where as keyof typeof AREAS]?.name ?? ''} 끝까지 가기`
 }
 
@@ -72,7 +75,7 @@ export function mainQuest(save: SaveData): QuestEntry {
     return { ...base, title: `1장 · 가이드 ${c.guide.step + 1}/${GUIDE.length}`, line: s.title, prog: count, reward: '마치면 다음 장이 열려', area: placeLabel(s.at, s.spot ?? '') }
   }
   // 3장 has no content yet: no teaser row, just "2장 완료" (future chapters stay hidden).
-  if (chapter3Open(save)) return { ...base, title: '2장 완료', line: '다음 장은 준비 중 · 남은 의뢰를 마무리해', prog: '', area: placeLabel('mongsil') }
+  if (chapter3Open(save)) return { ...base, title: '2장 완료', line: '별문의 다음 장 문은 잠김 · 다음 챕터 준비 중', prog: '', area: placeLabel('mongsil') }
   const d = dreamOf(save)
   if (!d.maze.passed) {
     if (!mazeOpen(save)) return { ...base, title: '2장 · 꿈 미로로', line: '섬 별문에서 꿈 미로 들어가기', prog: '', reward: '모찌의 미로 퀘스트 시작', area: placeLabel('village', '별문') }
@@ -84,16 +87,30 @@ export function mainQuest(save: SaveData): QuestEntry {
   if (!q || !mongsilOpen(save)) return { ...base, title: '2장 · 꿈의 비밀', line: '몽이에게 말 걸기', prog: '', area: placeLabel('mongsil') }
   const reward = `골드 ${q.reward.gold} · 경험치 ${q.reward.xp} · 장비`
   const title = `2장 · 꿈의 비밀 ${d.story.step + 1}/${STORY.length}`
-  const there = placeLabel(q.where as PlaceId)
+  const there = placeLabel(q.where === 'mongsil' ? 'mongsil' : (q.where as PlaceId))
   if (d.story.state === 'offer') return { ...base, title, line: `${q.title} · 몽실 마을 몽이에게 말 걸기`, prog: '', reward, area: placeLabel('mongsil') }
   if (d.story.state === 'ready') return { ...base, title, line: q.title, prog: '완료', ready: true, turnIn: '몽실 마을 몽이에게 보고', reward, area: placeLabel('mongsil') }
-  return { ...base, title, line: `${q.title} · ${storyLine(q)}`, prog: q.kind === 'spark' ? `${d.story.count}/${q.goal}` : '0/1', turnIn: '몽실 마을 몽이에게 보고', reward, area: there }
+  const counting = q.kind === 'spark' || q.kind === 'hunt'
+  return { ...base, title, line: `${q.title} · ${storyLine(q)}`, prog: counting ? `${d.story.count}/${q.goal}` : '0/1', turnIn: '몽실 마을 몽이에게 보고', reward, area: there }
 }
 
 function fieldEntry(save: SaveData, d: ChapterQuestDef): QuestEntry {
   const q = chaptersOf(save).quests[d.id]
   const ready = q.status === 'done'
-  return { id: d.id, group: 'bounty', title: d.title, line: FIELD_LINE[d.target] ?? d.text, prog: ready ? '완료' : `${q.progress}/${d.goal}`, ready, turnIn: BOARD, reward: questRewardText(d), area: placeLabel('field') }
+  const runs = q.runs ?? 0
+  return {
+    id: d.id,
+    group: d.repeat ? 'repeat' : 'bounty',
+    repeat: d.repeat,
+    runs: d.repeat ? runs : undefined,
+    title: d.repeat ? `${REPEAT_ICON} ${d.title}` : d.title,
+    line: FIELD_LINE[d.target] ?? d.text,
+    prog: ready ? '완료' : `${q.progress}/${d.goal}`,
+    ready,
+    turnIn: BOARD,
+    reward: questRewardText(d),
+    area: placeLabel('field'),
+  }
 }
 
 /** An objective line that is already met ('… 완료', or '… 5/5'). */
@@ -175,7 +192,11 @@ export function questArchive(save: SaveData): DoneEntry[] {
   if (chapter2Open(save)) {
     MAZE_CHAIN.slice(0, d.maze.step).forEach((q, i) => out.push({ group: 'main', title: `2장 · 꿈 미로 ${i + 1}/${MAZE_CHAIN.length} · ${MAZE_SHORT[q.id] ?? q.title}`, note: `골드 ${q.reward.gold} · 경험치 ${q.reward.xp}` }))
     STORY.slice(0, d.story.done ? STORY.length : d.story.step).forEach((q, i) => out.push({ group: 'main', title: `2장 · 꿈의 비밀 ${i + 1}/${STORY.length} · ${q.title}`, note: `골드 ${q.reward.gold} · 경험치 ${q.reward.xp}` }))
-    for (const q of CHAPTER2) if (c.quests[q.id].status === 'claimed') out.push({ group: 'bounty', title: q.title, note: questRewardText(q) })
+    for (const q of CHAPTER2) {
+      const st = c.quests[q.id]
+      if (q.repeat && (st?.runs ?? 0) > 0) out.push({ group: 'repeat', title: `${REPEAT_ICON} ${q.title}`, note: `${st.runs}회 · ${questRewardText(q)}` })
+      else if (st?.status === 'claimed') out.push({ group: 'bounty', title: q.title, note: questRewardText(q) })
+    }
   }
   for (const id of QUEST_ORDER) if (save.quests[id]?.status === 'turnedIn' && QUESTS[id]) out.push({ group: 'story', title: QUESTS[id].title, note: '보고 완료' })
   const n = townOf(save).contractsDone

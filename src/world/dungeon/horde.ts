@@ -33,6 +33,9 @@ export type HordeKind =
   | 'golem'
   | 'drake'
   | 'lord'
+  // 챕터 2: 구름 다락·시계탑·달빛 둥지에만 나오는 꿈 괴물 (하수도 웨이브에는 안 섞인다).
+  | 'mothling'
+  | 'cog'
 
 export interface HordeSpec {
   hp: number
@@ -63,6 +66,10 @@ export const HORDE: Record<HordeKind, HordeSpec> = {
   golem: { hp: 90, speed: 1.6, radius: 0.6, damage: 12, chest: 0.9, dust: 4 },
   drake: { hp: 70, speed: 2.4, radius: 0.6, damage: 10, chest: 0.9, dust: 4 },
   lord: { hp: 110, speed: 1.8, radius: 0.7, damage: 12, chest: 1.1, dust: 10 },
+  // 달가루 나방: 박쥐만큼 가볍고, 달빛 탄을 쏜다. 위협은 체력이 아니라 예고된 탄막.
+  mothling: { hp: 22, speed: 2.5, radius: 0.36, damage: 5, chest: 0.95, dust: 2 },
+  // 똑딱 톱니: 시계탑의 근접. 기사보다 조금 약해서 오래 때리지 않아도 된다.
+  cog: { hp: 44, speed: 2.15, radius: 0.44, damage: 8, chest: 0.72, dust: 3 },
 }
 
 /** Champions only ever spawn as elites, one per wave once unlocked. */
@@ -117,6 +124,8 @@ export const SHOT_STYLE: Record<HordeKind, ShotStyle> = {
   skel_mage: 'moon',
   wraith: 'moon',
   lich: 'moon',
+  mothling: 'moon',
+  cog: 'star',
 }
 /** Champions stay melee bruisers. */
 export const NEVER_RANGED: readonly HordeKind[] = ['lord', 'lich']

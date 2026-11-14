@@ -64,10 +64,10 @@ const SUB: Record<TownPanel, string> = {
   workshop: '+6부터 실패할 수도 · 실패해도 강화 수치는 안 떨어져!',
   board: '의뢰는 하수도에서 진행되고, 돌아오면 여기서 보상을 받아.',
   stash: '가방이 꽉 차면 여기에 넣어 둬.',
-  codex: '이름 붙은 총 일곱 자루. 정해진 곳에서만 떨어지고, 못 찾을수록 확률이 올라가.',
+  codex: '이름 붙은 총. 정해진 곳에서만 떨어지고, 못 찾을수록 확률이 올라가. 달무리 세트는 양손에 차면 깨어나.',
 }
 
-const SOURCE_KO: Record<LegendSource['kind'], string> = { boss: '보스 상자', areaBoss: '보스 상자', areaChest: '지역 보물 상자 하나당', mazeElite: '미로 정예' }
+const SOURCE_KO: Record<LegendSource['kind'], string> = { boss: '보스 상자', areaBoss: '보스 상자', areaChest: '지역 보물 상자 하나당', mazeElite: '미로 정예', storyElite: '이야기 정예', quest: '이야기 보상' }
 
 const ELEMENT_KO: Record<Element, string> = { sparkle: '반짝', ice: '서늘', candy: '끈적' }
 
@@ -702,7 +702,8 @@ export class TownUI {
       const q = c.quests[d.id]
       const card = el('div', `town-contract chapter s-${q.status}`)
       card.dataset.id = d.id
-      card.append(el('b', '', d.title), el('small', '', d.text), el('small', '', `보상: ${questRewardText(d)}`))
+      const times = d.repeat && (q.runs ?? 0) > 0 ? ` · ${q.runs}회 완료` : ''
+      card.append(el('b', '', `${d.repeat ? '🔁 ' : ''}${d.title}${times}`), el('small', '', d.text), el('small', '', `보상: ${questRewardText(d)}`))
       const bar = el('div', 'town-bar')
       const fill = el('span')
       fill.style.width = `${Math.round((q.progress / d.goal) * 100)}%`

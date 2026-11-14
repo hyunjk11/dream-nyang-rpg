@@ -82,6 +82,8 @@ export interface ChapterQuestDef {
   target: HordeKind | 'any' | 'fluff' | 'named' | 'boss'
   goal: number
   reward: { gold: number; xp: number; gear?: Rarity; mats?: Record<string, number> }
+  /** 🔁 Comes back on the board after it is turned in. */
+  repeat?: boolean
 }
 
 /** The field's collectible: dropped by field foes while a collect quest is on. */
@@ -93,10 +95,10 @@ export const CHAPTER2: ChapterQuestDef[] = [
   { id: 'c2_slime', title: '솜사탕 슬라임 퇴치', text: '몽실 들판(몽실 마을 별문)을 덮은 솜사탕 슬라임을 줄여 줘.', kind: 'kill', target: 'slime', goal: 10, reward: { gold: 60, xp: 120, mats: { dream_dust: 3 } } },
   { id: 'c2_bat', title: '꿈박쥐 쫓기', text: '몽실 들판(몽실 마을 별문)에 밤하늘에서 내려온 꿈박쥐가 잠을 깨운대.', kind: 'kill', target: 'bat', goal: 8, reward: { gold: 70, xp: 140, gear: 'uncommon' } },
   { id: 'c2_fluff', title: '몽실 솜사탕 모으기', text: '몽실 들판 괴물이 떨어뜨리는 몽실 솜사탕을 모아 와.', kind: 'collect', target: 'fluff', goal: 8, reward: { gold: 80, xp: 160, mats: { toy_part: 2 } } },
-  { id: 'c2_sweep', title: '몽실 들판 대청소', text: '몽실 들판 괴물이면 종류는 상관없어. 많이, 아주 많이!', kind: 'kill', target: 'any', goal: 25, reward: { gold: 100, xp: 220, gear: 'rare' } },
+  { id: 'c2_sweep', title: '몽실 들판 대청소', text: '몽실 들판 괴물이면 종류는 상관없어. 끝나면 다시 맡는 반복 의뢰야.', kind: 'kill', target: 'any', goal: 25, reward: { gold: 100, xp: 220, gear: 'rare' }, repeat: true },
   { id: 'c2_named', title: '솜사탕 대장 몽글이', text: '몽실 들판 어딘가에 거대한 대장 슬라임이 있대. 찾아서 쓰러뜨려.', kind: 'named', target: 'named', goal: 1, reward: { gold: 130, xp: 260, gear: 'rare', mats: { star_shard: 1 } } },
-  { id: 'c2_knight', title: '구름 기사단', text: '구름 기사들이 몽실 들판 길목을 막고 있어.', kind: 'kill', target: 'knight', goal: 4, reward: { gold: 120, xp: 260, mats: { toy_part: 2, dream_dust: 4 } } },
-  { id: 'c2_boss', title: '몽실 들판의 악몽 꽃', text: '몽실 들판 한가운데에서 악몽 꽃이 피어났어. 챕터 2의 마지막!', kind: 'boss', target: 'boss', goal: 1, reward: { gold: 220, xp: 420, gear: 'epic', mats: { star_shard: 2 } } },
+  { id: 'c2_knight', title: '구름 기사단', text: '구름 기사들이 몽실 들판 길목을 막고 있어. 토벌이 끝나면 다시 의뢰가 붙는 반복이야.', kind: 'kill', target: 'knight', goal: 4, reward: { gold: 120, xp: 260, mats: { toy_part: 2, dream_dust: 4 } }, repeat: true },
+  { id: 'c2_boss', title: '몽실 들판의 악몽 꽃', text: '들판 동쪽 끝에 핀 악몽 꽃. 이야기(달빛 둥지)와 다른, 들판만의 토벌이야.', kind: 'boss', target: 'boss', goal: 1, reward: { gold: 220, xp: 420, gear: 'epic', mats: { star_shard: 2 } } },
 ]
 
 /** At most this many chapter quests taken at once. */
@@ -107,6 +109,8 @@ export type ChapterQuestStatus = 'locked' | 'offered' | 'active' | 'done' | 'cla
 export interface ChapterQuestState {
   status: ChapterQuestStatus
   progress: number
+  /** Times a 🔁 quest was turned in. */
+  runs?: number
 }
 
 export interface ChapterSave {
@@ -156,7 +160,10 @@ export function chaptersOf(save: SaveData): ChapterSave {
   const statuses: ChapterQuestStatus[] = ['locked', 'offered', 'active', 'done', 'claimed']
   for (const d of CHAPTER2) {
     const q = raw.quests?.[d.id]
-    if (q && statuses.includes(q.status)) quests[d.id] = { status: q.status, progress: int(q.progress, 0, d.goal, 0) }
+    if (q && statuses.includes(q.status)) {
+      const runs = int((q as { runs?: unknown }).runs, 0, 1e6, 0)
+      quests[d.id] = runs > 0 ? { status: q.status, progress: int(q.progress, 0, d.goal, 0), runs } : { status: q.status, progress: int(q.progress, 0, d.goal, 0) }
+    }
   }
   const c: ChapterSave = {
     current: int(raw.current, 1, 3, 1),
@@ -397,6 +404,7 @@ export function questEvent(save: SaveData, e: FieldEvent): ChapterOut {
 /** What a quest's reward reads as on the board. */
 export function questRewardText(d: ChapterQuestDef): string {
   const bits = [`골드 ${d.reward.gold}`, `경험치 ${d.reward.xp}`]
+  if (d.repeat) bits.unshift('🔁')
   if (d.reward.gear) bits.push(`${RARITY_KO[d.reward.gear]} 장비`)
   for (const [m, n] of Object.entries(d.reward.mats ?? {})) bits.push(`${MATERIAL_KO[m] ?? m} ${n}`)
   return bits.join(' · ')
@@ -410,7 +418,9 @@ export function claimQuest(save: SaveData, id: string, rng: () => number = Math.
   const none = { result: emptyResult(), cleared: 0, gear: null }
   if (!chapter2Open(save)) return { ok: false, reason: '가이드 챕터를 먼저 마쳐 줘.', ...none }
   if (!q || !d || q.status !== 'done') return { ok: false, reason: '아직 끝나지 않은 퀘스트야.', ...none }
-  q.status = 'claimed'
+  q.runs = (q.runs ?? 0) + (d.repeat ? 1 : 0)
+  q.status = d.repeat ? 'offered' : 'claimed'
+  q.progress = d.repeat ? 0 : q.progress
   gainGold(save, d.reward.gold)
   const result = gainXp(save, d.reward.xp)
   result.toasts.unshift(`골드 +${d.reward.gold}`, `경험치 +${d.reward.xp}`)

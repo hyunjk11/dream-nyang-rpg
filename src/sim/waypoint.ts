@@ -15,6 +15,10 @@ export type WaypointGoal =
   | { kind: 'board' }
   | { kind: 'gate' }
   | { kind: 'return' }
+  /** A named town spot (몽이, 볼트…). */
+  | { kind: 'spot'; id: string }
+  /** The quest foe the floor placed (똑딱 파수꾼). */
+  | { kind: 'quest' }
 
 export interface Waypoint {
   /** Tracker row id it came from (a second click on the same row clears it). */

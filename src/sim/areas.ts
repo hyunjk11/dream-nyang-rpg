@@ -18,13 +18,18 @@ export interface AreaDef {
   /** The last floor is a boss floor. */
   boss?: { name: string; hp: number }
   blurb: string
+  /**
+   * Pack kinds on explore floors. Absent = the sewer roster for that depth.
+   * 챕터 2 이야기 구역은 서로 다른 얼굴을 쓴다.
+   */
+  roster?: readonly string[]
 }
 
 export const AREAS: Record<AreaId, AreaDef> = {
   maze: { id: 'maze', name: '꿈 미로', floors: 4, depth: 1, scaleFloors: [1, 2, 3, 3], theme: 'maze', home: 'island', blurb: '섬 마을 아래로 이어진 길 · 모찌가 길을 알아' },
-  loft: { id: 'loft', name: '구름 다락', floors: 2, depth: 2, scaleFloors: [1, 2], theme: 'cloud', home: 'mongsil', blurb: '속삭임이 새어 나오는 구름 위 다락' },
-  tower: { id: 'tower', name: '멈춘 시계탑', floors: 2, depth: 2, scaleFloors: [2, 3], theme: 'clock', home: 'mongsil', blurb: '3시 33분에 멈춘 시계탑' },
-  moon: { id: 'moon', name: '달빛 둥지', floors: 1, depth: 2, scaleFloors: [0], theme: 'moon', home: 'mongsil', boss: { name: '꿈먹는 밤나방', hp: 1.15 }, blurb: '잊힌 꿈을 먹는 나방의 둥지' },
+  loft: { id: 'loft', name: '구름 다락', floors: 2, depth: 2, scaleFloors: [1, 2], theme: 'cloud', home: 'mongsil', roster: ['jelly', 'bat', 'wraith'], blurb: '속삭임이 새어 나오는 구름 위 다락' },
+  tower: { id: 'tower', name: '멈춘 시계탑', floors: 2, depth: 2, scaleFloors: [2, 3], theme: 'clock', home: 'mongsil', roster: ['cog', 'skeleton', 'knight', 'skel_mage'], blurb: '3시 33분에 멈춘 시계탑 · 끝에는 똑딱 파수꾼' },
+  moon: { id: 'moon', name: '달빛 둥지', floors: 1, depth: 2, scaleFloors: [0], theme: 'moon', home: 'mongsil', roster: ['mothling', 'wraith', 'bat'], boss: { name: '꿈먹는 밤나방', hp: 1.15 }, blurb: '잊힌 꿈을 먹는 나방의 둥지' },
 }
 
 export const AREA_IDS = Object.keys(AREAS) as AreaId[]

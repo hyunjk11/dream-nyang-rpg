@@ -6,10 +6,11 @@
  * far end of the maze behind a star door. Pure data: run.ts / explore.ts bring it to life.
  */
 import { waveFor } from './waves'
-import type { HordeKind } from './horde'
+import { HORDE, type HordeKind } from './horde'
 import { Tile, distances, walkable, type Maze, type Nest, type Rect } from './maze'
 import { SLOT, bossMaze, roomMaze, type RoomMaze } from './rooms'
 import { depthStep, rosterShift, type FloorPlan } from '../../sim/delve'
+import { AREAS, isArea } from '../../sim/areas'
 import { townMaze } from './town'
 import { fieldMaze } from './field'
 
@@ -86,6 +87,8 @@ export const KIND_KO: Record<HordeKind, string> = {
   golem: '마시멜로 골렘',
   drake: '솜사탕 드레이크',
   lord: '악몽 군주',
+  mothling: '달가루 나방',
+  cog: '똑딱 톱니',
 }
 
 export interface Pack {
@@ -180,7 +183,13 @@ export function floorMaze(plan: Pick<FloorPlan, 'seed' | 'cells' | 'bossRoom' | 
 }
 
 /** Room kinds for a pack: the roster this deep, harder kinds further from the start. */
-function kindsFor(depth: number, floor: number, r: number, rand: () => number): HordeKind[] {
+function kindsFor(depth: number, floor: number, r: number, rand: () => number, roster?: readonly string[]): HordeKind[] {
+  if (roster && roster.length) {
+    const pool = roster.filter((k): k is HordeKind => k in HORDE)
+    const a = pool[Math.floor(rand() * pool.length)] ?? 'slime'
+    const b = pool[Math.floor(rand() * pool.length)] ?? a
+    return a === b || rand() < 0.45 ? [a] : [a, b]
+  }
   const tier = Math.max(1, 1 + (depth - 1) * 2 + (floor - 1) + rosterShift(depth, floor) + (r > 0.55 ? 1 : 0))
   const pool = waveFor(tier).kinds
   // A pack is themed: one or two kinds, favouring the newest unlocks.
@@ -194,7 +203,7 @@ function kindsFor(depth: number, floor: number, r: number, rand: () => number): 
  * optional pipes (so the decor draws only those). The door and cracked-wall tiles stay open in
  * the geometry; the director closes them for walking and shots afterwards (see `blockers`).
  */
-export function planLayout(maze: Maze, plan: Pick<FloorPlan, 'depth' | 'floor'>, rand: () => number): Layout {
+export function planLayout(maze: Maze, plan: Pick<FloorPlan, 'depth' | 'floor' | 'area'>, rand: () => number): Layout {
   const m = maze
   const dist = distances(m.tiles, m.w, m.h, m.start.x, m.start.y)
   const exit = m.bossRoom
@@ -347,7 +356,8 @@ export function planLayout(maze: Maze, plan: Pick<FloorPlan, 'depth' | 'floor'>,
     const r = d / far
     // Pacing: small packs first, medium further in.
     const size = Math.max(EXPLORE.packSize[0], Math.min(EXPLORE.packSize[1], 3 + Math.round(r * 2.2 + rand() * 1.1 - 0.3)))
-    return { id, x: h.x, y: h.y, kinds: kindsFor(plan.depth, plan.floor, r, rand), size, elite: null, key: false, dist: d }
+    const roster = isArea(plan.area) ? AREAS[plan.area].roster : undefined
+    return { id, x: h.x, y: h.y, kinds: kindsFor(plan.depth, plan.floor, r, rand, roster), size, elite: null, key: false, dist: d }
   })
   // Elites: from the middle of the route on, never in the first third.
   const nElites = Math.min(packs.length, plan.depth === 1 && plan.floor === 1 ? EXPLORE.elitePacks[0] : EXPLORE.elitePacks[1])

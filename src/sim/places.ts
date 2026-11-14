@@ -23,10 +23,10 @@ export const PLACES: readonly PlaceDef[] = [
   { id: 'sewer', chapter: 1, name: '꿈 하수도', note: '깊이별 던전 · 의뢰' },
   { id: 'maze', chapter: 2, name: '꿈 미로', note: '모찌와 함께' },
   { id: 'mongsil', chapter: 2, name: '몽실 마을', note: '몽이의 꿈의 비밀' },
-  { id: 'field', chapter: 2, name: '몽실 들판', note: '게시판 의뢰 · 등불 불씨' },
-  { id: 'loft', chapter: 2, name: '구름 다락', note: '꿈의 비밀 2' },
-  { id: 'tower', chapter: 2, name: '멈춘 시계탑', note: '꿈의 비밀 3' },
-  { id: 'moon', chapter: 2, name: '달빛 둥지', note: '꿈의 비밀 4 · 보스' },
+  { id: 'field', chapter: 2, name: '몽실 들판', note: '등불 · 나방 · 들판 의뢰' },
+  { id: 'loft', chapter: 2, name: '구름 다락', note: '속삭임' },
+  { id: 'tower', chapter: 2, name: '멈춘 시계탑', note: '똑딱 파수꾼' },
+  { id: 'moon', chapter: 2, name: '달빛 둥지', note: '밤나방 보스' },
 ]
 
 export const PLACE: Record<PlaceId, PlaceDef> = Object.fromEntries(PLACES.map((p) => [p.id, p])) as Record<PlaceId, PlaceDef>

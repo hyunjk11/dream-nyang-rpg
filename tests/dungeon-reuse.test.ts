@@ -11,7 +11,7 @@ const credits = Object.values(import.meta.glob('../CREDITS.md', { query: '?raw',
 
 describe('E단계 몬스터 재활용', () => {
   it('모든 무리 종류에 외형 출처·키·포즈가 정해져 있다', () => {
-    expect(HORDE_KINDS.length).toBe(17)
+    expect(HORDE_KINDS.length).toBe(19)
     for (const k of HORDE_KINDS) {
       const a = KIND_ART[k]
       expect(a.height).toBeGreaterThan(0.5)
