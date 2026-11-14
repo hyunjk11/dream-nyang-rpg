@@ -1,3 +1,4 @@
+import { haloPair, HALO_SET } from '../data/legends'
 import { ITEMS } from '../data/items'
 import { GUN_PROFILES, type GunProfile } from '../data/guns'
 import { LEVEL_CAP } from '../data/tree'
@@ -88,6 +89,11 @@ export function computeStats(save: SaveData, items: ItemInstance[] = equippedIte
   buildOf(save)
   const g = gearSum(items)
   const gunItem = items.find((i) => ITEMS[i.defId]?.slot === 'weapon')
+  const off = findItem(save, save.equipment.offhand)
+  if (haloPair(gunItem?.defId, off?.defId) && ITEMS[gunItem?.defId ?? '']?.gun === 'water' && ITEMS[off?.defId ?? '']?.gun === 'water') {
+    g.damage = (g.damage ?? 0) + HALO_SET.bonus.damage
+    g.lifesteal = (g.lifesteal ?? 0) + HALO_SET.bonus.lifesteal
+  }
   const kind: WeaponKind = (gunItem && ITEMS[gunItem.defId]?.gun) || 'water'
   const base = GUN_PROFILES[kind]
   const gunScale = gunItem ? gunLevelScale(gunItem.itemLevel) * GUN_RARITY[gunItem.rarity] * upgradeMul(plusOf(gunItem)) : 1

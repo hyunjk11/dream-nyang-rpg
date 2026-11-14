@@ -36,7 +36,7 @@ import { FOE_SPECS, foePose, type FoeKind } from '../../combat/foes'
 import { outlineInstanced, toonGradient } from '../../core/materials'
 import { bakeSkinned, decimate } from './bake'
 import { DIE_TIME, ELITE, HORDE, HORDE_CAP, SHOT_STYLE, SHOTS_CAP, SPAWN_TIME, type Horde, type HordeKind, type ShotStyle } from './horde'
-import { LORD_TINTS, luckyFrames, type LuckyKind } from './lucky'
+import { LORD_TINTS, luckyFrames, type DreamBody } from './lucky'
 
 /** Every kind the view can draw, in draw order. */
 export const HORDE_KINDS: HordeKind[] = Object.keys(HORDE) as HordeKind[]
@@ -83,6 +83,8 @@ export const KIND_ART: Record<HordeKind, KindArt> = {
   golem: { source: 'lucky', height: 1.35, pose: 'bug' },
   drake: { source: 'lucky', height: 1.2, pose: 'bug' },
   lord: { source: 'lucky', height: 1.6, pose: 'bloom' },
+  mothling: { source: 'lucky', height: 0.86, pose: 'bat', hover: 0.55 },
+  cog: { source: 'lucky', height: 1.15, pose: 'bug' },
 }
 
 interface Art {
@@ -208,7 +210,7 @@ export async function loadHordeArt(base: string): Promise<number> {
           const far = decimate(baked.frames[0], kind === 'lich' ? 22 : 14)
           art.set(kind, { frames: baked.frames, mat: mats.length === 1 ? mats[0] : mats, far, farMat: mats[0] })
         } else {
-          const frames = luckyFrames(kind as LuckyKind, WALK_FRAMES)
+          const frames = luckyFrames(kind as DreamBody, WALK_FRAMES)
           const box = normalise(frames[0], kind)
           for (const f of frames.slice(1)) normalise(f, kind, box)
           const mat = new MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient(), emissive: 0x2a1c44, emissiveIntensity: 0.5 })

@@ -17,6 +17,7 @@ import {
   mazeQuest,
   openAreas,
   passMaze,
+  noteTinker,
   storyEvent,
   storyHud,
   storyTalk,
@@ -50,7 +51,13 @@ function playStep(save: SaveData): void {
   const q = STORY[d.story.step]!
   if (q.kind === 'spark') storyEvent(save, { type: 'spark', amount: q.goal })
   else if (q.kind === 'area') storyEvent(save, { type: 'area', area: q.where as 'loft' })
-  else storyEvent(save, { type: 'boss', area: q.where as 'moon' })
+  else if (q.kind === 'boss') storyEvent(save, { type: 'boss', area: 'moon' })
+  else if (q.kind === 'hunt') storyEvent(save, { type: 'hunt', kind: 'mothling', amount: q.goal })
+  else if (q.kind === 'tinker') {
+    const gun = save.items.find((i) => i.uid === save.equipment.weapon)
+    if (gun) gun.plus = (gun.plus ?? 0) + 1
+    noteTinker(save)
+  }
 }
 
 

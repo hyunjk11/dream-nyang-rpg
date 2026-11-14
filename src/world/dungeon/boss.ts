@@ -35,7 +35,10 @@ export interface Orb {
   life: number
 }
 
-export type BossEvent = 'wake' | 'ring' | 'summon' | 'down'
+export type BossEvent = 'wake' | 'ring' | 'summon' | 'down' | 'phase2' | 'phase3'
+
+/** 꿈 하수도의 악몽 꽃, 또는 달빛 둥지의 밤나방 (패턴만 다르고 체력 배율은 호출자가 정한다). */
+export type BossStyle = 'bloom' | 'moth'
 
 /** Depth scaling for one boss (1 = the depth-1 bloom). */
 export interface BossScale {
@@ -64,14 +67,19 @@ export class Boss {
   private contactCd = 0
   private summoned = 0
   private spin = 0
+  /** Aim locked when a wind-up starts (the moth's safe lane / fan). */
+  private aim = 0
+  private phaseTold = 1
   private readonly maze: Maze
   private readonly room: Rect
+  readonly style: BossStyle
 
-  constructor(maze: Maze, scale: BossScale = { hp: 1, damage: 1 }) {
+  constructor(maze: Maze, scale: BossScale = { hp: 1, damage: 1 }, style: BossStyle = 'bloom') {
     this.maze = maze
     this.maxHp = Math.round(BOSS.hp * scale.hp)
     this.hp = this.maxHp
     this.dmg = scale.damage
+    this.style = style
     this.room = maze.bossRoom
     const c = tileCentre(maze, this.room.x + Math.floor(this.room.w / 2), this.room.y + Math.floor(this.room.h / 2))
     this.x = c.x
@@ -129,16 +137,25 @@ export class Boss {
       hit(Math.round(BOSS.contact * this.dmg), this.x, this.z)
     }
     this.ringClock -= dt
+    const wind = this.style === 'moth' ? (this.phase() === 3 ? 0.62 : 0.85) : BOSS.windup
     if (this.windup > 0) {
-      this.windup += dt / BOSS.windup
+      this.windup += dt / wind
       if (this.windup >= 1) {
         this.windup = 0
         this.ring()
         ev.push('ring')
       }
     } else if (this.ringClock <= 0) {
+      this.aim = Math.atan2(hx - this.x, hz - this.z)
       this.windup = 1e-3
-      this.ringClock = BOSS.ringEvery * (this.hp < this.maxHp / 2 ? 0.72 : 1)
+      this.ringClock = this.nextRing()
+    }
+    if (this.style === 'moth') {
+      const ph = this.phase()
+      if (ph !== this.phaseTold) {
+        this.phaseTold = ph
+        ev.push(ph === 2 ? 'phase2' : 'phase3')
+      }
     }
     const third = this.hp / this.maxHp
     if ((this.summoned === 0 && third < 2 / 3) || (this.summoned === 1 && third < 1 / 3)) {
@@ -180,12 +197,64 @@ export class Boss {
     return rayCapsule(ox, oy, oz, dx, dy, dz, this.capsule(), max)
   }
 
+  /** 1 above 2/3, 2 until 1/3, then 3. Bloom ignores this. */
+  phase(): 1 | 2 | 3 {
+    const t = this.hp / this.maxHp
+    if (t > 2 / 3) return 1
+    if (t > 1 / 3) return 2
+    return 3
+  }
+
+  private nextRing(): number {
+    if (this.style !== 'moth') return BOSS.ringEvery * (this.hp < this.maxHp / 2 ? 0.72 : 1)
+    const ph = this.phase()
+    return BOSS.ringEvery * (ph === 1 ? 1.05 : ph === 2 ? 0.9 : 0.78)
+  }
+
   private ring(): void {
     this.spin += 0.37
+    if (this.style === 'moth') {
+      this.mothRing()
+      return
+    }
     const n = BOSS.ringCount + (this.hp < this.maxHp / 2 ? 4 : 0)
     for (let i = 0; i < n; i += 1) {
       const a = this.spin + (i / n) * Math.PI * 2
       this.orbs.push({ x: this.x + Math.sin(a) * 1.1, y: 1.0, z: this.z + Math.cos(a) * 1.1, vx: Math.sin(a) * BOSS.orbSpeed, vz: Math.cos(a) * BOSS.orbSpeed, life: 4 })
+    }
+  }
+
+  /**
+   * 밤나방. 1단계: 플레이어 쪽에 빈 부채꼴(그 자리에 서면 안 맞음).
+   * 2단계: 빈칸이 돌아가고 탄이 소용돌이친다.
+   * 3단계: 빈칸은 등 뒤, 조준해 둔 방향으로 느린 부채 탄 (옆으로 빠지면 된다).
+   */
+  private mothRing(): void {
+    const ph = this.phase()
+    const gap = ph === 3 ? 0.7 : 1.15
+    const hole = ph === 1 ? this.aim : ph === 2 ? this.spin : this.aim + Math.PI
+    const n = Math.max(8, BOSS.ringCount - (ph === 1 ? 2 : 0))
+    const span = Math.PI * 2 - gap
+    const speed = BOSS.orbSpeed * (ph === 2 ? 0.92 : 0.85)
+    for (let i = 0; i < n; i += 1) {
+      const a = hole + gap / 2 + (i / n) * span
+      const tang = ph === 2 ? 1.8 : 0
+      this.orbs.push({
+        x: this.x + Math.sin(a) * 1.15,
+        y: 1.05,
+        z: this.z + Math.cos(a) * 1.15,
+        vx: Math.sin(a) * speed + Math.cos(a) * tang,
+        vz: Math.cos(a) * speed - Math.sin(a) * tang,
+        life: 4.2,
+      })
+    }
+    if (ph !== 3) return
+    const fan = 5
+    const spread = 0.42
+    for (let i = 0; i < fan; i += 1) {
+      const a = this.aim + (i - (fan - 1) / 2) * (spread / (fan - 1))
+      const sp = BOSS.orbSpeed * 0.72
+      this.orbs.push({ x: this.x + Math.sin(a) * 1.3, y: 1.15, z: this.z + Math.cos(a) * 1.3, vx: Math.sin(a) * sp, vz: Math.cos(a) * sp, life: 3.6 })
     }
   }
 

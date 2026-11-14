@@ -2,17 +2,20 @@
  * 챕터 2 · 꿈의 비밀. The chapter now begins in the dungeon:
  *
  *   섬 마을(배우기) → 꿈 미로 (4층, 모찌가 이어 주는 퀘스트 넷) → 미로 밖 몽실 마을 도착 →
- *   이장 몽이의 이야기 퀘스트 넷 (몽실 들판 · 구름 다락 · 멈춘 시계탑 · 달빛 둥지) → 챕터 3 열림.
+ *   이장 몽이의 이야기 (등불 · 다락 · 볼트 개조 · 시계탑 파수꾼 · 나방의 실 · 달빛 둥지) → 챕터 3 예고.
  *
  * Pure save logic: area plans, the maze chain, the story chain, migration of old chapter-2 saves.
  * The 3D side (run.ts spots, main.ts travel) only reports events here and paints what comes back.
  */
 import { BOSS_FLOOR, floorScale, floorSeed, type FloorPlan, type FloorScale } from './delve'
+import { HALO_SET } from '../data/legends'
 import { GEAR_IDS, ITEMS, WEAPON_IDS } from '../data/items'
+import { makeLegend, legendsOf, recordLegend } from './legends'
+import { makeMod } from './mods'
 import { AREAS, AREA_IDS, areaLabel, isArea, type AreaId } from './areas'
 import { chapter2Open, chaptersOf } from './chapters'
 import { addItem } from './inventory'
-import { makeItem } from './loot'
+import { makeItem, plusOf } from './loot'
 import { gainGold, gainXp } from './stats'
 import type { MutationResult, Rarity, SaveData } from './types'
 
@@ -54,19 +57,44 @@ export function townPlan(salt = 0): FloorPlan {
 
 export type StoryState = 'offer' | 'active' | 'ready'
 
+/** 볼트의 개조 퀘스트가 시작될 때의 총 상태. 그보다 강화가 오르거나 부품이 늘면 완료. */
+export interface GunMark {
+  plus: number
+  mods: number
+}
+
 export interface DreamSave {
   /** entered: she has walked into the 꿈 미로 at least once (모찌's chain starts there). */
   maze: { step: number; count: number; passed: boolean; entered: boolean }
-  story: { step: number; state: StoryState; count: number; done: boolean }
+  story: { step: number; state: StoryState; count: number; done: boolean; mark: GunMark; v: number }
   /** Where she wakes up after a reload: the island, or in 몽실 마을. */
   home: 'island' | 'mongsil'
   /** Story areas whose waypoint she has reached (the 별문 network lists them). */
   gates: AreaId[]
 }
 
-const fresh = (): DreamSave => ({ maze: { step: 0, count: 0, passed: false, entered: false }, story: { step: 0, state: 'offer', count: 0, done: false }, home: 'island', gates: [] })
+/** Story block version. 1 = the four-beat 꿈의 비밀 (s1 들판, s2 다락, s3 시계탑, s4 둥지). */
+export const STORY_V = 2
+const LEGACY_STORY = ['s1', 's2', 's3', 's4'] as const
+
+const fresh = (): DreamSave => ({ maze: { step: 0, count: 0, passed: false, entered: false }, story: { step: 0, state: 'offer', count: 0, done: false, mark: { plus: 0, mods: 0 }, v: STORY_V }, home: 'island', gates: [] })
 
 const int = (v: unknown, min: number, max: number, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, Math.floor(v))) : d)
+
+/**
+ * Old four-beat index → today's quest. A player who had not started the next dungeon yet
+ * picks up the new beat (개조, then 나방의 실) instead of skipping it. One already inside a
+ * dungeon stays on that quest.
+ */
+function placeLegacy(step: number, state: StoryState, done: boolean): { step: number; state: StoryState } {
+  if (done) return { step: STORY.length, state: 'offer' }
+  let id: string = LEGACY_STORY[Math.min(LEGACY_STORY.length - 1, Math.max(0, step))] ?? 's1'
+  if (step >= LEGACY_STORY.length) id = 's4'
+  if (id === 's3' && state === 'offer') id = 's_bolt'
+  if (id === 's4' && state === 'offer') id = 's_silk'
+  const i = STORY.findIndex((q) => q.id === id)
+  return { step: i < 0 ? 0 : i, state }
+}
 
 /**
  * The save's chapter-2 story block, made whole. A save from before the maze that already played
@@ -84,7 +112,15 @@ export function dreamOf(save: SaveData): DreamSave {
     d.maze = { step: int(m.step, 0, MAZE_CHAIN.length, 0), count: int(m.count, 0, 1e6, 0), passed: !!m.passed, entered: false }
     // Older saves had no 'entered': any maze progress means she was in there.
     d.maze.entered = !!m.entered || d.maze.passed || d.maze.step > 0 || d.maze.count > 0
-    d.story = { step: int(s.step, 0, STORY.length, 0), state: s.state === 'active' || s.state === 'ready' ? s.state : 'offer', count: int(s.count, 0, 1e6, 0), done: !!s.done }
+    const legacy = (s as { v?: unknown }).v !== STORY_V
+    const state: StoryState = s.state === 'active' || s.state === 'ready' ? s.state : 'offer'
+    const placed = legacy ? placeLegacy(int(s.step, 0, LEGACY_STORY.length, 0), state, !!s.done) : { step: int(s.step, 0, STORY.length, 0), state }
+    const markRaw = (s as { mark?: Partial<GunMark> }).mark
+    const mark: GunMark = {
+      plus: int(markRaw?.plus, 0, 99, 0),
+      mods: int(markRaw?.mods, 0, 99, 0),
+    }
+    d.story = { step: placed.step, state: placed.state, count: int(s.count, 0, 1e6, 0), done: !!s.done, mark, v: STORY_V }
     d.home = raw.home === 'mongsil' && d.maze.passed ? 'mongsil' : 'island'
     d.gates = Array.isArray(raw.gates) ? [...new Set(raw.gates.filter(isArea))] : []
     if (d.story.done) d.story.step = STORY.length
@@ -221,20 +257,27 @@ export function mazeHud(save: SaveData): { title: string; prog: string } | null 
 
 // ---------------------------------------------------------------- 꿈의 비밀 (몽이의 이야기)
 
-export type StoryKind = 'spark' | 'area' | 'boss'
+export type StoryKind = 'spark' | 'area' | 'boss' | 'tinker' | 'hunt'
 
 export interface StoryQuest {
   id: string
   title: string
   kind: StoryKind
-  /** Where it happens: the field (sparks), or an area. */
-  where: 'field' | AreaId
+  /** Where it happens: the field, 몽실(볼트), or an area. */
+  where: 'field' | 'mongsil' | AreaId
   goal: number
+  /** Hunt quests count this foe kind. */
+  foe?: string
   /** 몽이 explains (offer) and what she learns when handing it in (reveal). */
   offer: { who: string; text: string }[]
   reveal: { who: string; text: string }[]
   reward: { gold: number; xp: number; gear: Rarity }
 }
+
+/** 시계탑 마지막 층의 미니보스. 출구 계단은 이놈이 쓰러진 뒤에 열린다. */
+export const TOWER_WARDEN = { kind: 'cog' as const, name: '똑딱 파수꾼', hp: 1.45 }
+export const MOTH_KIND = 'mothling'
+export const MOTH_KO = '달가루 나방'
 
 export const STORY: StoryQuest[] = [
   {
@@ -260,12 +303,28 @@ export const STORY: StoryQuest[] = [
     kind: 'area',
     where: 'loft',
     goal: 1,
-    offer: [{ who: '몽이', text: '구름 다락은 별문으로 갈 수 있어요. 다락 끝까지 올라가서 속삭임의 정체를 알아봐 줘요.' }],
+    offer: [{ who: '몽이', text: '구름 다락은 별문 두 번째 문이에요. 다락 끝까지 올라가서, 속삭임이 무슨 말인지 들어 줘요.' }],
     reveal: [
       { who: '별하', text: '다락 끝에서 누가 계속 같은 말을 했어. "3시 33분…" 그게 무슨 뜻이지?' },
-      { who: '몽이', text: '마을 동쪽 시계탑이 딱 그 시각에 멈췄어요. 아무도 이유를 몰라요.' },
+      { who: '몽이', text: '그 속삭임은 잠들기 직전의 숨이에요. 총을 만지는 볼트가, 꿈을 총의 모양으로 붙잡는 법을 알아요. 먼저 볼트에게 가 봐요.' },
     ],
     reward: { gold: 120, xp: 240, gear: 'rare' },
+  },
+  {
+    id: 's_bolt',
+    title: '볼트의 첫 개조',
+    kind: 'tinker',
+    where: 'mongsil',
+    goal: 1,
+    offer: [
+      { who: '몽이', text: '볼트는 광장 동쪽 총포상이에요. 꿈을 부품으로 깎아 총에 끼우거나, 지금 총보다 한 단계 더 강화해 와요.' },
+      { who: '볼트', text: '흐흐, 총열 하나랑 꿈가루를 챙겨 뒀어. 끼우거나 +를 올리면, 꿈이 총에 달라붙어. 몽이에게 보여 줘.' },
+    ],
+    reveal: [
+      { who: '볼트', text: '봤지? 강화는 숫자를 올리는 게 아니야. 별하가 꾼 꿈을, 총이 기억하게 하는 거지.' },
+      { who: '몽이', text: '그래서 시계탑이 멈춘 거예요. 3시 33분, 별하 씨가 잠든 시각을 누군가 붙잡고 있어요. 꼭대기의 똑딱 파수꾼을 잠재워 줘요.' },
+    ],
+    reward: { gold: 80, xp: 160, gear: 'rare' },
   },
   {
     id: 's3',
@@ -273,13 +332,27 @@ export const STORY: StoryQuest[] = [
     kind: 'area',
     where: 'tower',
     goal: 1,
-    offer: [{ who: '몽이', text: '시계탑 꼭대기에 시계의 심장이 있다고 해요. 그걸 찾으면 시간이 다시 흐를지도 몰라요.' }],
+    offer: [{ who: '몽이', text: '시계탑은 별문에서 이어져요. 꼭대기 출구를 똑딱 파수꾼이 막고 있어요. 화살표를 따라 파수꾼을 쓰러뜨리고, 금빛 계단으로 나와 줘요.' }],
     reveal: [
       { who: '별하', text: '시계의 심장이… 방울 모양이야. 모찌, 네 목에 달린 거랑 똑같아.' },
       { who: '모찌', text: '…기억났어. 3시 33분은 별하가 책상에서 잠든 시각이야. 그리고 나는, 별하가 어릴 때 꾼 꿈에서 태어났어. 너를 지키려고.' },
-      { who: '몽이', text: '그럼 등불을 먹는 건… 달빛 둥지의 밤나방이에요. 그 나방이 별하 씨의 꿈까지 먹고 있었던 거예요.' },
+      { who: '몽이', text: '파수꾼이 떨어뜨린 자장가 물총을 챙겨 두세요. 짝이 되는 달무리 물총은, 나방의 둥지에서만 완성된대요.' },
     ],
     reward: { gold: 150, xp: 300, gear: 'epic' },
+  },
+  {
+    id: 's_silk',
+    title: '나방의 실',
+    kind: 'hunt',
+    where: 'field',
+    foe: MOTH_KIND,
+    goal: 8,
+    offer: [{ who: '몽이', text: '들판에 달가루 나방이 내려앉기 시작했어요. 여덟 마리를 잠재우면, 그 실이 둥지로 가는 길을 보여 줄 거예요. 나방은 멀리서 달빛 탄을 쏘니, 옆으로 피하세요.' }],
+    reveal: [
+      { who: '별하', text: '나방 날개에 내 이름이 실로 수놓여 있었어. 누군가 내 꿈을 짜고 있어.' },
+      { who: '몽이', text: '그 베틀의 주인이 꿈먹는 밤나방이에요. 달빛 둥지 별문을 열었어요. 자장가 물총을 들고 가 주면, 짝이 될 달무리 물총을 드릴게요.' },
+    ],
+    reward: { gold: 140, xp: 260, gear: 'rare' },
   },
   {
     id: 's4',
@@ -287,12 +360,12 @@ export const STORY: StoryQuest[] = [
     kind: 'boss',
     where: 'moon',
     goal: 1,
-    offer: [{ who: '몽이', text: '달빛 둥지로 가는 별문을 열어 둘게요. 꿈먹는 밤나방을 잠재워 줘요. 꼭 돌아와요.' }],
+    offer: [{ who: '몽이', text: '달빛 둥지는 별문 맨 끝이에요. 밤나방은 고리 탄에 길을 비워 두고, 마지막엔 부채처럼 조준해요. 빈칸과 옆으로 빠지는 걸 보고 잠재워 줘요.' }],
     reveal: [
-      { who: '몽이', text: '등불이 전부 다시 켜졌어요! 마을이 이렇게 밝은 건 처음이에요.' },
+      { who: '몽이', text: '등불이 전부 다시 켜졌어요! 마을이 이렇게 밝은 건 처음이에요. 달무리 물총, 자장가와 양손에 차 보세요.' },
       { who: '???', text: '…별하야. 별하야, 일어나…' },
       { who: '별하', text: '방금… 꿈 바깥에서 누가 날 불렀어. 모찌, 들었어?' },
-      { who: '모찌', text: '응. 꿈 바깥의 목소리야. 다음 꿈으로 가는 문이 열렸어.' },
+      { who: '모찌', text: '응. 꿈 바깥의 목소리야. 별문에 다음 장으로 가는 문이 생겼는데… 아직 잠겨 있어. 다음 꿈을 준비하는 중이야.' },
     ],
     reward: { gold: 220, xp: 420, gear: 'epic' },
   },
@@ -314,11 +387,18 @@ export function storyTalk(save: SaveData, rng: () => number = Math.random): { li
   if (d.story.state === 'offer') {
     d.story.state = 'active'
     d.story.count = 0
+    if (q.kind === 'tinker') giftTinker(save, d, o)
     o.toasts.push(`이야기 퀘스트 · ${q.title}`)
     return { lines: q.offer, out: o, took: true }
   }
   if (d.story.state === 'active') {
-    return { lines: [{ who: '몽이', text: `${q.title}… ${storyGoal(q, d.story.count)}. 별문에서 길이 이어져요.` }], out: o, took: false }
+    if (q.kind === 'tinker' && tinkerReady(save)) {
+      d.story.state = 'ready'
+      d.story.count = q.goal
+    } else {
+      const where = q.kind === 'tinker' ? '볼트의 공방에서 총을 손봐 줘.' : '별문에서 길이 이어져요.'
+      return { lines: [{ who: '몽이', text: `${q.title}… ${storyGoal(q, d.story.count)}. ${where}` }], out: o, took: false }
+    }
   }
   // ready: hand in.
   reward(save, q.reward.gold, q.reward.xp, o)
@@ -327,6 +407,8 @@ export function storyTalk(save: SaveData, rng: () => number = Math.random): { li
   const item = makeItem(defId, q.reward.gear, rng, Math.max(3, save.level))
   if (addItem(save, item)) o.result?.toasts.push(`${ITEMS[defId]?.name ?? defId} 획득!`)
   else gainGold(save, 60)
+  if (q.id === 's3') grantLegend(save, 'leg_lullaby', o)
+  if (q.id === 's4') grantLegend(save, 'leg_halo', o)
   o.toasts.push(`이야기 퀘스트 완료! ${q.title}`)
   d.story.step += 1
   d.story.count = 0
@@ -344,21 +426,95 @@ export function storyTalk(save: SaveData, rng: () => number = Math.random): { li
 
 function storyGoal(q: StoryQuest, count: number): string {
   if (q.kind === 'spark') return `등불 불씨 ${count}/${q.goal}`
+  if (q.kind === 'hunt') return `${MOTH_KO} ${count}/${q.goal}`
+  if (q.kind === 'tinker') return '총을 한 단계 강화하거나 부품을 끼우기'
   if (q.kind === 'boss') return `${AREAS.moon.boss?.name ?? '보스'} 잠재우기`
+  if (q.where === 'tower') return '똑딱 파수꾼을 쓰러뜨리고 출구 계단으로'
   return `${AREAS[q.where as AreaId]?.name ?? ''} 끝까지 가기`
 }
 
-/** A story happening out there: sparks in the field, an area walked to its end, the moth down. */
-export function storyEvent(save: SaveData, e: { type: 'spark'; amount?: number } | { type: 'area'; area: AreaId } | { type: 'boss'; area: AreaId }): DreamOut {
+/** Highest +N and how many parts sit in guns (bag and stash). */
+export function gunWork(save: SaveData): GunMark {
+  const stash = (save.town as { stash?: SaveData['items'] } | undefined)?.stash ?? []
+  let plus = 0
+  let mods = 0
+  for (const item of [...save.items, ...stash]) {
+    if (ITEMS[item.defId]?.slot !== 'weapon') continue
+    plus = Math.max(plus, plusOf(item))
+    mods += item.mods?.length ?? 0
+  }
+  return { plus, mods }
+}
+
+function tinkerReady(save: SaveData): boolean {
+  const mark = dreamOf(save).story.mark
+  const now = gunWork(save)
+  return now.plus > mark.plus || now.mods > mark.mods
+}
+
+/** Dust, a floor of gold for +1, and a barrel so the step can always be done. */
+function giftTinker(save: SaveData, d: DreamSave, o: DreamOut): void {
+  d.story.mark = gunWork(save)
+  save.materials.dream_dust = (save.materials.dream_dust ?? 0) + 2
+  if (save.gold < 28) save.gold = 28
+  const part = makeMod('mod_barrel', 'rare', Math.max(4, save.level))
+  if (addItem(save, part)) o.toasts.push('긴 꿈 총열 · 꿈가루를 받았어. 볼트에게 끼우거나 강화해')
+}
+
+/**
+ * Workshop closed (or a test): if the tinker step just became doable, mark it ready.
+ * Returns the toast, or null.
+ */
+export function noteTinker(save: SaveData): string | null {
+  const d = dreamOf(save)
+  const q = storyQuest(save)
+  if (!q || q.kind !== 'tinker' || d.story.state !== 'active' || !tinkerReady(save)) return null
+  d.story.state = 'ready'
+  d.story.count = q.goal
+  return `이야기 퀘스트 달성! ${q.title} · 몽이에게 보고`
+}
+
+function ownsLegend(save: SaveData, id: string): boolean {
+  if (legendsOf(save).found.includes(id)) return true
+  if (save.items.some((i) => i.defId === id)) return true
+  const stash = (save.town as { stash?: { defId: string }[] } | undefined)?.stash ?? []
+  return stash.some((i) => i.defId === id)
+}
+
+function grantLegend(save: SaveData, id: string, o: DreamOut): void {
+  if (ownsLegend(save, id)) return
+  const item = makeLegend(id, Math.max(6, save.level + 1))
+  if (!addItem(save, item)) {
+    gainGold(save, 80)
+    o.toasts.push('가방이 가득해서 세트 물총 대신 골드 80')
+    return
+  }
+  recordLegend(save, item)
+  o.toasts.push(`${ITEMS[id]?.name ?? id} 획득! · ${HALO_SET.name}`)
+}
+
+export type StoryHappen =
+  | { type: 'spark'; amount?: number }
+  | { type: 'area'; area: AreaId }
+  | { type: 'boss'; area: AreaId }
+  | { type: 'hunt'; kind: string; amount?: number }
+
+/** A story happening out there: sparks in the field, an area walked to its end, mothlings, the moth. */
+export function storyEvent(save: SaveData, e: StoryHappen): DreamOut {
   const o = dout()
   const d = dreamOf(save)
   const q = storyQuest(save)
   if (!q || d.story.state !== 'active') return o
-  const fits = (e.type === 'spark' && q.kind === 'spark') || (e.type === 'area' && q.kind === 'area' && q.where === e.area) || (e.type === 'boss' && q.kind === 'boss' && q.where === e.area)
+  const fits =
+    (e.type === 'spark' && q.kind === 'spark') ||
+    (e.type === 'area' && q.kind === 'area' && q.where === e.area) ||
+    (e.type === 'boss' && q.kind === 'boss' && q.where === e.area) ||
+    (e.type === 'hunt' && q.kind === 'hunt' && e.kind === (q.foe ?? MOTH_KIND))
   if (!fits) return o
-  d.story.count = Math.min(q.goal, d.story.count + (e.type === 'spark' ? (e.amount ?? 1) : 1))
+  const n = e.type === 'spark' || e.type === 'hunt' ? (e.amount ?? 1) : 1
+  d.story.count = Math.min(q.goal, d.story.count + n)
   if (d.story.count < q.goal) {
-    o.toasts.push(`등불 불씨 ${d.story.count}/${q.goal}`)
+    o.toasts.push(storyGoal(q, d.story.count))
     return o
   }
   d.story.state = 'ready'
@@ -374,7 +530,7 @@ export function openAreas(save: SaveData): AreaId[] {
   const reach = d.story.done ? STORY.length : d.story.step + (d.story.state === 'offer' ? 0 : 1)
   for (let i = 0; i < reach; i += 1) {
     const w = STORY[i]?.where
-    if (w && w !== 'field' && !out.includes(w)) out.push(w)
+    if (w && isArea(w) && !out.includes(w)) out.push(w)
   }
   return out
 }
@@ -383,6 +539,19 @@ export function openAreas(save: SaveData): AreaId[] {
 export function wantsSparks(save: SaveData): boolean {
   const q = storyQuest(save)
   return !!q && q.kind === 'spark' && dreamOf(save).story.state === 'active'
+}
+
+/** 나방의 실: the field should mix in 달가루 나방. */
+export function wantsMoths(save: SaveData): boolean {
+  const q = storyQuest(save)
+  return !!q && q.kind === 'hunt' && dreamOf(save).story.state === 'active'
+}
+
+/** Tower's last floor should place the warden while that quest is the one she is on. */
+export function wantsWarden(save: SaveData): boolean {
+  const d = dreamOf(save)
+  const q = storyQuest(save)
+  return !!q && q.where === 'tower' && (d.story.state === 'active' || d.story.state === 'ready')
 }
 
 /** HUD tracker row for the story, or null. */

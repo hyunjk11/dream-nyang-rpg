@@ -504,7 +504,7 @@ export class DungeonRun {
     this.sewer.group.add(this.hordeView.group)
     this.loot = new LootView((x, z) => collideCircle(maze, x, z, 0.2))
     this.sewer.group.add(this.loot.group)
-    this.boss = isBoss ? new Boss(this.maze, { ...this.plan.scale.boss, damage: this.plan.scale.boss.damage * bossRoomHit(host.hero.maxHp, 'boss') }) : null
+    this.boss = isBoss ? new Boss(this.maze, { ...this.plan.scale.boss, damage: this.plan.scale.boss.damage * bossRoomHit(host.hero.maxHp, 'boss') }, this.plan.area === 'moon' ? 'moth' : 'bloom') : null
     const body = makeFoeBody('bloom')
     this.bossBody = body.rig
     this.bossMats = body.mats
@@ -763,6 +763,14 @@ export class DungeonRun {
         const sp = this.spots.find((s) => s.id === goal.kind)
         return sp ? { x: sp.x, z: sp.z } : objective()
       }
+      case 'spot': {
+        const sp = this.spots.find((s) => s.id === goal.id)
+        return sp ? { x: sp.x, z: sp.z } : objective()
+      }
+      case 'quest': {
+        for (const f of liveFoes) if (this.questFoes.has(f.id)) return { x: f.x, z: f.z }
+        return objective()
+      }
       default:
         return null
     }
@@ -1002,8 +1010,14 @@ export class DungeonRun {
     return tileCentre(this.maze, x, (i - x) / this.maze.w)
   }
 
+  /** Still up: the named quest foe (the tower warden blocks the stairs while it is). */
+  questFoeAlive(id: string): boolean {
+    for (const f of this.horde.foes) if (this.questFoes.get(f.id)?.id === id && f.dying <= 0 && f.hp > 0) return true
+    return false
+  }
+
   /** Spawn a named quest foe far from her (the arrow points at it). False when nowhere fits. */
-  spawnQuestFoe(id: string, kind: HordeKind, name: string, hp: number): boolean {
+  spawnQuestFoe(id: string, kind: HordeKind, name: string, hp: number, blurb = '미로 어딘가에서 깨어났어 · 화살표를 따라가'): boolean {
     for (const f of this.horde.foes) if (this.questFoes.get(f.id)?.id === id && f.dying <= 0) return true
     const at = this.farSpot(0.6, 7)
     if (!at) return false
@@ -1017,7 +1031,7 @@ export class DungeonRun {
     f.homeZ = f.z
     f.age = 1
     this.questFoes.set(f.id, { id, name })
-    this.host.banner(name, '미로 어딘가에서 깨어났어 · 화살표를 따라가')
+    this.host.banner(name, blurb)
     return true
   }
 
@@ -1353,7 +1367,9 @@ export class DungeonRun {
           this.host.banner(`${NAMED.name} 쓰러뜨림!`, '퀘스트 완료 · 마을 게시판에서 보상')
           this.host.named?.('down')
         }
-    const extra = [...(this.host.extraDrops?.(f.elite) ?? []), ...(quest?.id === 'm_elite' ? (this.host.legendDrop?.({ kind: 'mazeElite' }) ?? []) : [])]
+    const legend =
+      quest?.id === 'm_elite' ? (this.host.legendDrop?.({ kind: 'mazeElite' }) ?? []) : quest?.id === 'tower_warden' ? (this.host.legendDrop?.({ kind: 'storyElite', area: 'tower' }) ?? []) : []
+    const extra = [...(this.host.extraDrops?.(f.elite) ?? []), ...legend]
     this.loot.spill([...this.drops(f.elite, false), ...extra], f.x, f.z, f.elite ? 1.2 : 0.8)
     this.host.foeDied?.(f.x, f.z)
   }
@@ -1498,11 +1514,15 @@ export class DungeonRun {
     if (!boss) return
     for (const ev of boss.update(dt, p.x, p.z, hero.alive, strike)) {
       if (ev === 'wake') {
-        if (!this.field) this.callAdds(BOSS_GUARD, false)
-        if (this.plan.area === 'moon') this.host.banner(MOTH_NAME, '잊힌 꿈을 먹는 나방이 날개를 펼쳤다')
+        if (!this.field && this.boss?.style === 'moth') this.callAdds(3, false, ['mothling'])
+        else if (!this.field) this.callAdds(BOSS_GUARD, false)
+        if (this.plan.area === 'moon') this.host.banner(MOTH_NAME, '1단계 · 고리 탄의 빈칸은 네 쪽이야. 그 자리에 서')
         else this.host.banner(this.plan.depth > 1 ? `깊이 ${this.plan.depth}의 악몽 꽃` : '악몽 꽃', '꿈 하수도의 주인이 깨어났다')
         this.host.sfx('windup', 1)
-      } else if (ev === 'ring') this.host.sfx('windup', 0.45)
+      } else if (ev === 'phase2') this.host.banner('2단계 · 소용돌이', '빈칸이 돌아가. 달가루 나방이 내려온다')
+      else if (ev === 'phase3') this.host.banner('3단계 · 조준 부채', '느린 부채 탄이야. 옆으로 빠져')
+      else if (ev === 'ring') this.host.sfx('windup', 0.45)
+      else if (ev === 'summon' && this.boss?.style === 'moth') this.callAdds(BOSS_ADDS, false, ['mothling'])
       else if (ev === 'summon' && !this.field) this.callAdds(BOSS_ADDS, true)
       else if (ev === 'summon') {
         const near = nestDistance
@@ -1521,8 +1541,8 @@ export class DungeonRun {
   }
 
   /** Boss-room adds: a few of this floor's kinds bubble up round the arena edge, away from her, capped at BOSS_LIVE. */
-  callAdds(n: number, elite: boolean): number {
-    const kinds = waveFor(Math.max(1, Math.round(this.plan.scale.firstWave))).kinds.slice(-3)
+  callAdds(n: number, elite: boolean, kinds?: HordeKind[]): number {
+    const pool = kinds?.length ? kinds : waveFor(Math.max(1, Math.round(this.plan.scale.firstWave))).kinds.slice(-3)
     const p = this.host.hero.object.position
     const r = this.maze.bossRoom
     const spots: { x: number; z: number }[] = []
@@ -1536,7 +1556,7 @@ export class DungeonRun {
     let made = 0
     for (let i = 0; i < n && this.horde.alive < BOSS_LIVE && spots.length; i += 1) {
       const at = spots.splice(Math.floor(Math.random() * spots.length), 1)[0]
-      const f = this.horde.spawn(kinds[i % kinds.length], at.x, at.z, elite && i === 0)
+      const f = this.horde.spawn(pool[i % pool.length], at.x, at.z, elite && i === 0)
       if (!f) break
       made += 1
       this.host.vfx.burst(new Vector3(at.x, 0.1, at.z), 0xd8b8ff, { count: 8, speed: 2, up: 2.4, life: 0.5, size: 0.24, gravity: -2, drag: 2 })

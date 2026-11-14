@@ -2,7 +2,7 @@
  * 별문 길: 이야기(챕터 장소)와 무한 탐험(꿈 하수도 깊이)을 한 목록에 섞지 않는다.
  * 돌아가기 포털은 섬이든 몽실이든, 그 층에서 귀환·쓰러짐으로 나왔을 때 그 자리로 이어 준다.
  */
-import { chapter2Open } from './chapters'
+import { chapter2Open, chapter3Open } from './chapters'
 import { portalChoices } from './delve'
 import { STORY, dreamOf, openAreas } from './dreamstory'
 import { PLACE, lockedLabel, placeLabel } from './places'
@@ -55,6 +55,7 @@ export function storyGateRows(input: StoryGateInput): PortalRow[] {
         rows.push({ text: lockedLabel(a, `꿈의 비밀 ${n} 필요`), locked: true, lane: 'story' })
       }
     }
+    if (chapter3Open(input.save)) rows.push({ text: '🔒 3장 · 꿈 바깥의 목소리 · 다음 챕터 준비 중', locked: true, lane: 'story' })
     rows.push(DELVE_ENTRY)
     return rows
   }

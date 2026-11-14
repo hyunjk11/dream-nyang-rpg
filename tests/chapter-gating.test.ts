@@ -117,7 +117,7 @@ describe('챕터 게이팅 · 챕터 2 저장', () => {
     passMaze(save)
     expect(mongsilOpen(save)).toBe(true)
     expect(storyHud(save)).not.toBeNull()
-    expect(mainQuest(save).title).toMatch(/^2장 · 꿈의 비밀 1\/4/)
+    expect(mainQuest(save).title).toMatch(/^2장 · 꿈의 비밀 1\/6/)
   })
 
   it('챕터 2에서는 게시판 퀘스트를 받고 진행할 수 있다', () => {

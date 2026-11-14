@@ -3,7 +3,7 @@ import { COMBOS, MOD_SPECS, TRICK_KO, TRICK_TEXT } from '../data/mods'
 import { AFFIX_COUNT, AFFIXES, GEAR_AFFIX, PERCENT_STATS } from '../data/affixes'
 import { GUN_KO, GUN_PROFILES, gunDps, gunStatLine } from '../data/guns'
 import { GEAR_IDS, ITEMS, WEAPON_IDS } from '../data/items'
-import { LEGEND_BY_ID } from '../data/legends'
+import { HALO_SET, LEGEND_BY_ID } from '../data/legends'
 import type { EnemyDef } from '../data/enemies'
 import {
   RARITIES,
@@ -340,6 +340,7 @@ export function itemLines(item: ItemInstance): string[] {
   lines.push(def?.legend ? UNIQUE_KO : RARITY_KO[item.rarity])
   const legend = def?.legend ? LEGEND_BY_ID[item.defId] : undefined
   if (legend) lines.push(`★ 유니크 · ${legend.signature}`, `출처: ${legend.where}`)
+  if (legend?.set === 'halo') lines.push(`세트 · ${HALO_SET.name}: ${HALO_SET.text}`)
   for (const [key, value] of Object.entries(implicitStats(item)) as [StatKey, number][]) lines.push(formatStat(key, value))
   for (const affix of item.affixes) lines.push(formatAffix(affix))
   const trick = def?.mod ? MOD_SPECS[item.defId]?.trick : undefined

@@ -22,6 +22,8 @@ import {
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 
 export type LuckyKind = 'jelly' | 'wolf' | 'goblin' | 'knight' | 'wraith' | 'golem' | 'drake' | 'lord'
+/** 챕터 2 전용 몸 (럭키 디펜스 13종 밖). 하수도 웨이브에는 안 나온다. */
+export type DreamBody = LuckyKind | 'mothling' | 'cog'
 
 /** Archetype table (original names kept), recoloured from neon to pastel dream tones. */
 export const LUCKY: Record<LuckyKind, { name: string; scale: number; color: number; eye: number; crown?: number; source: string }> = {
@@ -63,8 +65,15 @@ function mk(geo: BufferGeometry, color: number, x: number, y: number, z: number,
   return m
 }
 
-function build(kind: LuckyKind): Rig {
+function palette(kind: DreamBody): { scale: number; color: number; eye: number; crown?: number } {
+  if (kind === 'mothling') return { scale: 0.82, color: 0xc8b6ff, eye: 0xfff6c8 }
+  if (kind === 'cog') return { scale: 0.98, color: 0xe6c98a, eye: 0x9af0ff }
   const a = LUCKY[kind]
+  return { scale: a.scale, color: a.color, eye: a.eye, crown: a.crown }
+}
+
+function build(kind: DreamBody): Rig {
+  const a = palette(kind)
   const root = new Group()
   const inner = new Group()
   root.add(inner)
@@ -156,6 +165,29 @@ function build(kind: LuckyKind): Rig {
       wings.push({ m: wg, sx })
       legs.push(mk(Cyl(0.11, 0.095, 0.44, 8), dark, sx * 0.25, 0.22, 0.1, inner))
     }
+  } else if (kind === 'mothling') {
+    // 달가루 나방: 통통한 몸과 초승달 날개. 떠 있는 건 horde-view의 hover.
+    mk(S(0.32, 12, 10), main, 0, 0.42, 0, inner).scale.set(1.05, 0.8, 1.35)
+    mk(S(0.16, 10, 8), light, 0, 0.48, 0.28, inner)
+    for (const sx of [-1, 1]) {
+      mk(S(0.05, 8, 6), eye, sx * 0.08, 0.52, 0.4, inner, 2.2)
+      const wg = mk(new ConeGeometry(0.42, 0.7, 3), 0xe8dcff, sx * 0.55, 0.5, -0.05, inner, 1.4)
+      wg.rotation.z = sx * 1.15
+      wg.rotation.y = sx * 0.4
+      wings.push({ m: wg, sx })
+    }
+    mk(Cone(0.08, 0.28, 6), 0xfff6c8, 0, 0.72, -0.35, inner, 1.6)
+  } else if (kind === 'cog') {
+    // 똑딱 톱니: 노란 태엽 인형. 머리 위 톱니가 시계탑의 표식.
+    mk(RBox(0.5, 0.55, 0.4, 0.06), main, 0, 0.55, 0, inner)
+    mk(Cyl(0.22, 0.24, 0.28, 10), dark, 0, 0.95, 0, inner)
+    const gear = mk(new TorusGeometry(0.28, 0.05, 6, 12), 0xffe08a, 0, 1.22, 0, inner, 1.6)
+    gear.rotation.x = Math.PI / 2
+    for (const sx of [-1, 1]) {
+      mk(S(0.045, 6, 5), eye, sx * 0.08, 0.98, 0.2, inner, 2.2)
+      mk(Box(0.1, 0.32, 0.1), light, sx * 0.34, 0.62, 0.12, inner)
+      legs.push(mk(Cyl(0.08, 0.07, 0.36, 8), dark, sx * 0.14, 0.18, 0, inner))
+    }
   } else {
     const crown = a.crown ?? 0xffe08a
     mk(RBox(0.95, 1.0, 0.7, 0.1), main, 0, 0.9, 0, inner)
@@ -218,7 +250,7 @@ function merge(root: Object3D): BufferGeometry {
 }
 
 /** `frames` walk-cycle poses of one lucky monster, merged and ready to instance. */
-export function luckyFrames(kind: LuckyKind, frames = 4): BufferGeometry[] {
+export function luckyFrames(kind: DreamBody, frames = 4): BufferGeometry[] {
   const rig = build(kind)
   const out: BufferGeometry[] = []
   for (let f = 0; f < frames; f += 1) {
